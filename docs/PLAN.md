@@ -10,11 +10,13 @@ parte de este documento se estabiliza, su resumen final se migra a
 **Estado del documento**: reestructurado — la infraestructura compartida
 (Logs en la Parte 5, motor de sync dentro de la Parte 6) se construye antes
 que los módulos que la usan, y cada módulo del POS es una Parte independiente
-(6-12) con sus propios 4 sub-pasos (UI → repositorio local → repositorio
-remoto/contrato → wiring). Pendiente: detalle campo-por-campo del esquema de
-datos (Parte 3, sin ejecutar ni aprobar todavía) y checklists granulares de
-subpasos con pruebas y criterios de éxito por cada Parte — se trabajarán como
-siguiente paso.
+(6-12) con sus propios sub-pasos (UI → repositorio local → repositorio
+remoto/contrato → wiring). Las 16 Partes tienen su propia sección
+`### Checklist` con ítems verificables y criterios de éxito concretos
+(comando, archivo, o comportamiento observable — nunca "pruebas
+exhaustivas"). Pendiente: ejecutar y aprobar el detalle campo-por-campo del
+esquema de datos (Parte 3) — es el primer paso real de implementación,
+todavía sin arrancar.
 
 ---
 
@@ -22,8 +24,16 @@ siguiente paso.
 
 Amplía este documento para planificar cada una de estas partes en detalle,
 con los subpasos enumerados en forma de lista de verificación que el agente
-deberá marcar, y con pruebas y criterios1 de éxito para cada uno. Asegúrate de
-que el usuario revise y apruebe el plan.
+deberá marcar, y con pruebas y criterios de éxito para cada uno. Asegúrate
+de que el usuario revise y apruebe el plan.
+
+### Checklist
+- [ ] Las Partes 2-16 tienen su propia sección `### Checklist` con ítems
+  verificables agrupados por sub-paso — criterio: cada Parte de módulo
+  (6-12) usa el mismo formato validado en la Parte 7; el resto usa un
+  formato adaptado a su propio contenido.
+- [ ] Usuario revisó y aprobó el plan resultante — criterio: aprobación
+  explícita registrada en la conversación.
 
 ---
 
@@ -58,6 +68,34 @@ Para esto se deberá desplegar un APK en donde se muestre un ejemplo de
 **Convención de nombres de builds**: `{app}-{proposito}-{tipo-build}-v{version}`.
 El APK de esta parte se llama `pos-hello-debug-v0.1`. Todos los builds de
 prueba posteriores siguen este mismo esquema para mantener trazabilidad.
+
+### Checklist
+
+**1. Backend + Docker**
+- [ ] `docker-compose.yml` levanta `backend` + PostgreSQL juntos —
+  criterio: `docker compose up` deja ambos contenedores en estado
+  healthy.
+- [ ] Scripts de inicio/detención multiplataforma
+  (`scripts/start-*`/`stop-*`) — criterio: cada script levanta/detiene el
+  stack sin errores en su SO correspondiente.
+- [ ] Endpoint `GET /health` responde — criterio: `curl
+  http://localhost:8000/api/v1/health` devuelve `200` (ver
+  `docs/api-contract.md` §1).
+
+**2. Hello world**
+- [ ] Función local en Android que muestra texto estático — criterio:
+  pantalla visible al abrir la app.
+- [ ] Llamada real desde Android a `GET /health` del backend — criterio:
+  la pantalla muestra la respuesta del backend, no un valor hardcodeado.
+
+**3. Ambiente Android físico**
+- [ ] Xiaomi M2102J20SG conectado y reconocido (o emulador de fallback) —
+  criterio: `adb devices` lo lista.
+- [ ] APK nombrado según la convención — criterio: `./gradlew
+  assembleDebug` produce `pos-hello-debug-v0.1.apk`.
+- [ ] Instalado y verificado corriendo en el Xiaomi — criterio: `./gradlew
+  installDebug` + confirmación manual de las dos formas del hello world.
+  `needs-device`
 
 ---
 
@@ -130,6 +168,25 @@ sincronización, incluso los resueltos automáticamente (ver política en
 Parte 6, módulo Configuración), para que el administrador pueda auditar qué
 pasó.
 
+### Checklist
+- [ ] Esquema JSON de los 7 módulos creado en `docs/` (ej.
+  `docs/schema-pos.json`) — criterio: el archivo existe y cubre las
+  tablas transaccionales (`inventario`, `ventas`, `cortes_caja`,
+  `devoluciones`, `movimientos`), más `articulos`, `sucursales` y
+  `usuarios`, con `sucursal_id` en cada tabla transaccional.
+- [ ] Esquema incorpora los campos de tracking de sincronización en toda
+  tabla sincronizable — criterio: `local_id`, `remote_id`, `updated_at`,
+  `is_synced`, `deleted_at` presentes en el JSON de cada tabla afectada.
+- [ ] Esquema incorpora `sync_conflicts` — criterio: presente en el JSON
+  con sus campos.
+- [ ] Esquema documenta el seed de la sucursal por defecto — criterio:
+  nota adjunta al JSON o campo `seed` describiendo la fila inicial de
+  `sucursales`.
+- [ ] Aprobación explícita del usuario sobre el esquema — criterio:
+  mensaje de aprobación registrado antes de continuar a la Parte 4;
+  bloquea la sección 3 de `docs/api-contract.md` y cualquier endpoint
+  real por módulo (ver `docs/api-contract.md` §5).
+
 ---
 
 ## Parte 4: Experiencia de inicio de sesión (usuario ficticio)
@@ -139,11 +196,27 @@ necesario iniciar sesión con credenciales ficticias ("admin", "password";
 "user1", "password") para poder ver la aplicación de punto de venta, y para
 que sea posible cerrar sesión. Realiza pruebas exhaustivas.
 
+Este login ficticio queda reemplazado por completo en la Parte 13
+(autenticación real contra `UsuarioRepository`) — las credenciales
+`admin`/`password` y `user1`/`password` dejan de funcionar a partir de ahí.
+
 Se ubica aquí, antes de la infraestructura de logs (Parte 5) y del
 desarrollo por módulo (Partes 6-12), porque el formato de log necesita el
 concepto de "usuario en turno" desde el inicio, y varios módulos (ej.
 entrada de mercancía, administración de usuarios) requieren atribuir
 acciones a ese usuario desde su primera implementación.
+
+### Checklist
+- [ ] Pantalla de login con credenciales ficticias (`admin`/`password`,
+  `user1`/`password`) — criterio: `./gradlew build` pasa y la pantalla
+  aparece al abrir la app sin sesión activa.
+- [ ] Sesión persiste mientras la app está abierta y permite cerrar
+  sesión — criterio: prueba de `ViewModel`/Compose UI Test que abre
+  sesión, navega, y cierra sesión correctamente.
+- [ ] Credenciales inválidas muestran error sin crashear — criterio:
+  prueba unitaria cubre el caso de error (CLAUDE.md §6).
+- [ ] Instalado y verificado en el Xiaomi con ambos usuarios ficticios —
+  `needs-device`
 
 ---
 
@@ -159,8 +232,16 @@ Genera un sistema de logs que capture:
 compartida (igual que el motor de sync de la Parte 6): cada
 `LocalXRepository`/`RemoteXRepository` de las Partes 6-12 necesita poder
 escribir a este sistema desde el momento en que se implementa, en vez de
-integrarlo después en 7 módulos ya construidos. Solo depende de la Parte 4
-(login), de donde toma el campo `usuario` de cada línea.
+integrarlo después en 7 módulos ya construidos.
+
+**El logger es una utilidad genérica**: recibe `tipo`, `sucursalId` y
+`usuario` como parámetros explícitos del llamador — no resuelve ninguno de
+los dos internamente, así que no depende en tiempo de build de ninguna
+Parte de módulo. En la práctica, `usuario` sale de la sesión iniciada en la
+Parte 4 (login) y `sucursalId` de la selección hecha en la Parte 6
+(Configuración); ambos ya existen para cuando cualquier módulo real
+empieza a llamar al logger (Parte 6 en adelante, ver "Integración en los
+módulos siguientes").
 
 ### Formato
 
@@ -204,6 +285,35 @@ FastAPI **no** escribe a este sistema ni lo comparte: su logging operativo
 aparte, más simple, documentada en `CLAUDE.md` sección 4 (módulo `logging`
 estándar de Python a stdout, sin archivos ni rotación propios).
 
+### Checklist
+
+**1. Logger genérico**
+- [ ] API del logger recibe `tipo`, `sucursalId`, `usuario` y mensaje como
+  parámetros explícitos — criterio: la firma compila sin importar código
+  de la Parte 4 ni de la Parte 6.
+- [ ] Escribe archivos `.txt` en almacenamiento privado de la app con el
+  formato `[TIPO][fecha][sucursal_id][usuario] mensaje` — criterio:
+  prueba unitaria verifica el formato exacto de una línea escrita.
+- [ ] Las 6 categorías soportadas (`ERROR`, `WARN`, `INFO`, `DB_WRITE`,
+  `SYNC_CONFLICT`, `AUTH`) — criterio: enum/sealed class con las 6,
+  prueba unitaria por categoría.
+
+**2. Rotación y retención**
+- [ ] Rotación al llegar a 5 MB, archivo nuevo con nombre
+  `app-log-YYYYMMDD-HHMMSS.txt` — criterio: prueba unitaria fuerza el
+  límite y verifica que se crea un archivo nuevo con el nombre esperado.
+- [ ] Purga automática de archivos con más de 30 días de retención —
+  criterio: prueba unitaria con archivos de fecha simulada verifica que
+  los vencidos se eliminan y los vigentes no.
+
+**3. Verificación de alcance**
+- [ ] El módulo de logging compila de forma aislada, sin depender de
+  ningún módulo de negocio — criterio: build independiente del paquete
+  del logger.
+- [ ] Instalado y verificado en el Xiaomi: generar al menos una línea de
+  cada categoría y confirmar que el archivo `.txt` las contiene —
+  `needs-device`
+
 ---
 
 ## Parte 6: Módulo Configuración
@@ -224,61 +334,69 @@ remoto o local-con-sincronización, poblada con `GET /sucursales`.
 orden original, porque las Partes 7-12 necesitan que `BackendMode` funcione
 de verdad para poder probar sus modos remoto y local-con-sincronización.
 
-1. **UI**: propuesta de pantalla (campos, tipo, layout) — aprobación del
-   usuario antes de implementar.
-2. **Persistencia local**: dos mecanismos distintos, no uno solo:
-   - DataStore para `BackendMode`, parámetros de conexión, y **cuál**
-     `sucursal_id` está seleccionado — son preferencia de dispositivo, no
-     dato de dominio.
-   - `SucursalRepository` (interfaz) + `LocalSucursalRepository` (Room) para
-     el catálogo de sucursales en sí (`id`, `nombre`, `direccion`,
-     `activa`) — esto sí es dato de dominio, sigue el patrón repositorio de
-     `CLAUDE.md`, e incluye la creación de la sucursal por defecto al
-     primer arranque (Parte 3, "Sucursal por defecto").
-   Pruebas unitarias de ambos.
-3. **Motor de sync genérico**: a diferencia de los demás módulos, aquí se
-   implementa la lógica compartida que todas las Partes de módulo
-   transaccional (7-11) reutilizarán, en vez de repetirse por módulo:
-   - **Política de resolución de conflictos**:
-     - Entidades compartidas sin ambigüedad de cantidad (precios, usuarios,
-       permisos): `last-write-wins` por `updated_at`.
-     - Entidades de cantidad/movimiento (inventario, ventas, cortes de caja,
-       devoluciones): dado que puede haber varios dispositivos operando
-       simultáneamente en la misma sucursal, se tratan como **eventos que
-       se aplican/suman**, no como estado final que se sobreescribe — evita
-       que un dispositivo "pierda" una venta o ajuste real por llegar
-       segundo a sincronizar.
-     - Todo conflicto detectado (auto-resuelto o no) se registra en la
-       tabla `sync_conflicts` (Parte 3) y en el log (Parte 5, categoría
-       `SYNC_CONFLICT`).
-     - Un panel de revisión manual de conflictos queda como mejora futura,
-       no bloqueante para el MVP.
-   - **Migración de datos al cambiar de modo**:
-     1. Hay datos locales, no hay datos remotos: se suben los datos locales
-        a la nube; si la base de datos remota no existe, se crea.
-     2. Hay datos remotos, no hay datos locales: se descargan los datos
-        remotos al dispositivo.
-     3. Hay datos en ambos lados: se requiere confirmación del usuario
-        administrador (validada con contraseña) indicando en qué dirección
-        se sincroniza.
-     4. En todos los casos, la app muestra un diálogo de confirmación con
-        el impacto concreto de la operación antes de ejecutarla (ej. "Se
-        subirán 340 registros de inventario y 12 usuarios a la nube" / "Se
-        descargarán 1,204 registros a este dispositivo"), no solo un
-        "¿confirmar sí/no?" genérico.
-   - Pruebas del motor de sync: la rama `last-write-wins` se prueba de
-     punta a punta aquí mismo contra `Sucursal` (Parte 3, "Sucursal por
-     defecto"), que ya es una entidad sincronizable real en esta Parte —
-     evita construir una entidad de prueba descartable. La rama de
-     **eventos aditivos** (inventario/ventas/cortes/devoluciones) no tiene
-     todavía ninguna entidad real disponible: sus pruebas de integración
-     quedan explícitamente diferidas a la Parte 7, primer módulo
-     transaccional (ver `Venta`). Aquí en Parte 6 esa rama solo se cubre
-     con pruebas unitarias de la lógica de la política, sin entidad real.
-4. **Wiring**: a diferencia de los demás módulos, el selector de modo de
-   esta pantalla queda conectado a la lógica real desde esta misma Parte
-   (no es interfaz simulada) — es la base de la que dependen las Partes
-   7-12.
+**Nota de diseño**: a diferencia de los demás módulos, el paso 4 (motor de
+sync) es lógica compartida que las Partes de módulo transaccional (7-11)
+reutilizarán, y el paso 5 (wiring) conecta el selector de modo a la lógica
+real desde esta misma Parte (no es interfaz simulada) — es la base de la
+que dependen las Partes 7-12.
+
+### Checklist
+
+**1. UI**
+- [ ] Propuesta de pantalla (parámetros de conexión, selector de sucursal
+  como lista, selector de modo, permisos simulados, cerrar sesión)
+  presentada y aprobada — criterio: aprobación explícita registrada antes
+  de implementar.
+- [ ] Selector de sucursal implementado como lista, nunca campo de texto
+  libre — criterio: revisión de código confirma que no existe ningún
+  campo editando `sucursal_id` directamente.
+- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+
+**2. Persistencia local**
+- [ ] DataStore guarda `BackendMode`, parámetros de conexión, y
+  `sucursal_id` seleccionado — criterio: prueba unitaria escribe y relee
+  cada valor.
+- [ ] `SucursalRepository` (interfaz) + `LocalSucursalRepository` (Room)
+  implementados — criterio: `./gradlew testDebugUnitTest` en verde.
+  `jvm-tests`
+- [ ] Sucursal por defecto se crea automáticamente en modo local si no
+  existe ninguna al primer arranque (Parte 3, "Sucursal por defecto") —
+  criterio: prueba unitaria arranca con Room vacío y verifica que aparece
+  exactamente una sucursal `"Sucursal principal"` con `remote_id` nulo.
+
+**3. Repositorio remoto**
+- [ ] Migración de Alembic para `sucursales`, con seed de la sucursal por
+  defecto si la tabla está vacía — criterio: `alembic upgrade head` sobre
+  una base vacía deja exactamente una fila.
+- [ ] Rutas `GET /sucursales` y `POST /sucursales` documentadas primero
+  en `docs/api-contract.md` (CLAUDE.md §9) — criterio: sección nueva en
+  el contrato, revisada.
+- [ ] Rutas implementadas — criterio: `pytest
+  backend/tests/test_sucursales.py` en verde, happy path + 1 error
+  (CLAUDE.md §6).
+- [ ] `RemoteSucursalRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+
+**4. Motor de sync genérico**
+- [ ] Política `last-write-wins` — criterio: prueba de integración
+  sincroniza dos versiones de la misma `Sucursal` con `updated_at`
+  distintos y verifica que gana la más reciente.
+- [ ] Lógica de la política de eventos aditivos (sin entidad real
+  todavía) — criterio: prueba unitaria de la función que combina dos
+  eventos, sin depender de Room/Retrofit; su validación de integración
+  queda diferida a la Parte 7.
+- [ ] Conflictos se registran en `sync_conflicts` (Parte 3) y en el log
+  con categoría `SYNC_CONFLICT` (Parte 5) — criterio: prueba de
+  integración provoca un conflicto y verifica ambas escrituras.
+- [ ] Los 4 casos de migración de datos al cambiar de modo (solo local,
+  solo remoto, ambos lados, diálogo con impacto concreto) implementados
+  — criterio: 4 pruebas de integración, una por caso.
+
+**5. Wiring**
+- [ ] Selector de modo conectado a la lógica real — criterio: prueba de
+  integración cambia el modo desde la UI y verifica que `BackendMode` en
+  DataStore cambia y el repositorio inyectado cambia en consecuencia.
+- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
 
 ---
 
@@ -287,22 +405,56 @@ de verdad para poder probar sus modos remoto y local-con-sincronización.
 Escanear un barcode con la cámara o ingresar la descripción del producto, y
 mostrar sus datos principales alineados al esquema de la Parte 3.
 
-1. **UI**: propuesta de pantalla con datos estáticos de ejemplo (mínimo 5
-   campos del producto) — aprobación del usuario antes de implementar.
-2. **Repositorio local**: `VentaRepository` (interfaz) + `LocalVentaRepository`
-   (Room), sin dependencia de red, siguiendo el patrón de CLAUDE.md. Registra
-   `DB_WRITE` en el log (Parte 5) en cada escritura. Pruebas unitarias
-   (JUnit5 + MockK).
-3. **Repositorio remoto**: actualiza `docs/api-contract.md`, implementa la
-   ruta FastAPI y `RemoteVentaRepository` (Retrofit). Registra `ERROR`/`WARN`
-   en el log (Parte 5) ante fallas de red o timeouts. Pruebas backend
-   (pytest) y Android.
-4. **Wiring**: conecta el `ViewModel` a los casos de uso reales según el
-   `BackendMode` (Parte 6). En modo local-con-sincronización, las ventas se
-   tratan como eventos aditivos (política de la Parte 6), no como estado
-   sobreescribible. **Esta es la primera entidad real de tipo "eventos
-   aditivos"** — aquí se completan las pruebas de integración de esa rama
-   del motor de sync que quedaron diferidas desde la Parte 6.
+### Checklist
+
+**1. UI**
+- [ ] Propuesta de pantalla (campos, tipo, layout) presentada y aprobada
+  por el usuario — criterio: aprobación explícita registrada antes de
+  escribir código.
+- [ ] Composable implementado con datos estáticos de ejemplo (mínimo 5
+  campos del producto) — criterio: `./gradlew build` pasa y la pantalla es
+  navegable desde el menú principal.
+- [ ] Instalado y verificado corriendo en el Xiaomi (o emulador fallback)
+  — criterio: `./gradlew installDebug` + confirmación manual de que la
+  pantalla se ve con los datos de ejemplo. `needs-device`
+
+**2. Repositorio local**
+- [ ] `VentaRepository` (interfaz) en `domain/repository/` — criterio:
+  compila sin referencias a Room ni Retrofit.
+- [ ] `LocalVentaRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` pasa para sus pruebas. `jvm-tests`
+- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger con la categoría
+  correcta.
+- [ ] Pruebas unitarias (JUnit5 + MockK) del happy path + 1 caso de error
+  (CLAUDE.md §6) — criterio: `./gradlew testDebugUnitTest` en verde.
+
+**3. Repositorio remoto**
+- [ ] `docs/api-contract.md` actualizado con los endpoints de `ventas`
+  antes de tocar código (CLAUDE.md §9) — criterio: sección nueva en el
+  contrato, revisada por el usuario.
+- [ ] Ruta FastAPI (`app/routers/ventas.py`) — criterio: `pytest
+  backend/tests/test_ventas.py` en verde, happy path + 1 error (CLAUDE.md
+  §6).
+- [ ] `RemoteVentaRepository` (Retrofit) en `data/remote/` — criterio:
+  `./gradlew testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout y verifica la llamada al
+  logger.
+
+**4. Wiring**
+- [ ] `ViewModel` conectado a los casos de uso reales según `BackendMode`
+  (Parte 6) — criterio: prueba de `ViewModel` con estados mockeados
+  (CLAUDE.md §6) confirma que resuelve el repositorio correcto según el
+  modo.
+- [ ] Modo local-con-sincronización trata las ventas como eventos aditivos
+  (política Parte 6) — criterio: prueba de integración que sincroniza dos
+  ventas concurrentes desde dos dispositivos y verifica que ambas se
+  aplican (no que una sobreescribe a la otra). Aquí se cierra la
+  validación de la rama "eventos aditivos" del motor de sync, diferida
+  desde la Parte 6.
+- [ ] Verificado end-to-end en el Xiaomi en los tres modos (local / remoto
+  / local-con-sync) — `needs-device`
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
@@ -316,14 +468,44 @@ luego al inventario) y de artículos existentes (agregándolos solo al
 inventario), con los datos principales del artículo y el estante de
 almacenamiento. Toda entrada queda asociada al usuario en turno (Parte 4).
 
-1. **UI**: propuesta de pantalla — aprobación del usuario antes de
-   implementar.
-2. **Repositorio local**: `EntradaRepository` + `LocalEntradaRepository`
-   (Room). Registra `DB_WRITE` en el log (Parte 5). Pruebas unitarias.
-3. **Repositorio remoto**: actualiza `docs/api-contract.md`, implementa la
-   ruta FastAPI y `RemoteEntradaRepository` (Retrofit). Registra `ERROR`/
-   `WARN` en el log (Parte 5) ante fallas de red. Pruebas backend y Android.
-4. **Wiring**: conecta el `ViewModel` según `BackendMode` (Parte 6).
+### Checklist
+
+**1. UI**
+- [ ] Propuesta de pantalla (artículo nuevo vs. existente, estante de
+  almacenamiento) presentada y aprobada — criterio: aprobación explícita
+  registrada antes de implementar.
+- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable.
+- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+
+**2. Repositorio local**
+- [ ] `EntradaRepository` (interfaz) en `domain/repository/` — criterio:
+  compila sin Room ni Retrofit.
+- [ ] `LocalEntradaRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
+- [ ] Cada entrada queda asociada al `usuario` en turno (Parte 4) —
+  criterio: prueba unitaria verifica que el registro guarda el usuario de
+  la sesión activa.
+- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger.
+- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde.
+
+**3. Repositorio remoto**
+- [ ] `docs/api-contract.md` actualizado con los endpoints de
+  `entradas`/`movimientos` (CLAUDE.md §9) — criterio: sección nueva,
+  revisada.
+- [ ] Ruta FastAPI (`app/routers/entradas.py`) — criterio: `pytest
+  backend/tests/test_entradas.py` en verde.
+- [ ] `RemoteEntradaRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout.
+
+**4. Wiring**
+- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+  prueba con estados mockeados confirma el repositorio correcto.
+- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
@@ -335,14 +517,40 @@ módulo.
 Consultar el inventario, la existencia de artículos específicos, y
 modificar los atributos de esos artículos consultados.
 
-1. **UI**: propuesta de pantalla — aprobación del usuario antes de
-   implementar.
-2. **Repositorio local**: `InventarioRepository` + `LocalInventarioRepository`
-   (Room). Registra `DB_WRITE` en el log (Parte 5). Pruebas unitarias.
-3. **Repositorio remoto**: actualiza `docs/api-contract.md`, implementa la
-   ruta FastAPI y `RemoteInventarioRepository` (Retrofit). Registra `ERROR`/
-   `WARN` en el log (Parte 5) ante fallas de red. Pruebas backend y Android.
-4. **Wiring**: conecta el `ViewModel` según `BackendMode` (Parte 6).
+### Checklist
+
+**1. UI**
+- [ ] Propuesta de pantalla (consulta de existencias, edición de
+  atributos) presentada y aprobada — criterio: aprobación explícita
+  registrada antes de implementar.
+- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable.
+- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+
+**2. Repositorio local**
+- [ ] `InventarioRepository` (interfaz) en `domain/repository/` —
+  criterio: compila sin Room ni Retrofit.
+- [ ] `LocalInventarioRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
+- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger.
+- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde.
+
+**3. Repositorio remoto**
+- [ ] `docs/api-contract.md` actualizado con los endpoints de
+  `inventario` (CLAUDE.md §9) — criterio: sección nueva, revisada.
+- [ ] Ruta FastAPI (`app/routers/inventario.py`) — criterio: `pytest
+  backend/tests/test_inventario.py` en verde.
+- [ ] `RemoteInventarioRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout.
+
+**4. Wiring**
+- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+  prueba con estados mockeados confirma el repositorio correcto.
+- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
@@ -353,16 +561,44 @@ módulo.
 
 Realizar un corte de caja de lo vendido en un periodo especificado.
 
-1. **UI**: propuesta de pantalla — aprobación del usuario antes de
-   implementar.
-2. **Repositorio local**: `CajaRepository` + `LocalCajaRepository` (Room).
-   Registra `DB_WRITE` en el log (Parte 5). Pruebas unitarias.
-3. **Repositorio remoto**: actualiza `docs/api-contract.md`, implementa la
-   ruta FastAPI y `RemoteCajaRepository` (Retrofit). Registra `ERROR`/`WARN`
-   en el log (Parte 5) ante fallas de red. Pruebas backend y Android.
-4. **Wiring**: conecta el `ViewModel` según `BackendMode` (Parte 6). Los
-   cortes de caja se tratan como eventos aditivos en modo
-   local-con-sincronización (política de la Parte 6).
+### Checklist
+
+**1. UI**
+- [ ] Propuesta de pantalla (corte por periodo especificado) presentada
+  y aprobada — criterio: aprobación explícita registrada antes de
+  implementar.
+- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable.
+- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+
+**2. Repositorio local**
+- [ ] `CajaRepository` (interfaz) en `domain/repository/` — criterio:
+  compila sin Room ni Retrofit.
+- [ ] `LocalCajaRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
+- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger.
+- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde.
+
+**3. Repositorio remoto**
+- [ ] `docs/api-contract.md` actualizado con los endpoints de
+  `cortes_caja` (CLAUDE.md §9) — criterio: sección nueva, revisada.
+- [ ] Ruta FastAPI (`app/routers/caja.py`) — criterio: `pytest
+  backend/tests/test_caja.py` en verde.
+- [ ] `RemoteCajaRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout.
+
+**4. Wiring**
+- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+  prueba con estados mockeados confirma el repositorio correcto.
+- [ ] Los cortes de caja se tratan como eventos aditivos en modo
+  local-con-sincronización (política Parte 6) — criterio: prueba de
+  integración sincroniza dos cortes concurrentes desde dos dispositivos y
+  verifica que ambos se aplican.
+- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
@@ -374,14 +610,40 @@ módulo.
 Registrar devoluciones de clientes y consultar la lista de productos en
 esta condición para gestionar la devolución con el proveedor.
 
-1. **UI**: propuesta de pantalla — aprobación del usuario antes de
-   implementar.
-2. **Repositorio local**: `DevolucionRepository` + `LocalDevolucionRepository`
-   (Room). Registra `DB_WRITE` en el log (Parte 5). Pruebas unitarias.
-3. **Repositorio remoto**: actualiza `docs/api-contract.md`, implementa la
-   ruta FastAPI y `RemoteDevolucionRepository` (Retrofit). Registra `ERROR`/
-   `WARN` en el log (Parte 5) ante fallas de red. Pruebas backend y Android.
-4. **Wiring**: conecta el `ViewModel` según `BackendMode` (Parte 6).
+### Checklist
+
+**1. UI**
+- [ ] Propuesta de pantalla (registrar devolución, consultar lista para
+  gestión con proveedor) presentada y aprobada — criterio: aprobación
+  explícita registrada antes de implementar.
+- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable.
+- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+
+**2. Repositorio local**
+- [ ] `DevolucionRepository` (interfaz) en `domain/repository/` —
+  criterio: compila sin Room ni Retrofit.
+- [ ] `LocalDevolucionRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
+- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger.
+- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde.
+
+**3. Repositorio remoto**
+- [ ] `docs/api-contract.md` actualizado con los endpoints de
+  `devoluciones` (CLAUDE.md §9) — criterio: sección nueva, revisada.
+- [ ] Ruta FastAPI (`app/routers/devoluciones.py`) — criterio: `pytest
+  backend/tests/test_devoluciones.py` en verde.
+- [ ] `RemoteDevolucionRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout.
+
+**4. Wiring**
+- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+  prueba con estados mockeados confirma el repositorio correcto.
+- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
@@ -395,14 +657,43 @@ CRUD persiste usuarios y turnos de verdad (repositorio local/remoto, como
 los demás módulos); lo que se difiere a la Parte 13 es la aplicación real
 de permisos por rol sobre los demás módulos.
 
-1. **UI**: propuesta de pantalla — aprobación del usuario antes de
-   implementar.
-2. **Repositorio local**: `UsuarioRepository` + `LocalUsuarioRepository`
-   (Room). Registra `DB_WRITE` en el log (Parte 5). Pruebas unitarias.
-3. **Repositorio remoto**: actualiza `docs/api-contract.md`, implementa la
-   ruta FastAPI y `RemoteUsuarioRepository` (Retrofit). Registra `ERROR`/
-   `WARN` en el log (Parte 5) ante fallas de red. Pruebas backend y Android.
-4. **Wiring**: conecta el `ViewModel` según `BackendMode` (Parte 6).
+### Checklist
+
+**1. UI**
+- [ ] Propuesta de pantalla (CRUD de administrador/encargados de turno,
+  asignación de turnos) presentada y aprobada — criterio: aprobación
+  explícita registrada antes de implementar.
+- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable.
+- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+
+**2. Repositorio local**
+- [ ] `UsuarioRepository` (interfaz) en `domain/repository/` — criterio:
+  compila sin Room ni Retrofit.
+- [ ] `LocalUsuarioRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
+- [ ] Esquema de `Usuario` reserva el campo de contraseña hasheada que la
+  Parte 13 va a usar (aunque todavía no se valida contra él) — criterio:
+  campo presente en la entidad Room, sin lógica de login real todavía.
+- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger.
+- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde.
+
+**3. Repositorio remoto**
+- [ ] `docs/api-contract.md` actualizado con los endpoints de `usuarios`
+  (CLAUDE.md §9) — criterio: sección nueva, revisada.
+- [ ] Ruta FastAPI (`app/routers/usuarios.py`) — criterio: `pytest
+  backend/tests/test_usuarios.py` en verde.
+- [ ] `RemoteUsuarioRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout.
+
+**4. Wiring**
+- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+  prueba con estados mockeados confirma el repositorio correcto.
+- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
 
 Realiza pruebas de integración exhaustivas.
 
@@ -415,10 +706,50 @@ de usuarios, roles personalizados (Administrador, encargado de turno, y
 roles adicionales configurables), permisos por rol, y módulos
 activados/desactivados según esos permisos. Esta parte se adelanta respecto
 al orden original del proyecto para que exista un sistema de permisos real
-antes de dar autonomía de escritura a la IA (Partes 14-16). Las acciones
-rechazadas por falta de permiso se registran en el log (Parte 5, categoría
-`AUTH`). Realiza pruebas exhaustivas de las funcionalidades implementadas,
-manteniendo un buen ambiente de integración.
+antes de dar autonomía de escritura a la IA (Partes 14-16).
+
+**Reemplazo del login ficticio**: esta Parte reemplaza por completo el
+login hardcodeado de la Parte 4. Se agrega un campo de contraseña hasheada
+al esquema de `Usuario` (Parte 3, biblioteca de hashing a definir junto con
+el detalle campo-por-campo), se implementa `POST /auth/login` real contra
+los registros que `UsuarioRepository` (Parte 12) ya persiste, y se emite
+`access_token`. Las credenciales `admin`/`password` y `user1`/`password`
+dejan de aceptarse a partir de aquí — coincide con lo ya declarado en
+`docs/api-contract.md` §2.
+
+Las acciones rechazadas por falta de permiso se registran en el log
+(Parte 5, categoría `AUTH`).
+
+### Checklist
+
+**1. Roles y permisos**
+- [ ] Roles personalizados (Administrador, encargado de turno, y
+  adicionales configurables) implementados — criterio: CRUD de roles con
+  `pytest backend/tests/test_roles.py` y prueba Android en verde.
+- [ ] Permisos por rol y activación/desactivación de módulos según esos
+  permisos — criterio: prueba de integración confirma que un usuario sin
+  permiso no ve/usa el módulo restringido.
+
+**2. Reemplazo del login ficticio**
+- [ ] Campo de contraseña hasheada agregado al esquema de `Usuario` —
+  criterio: migración de Alembic aplicada, campo presente.
+- [ ] `POST /auth/login` real, documentado primero en
+  `docs/api-contract.md` (CLAUDE.md §9) — criterio: `pytest
+  backend/tests/test_auth.py` en verde, valida credenciales contra
+  `UsuarioRepository` y emite `access_token`.
+- [ ] Credenciales ficticias (`admin`/`password`, `user1`/`password`)
+  dejan de aceptarse — criterio: prueba de integración confirma rechazo.
+- [ ] Cliente Android usa el login real en vez del hardcodeado de la
+  Parte 4 — criterio: prueba de `ViewModel` con estados mockeados.
+
+**3. Logging**
+- [ ] Acciones rechazadas por falta de permiso se registran en el log
+  (Parte 5, categoría `AUTH`) — criterio: prueba unitaria verifica la
+  invocación al logger con la categoría correcta.
+
+**4. Verificación**
+- [ ] Instalado y verificado end-to-end en el Xiaomi (login real,
+  permisos aplicados) — `needs-device`
 
 ---
 
@@ -427,6 +758,15 @@ manteniendo un buen ambiente de integración.
 Permite que el backend realice una llamada de IA a través de DeepSeek.
 Prueba la conectividad con una prueba sencilla de "2+2" y asegúrate de que
 la llamada de IA funcione.
+
+### Checklist
+- [ ] Cliente DeepSeek configurado en el backend con la API key vía
+  variable de entorno, nunca hardcodeada — criterio: se lee desde
+  `.env`/entorno; `.env` sigue en `.gitignore`.
+- [ ] Prueba de conectividad "2+2" recibe respuesta de DeepSeek —
+  criterio: `pytest backend/tests/test_deepseek.py` en verde.
+- [ ] Manejo de error si DeepSeek no está disponible o la API key es
+  inválida — criterio: prueba unitaria del caso de error (CLAUDE.md §6).
 
 ---
 
@@ -444,7 +784,23 @@ turno (Parte 13) antes de aplicarse. Las acciones rechazadas por falta de
 permiso se registran en el log (Parte 5, categoría `AUTH`) y se le informa
 al usuario en el chat por qué no se ejecutó.
 
-Realiza pruebas exhaustivas.
+### Checklist
+
+**1. Payload y respuesta estructurada**
+- [ ] Backend envía a la IA el estado del punto de venta en JSON, más la
+  pregunta y el historial — criterio: prueba backend verifica el shape
+  del payload enviado.
+- [ ] IA responde con salida estructurada (respuesta al usuario +
+  actualización opcional) — criterio: prueba backend valida el schema de
+  la respuesta con Pydantic.
+
+**2. Validación de permisos**
+- [ ] Toda actualización propuesta por la IA se valida contra los
+  permisos del usuario en turno (Parte 13) antes de aplicarse — criterio:
+  prueba de integración con un usuario sin permiso confirma el rechazo.
+- [ ] Acciones rechazadas se registran en el log (Parte 5, categoría
+  `AUTH`) y se informan en el chat — criterio: prueba verifica ambas
+  cosas.
 
 ---
 
@@ -476,7 +832,34 @@ Se genera durante el desarrollo y se empaqueta como recurso de la app
 contexto para la IA en modo local con conexión, mientras el RAG (ver
 Backlog) no esté implementado.
 
-Realiza pruebas exhaustivas de los tres escenarios de conectividad/modo.
+### Checklist
+
+**1. Widget de chat**
+- [ ] Widget flotante implementado, accesible desde cualquier pantalla —
+  criterio: Compose UI Test confirma que aparece y funciona.
+- [ ] La UI se actualiza automáticamente cuando la IA modifica el punto
+  de venta — criterio: prueba de integración confirma el refresco del
+  estado tras una respuesta con actualización.
+
+**2. Comportamiento por modo y conectividad**
+- [ ] Modo remoto/local-con-sync + conexión: chat completo con
+  actualizaciones sujetas a la Parte 15 — criterio: prueba de
+  integración.
+- [ ] Modo local + conexión: solo responde dudas de funcionalidad con el
+  FAQ empaquetado como contexto, sin poder tocar la base de datos local —
+  criterio: prueba de integración confirma que un intento de
+  actualización se rechaza en este modo.
+- [ ] Sin conexión (cualquier modo): chat deshabilitado, se muestra el
+  FAQ estático — criterio: prueba de integración simula sin conexión y
+  confirma el fallback.
+
+**3. FAQ empaquetado**
+- [ ] FAQ generado y empaquetado como recurso offline de la app —
+  criterio: archivo de recurso presente, accesible sin conexión.
+
+**4. Verificación**
+- [ ] Instalado y verificado en el Xiaomi los tres escenarios de
+  conectividad/modo — `needs-device`
 
 ---
 
