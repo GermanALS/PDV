@@ -83,11 +83,13 @@ el usuario activa el modo remoto. Reglas:
 - El diseño detallado del motor de sincronización diferida (resolución de
   conflictos, campos de tracking, fases de implementación) vive en
   `docs/PLAN.md` mientras esté en desarrollo activo.
-- **Excepción al patrón repositorio/Room**: el módulo de Configuración
-  (`docs/PLAN.md`, módulo Configuración) no usa Room ni `LocalXRepository`
-  — es preferencia de dispositivo, no dato de dominio, y se persiste
-  directamente en DataStore (`BackendMode`, parámetros de conexión,
-  `sucursal_id`).
+- **Excepción parcial al patrón repositorio/Room**: en el módulo de
+  Configuración (`docs/PLAN.md`, módulo Configuración), `BackendMode`,
+  parámetros de conexión, y cuál sucursal está seleccionada son preferencia
+  de dispositivo y se persisten directamente en DataStore, sin Room. El
+  catálogo de sucursales en sí (`Sucursal`: id, nombre, dirección, activa)
+  es dato de dominio y sí sigue el patrón repositorio/Room normal
+  (`SucursalRepository` / `LocalSucursalRepository`).
 
 ### Paleta de colores ("Recibo")
 Identidad visual: tinta sobre papel térmico — sobria, alto contraste,

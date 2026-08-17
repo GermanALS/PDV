@@ -22,7 +22,7 @@ siguiente paso.
 
 Amplía este documento para planificar cada una de estas partes en detalle,
 con los subpasos enumerados en forma de lista de verificación que el agente
-deberá marcar, y con pruebas y criterios de éxito para cada uno. Asegúrate de
+deberá marcar, y con pruebas y criterios1 de éxito para cada uno. Asegúrate de
 que el usuario revise y apruebe el plan.
 
 ---
@@ -87,6 +87,34 @@ El esquema debe reflejar esto:
   separadas por sucursal): `inventario`, `ventas`, `cortes_caja`,
   `devoluciones`, `movimientos`. Esto simplifica queries consolidadas (ej.
   inventario total de todas las sucursales) sin duplicar estructura.
+
+### Sucursal por defecto (bootstrap)
+
+Ningún lado debe depender del otro para tener una sucursal válida desde el
+primer arranque — ni el dispositivo debe pedirle al usuario que teclee un
+`sucursal_id` (es un UUID) a mano:
+
+- **Backend remoto**: si al arrancar no existe ninguna fila en `sucursales`,
+  se crea una por defecto (`nombre: "Sucursal principal"`, `activa: true`)
+  como seed de la migración inicial de Alembic — una sola vez, no en cada
+  arranque.
+- **Room local**: si el dispositivo está en modo local (sin backend
+  configurado) y no tiene ninguna sucursal guardada, se crea la misma
+  sucursal por defecto localmente en el primer arranque, con `local_id`
+  propio y `remote_id` nulo. Esto convierte a `sucursales` en una tabla
+  sincronizable más (mismos campos de tracking que la sección siguiente),
+  no solo una tabla administrativa remota.
+- El módulo de Configuración (Parte 6) nunca pide el `sucursal_id` como
+  texto libre: en modo local preselecciona/crea la sucursal por defecto; en
+  modo remoto o local-con-sincronización la trae con `GET /sucursales` y
+  deja elegir (o crear una nueva) de una lista.
+- **Al migrar de local a remoto** (Parte 6, "Migración de datos al cambiar
+  de modo"): si la sucursal local por defecto nunca se sincronizó
+  (`remote_id` nulo), se sube como sucursal nueva en el primer push. Si el
+  backend también tiene su propia sucursal por defecto, el conflicto (dos
+  "Sucursal principal" sin relación) se resuelve con el mismo flujo de
+  confirmación del administrador ya definido para "hay datos en ambos
+  lados" — no hay merge automático de sucursales duplicadas en el MVP.
 
 ### Campos de tracking para sincronización
 
@@ -181,11 +209,16 @@ estándar de Python a stdout, sin archivos ni rotación propios).
 ## Parte 6: Módulo Configuración
 
 Implementa de punta a punta el módulo de Configuración: parámetros de
-conexión al backend FastAPI (IP, puerto, nombre de base de datos),
-`sucursal_id` del dispositivo, selector de modo (local / remoto / local con
+conexión al backend FastAPI (IP, puerto, nombre de base de datos), selector
+de sucursal del dispositivo, selector de modo (local / remoto / local con
 sincronización), gestión de permisos por tipo de usuario (interfaz
 simulada por ahora — se conecta de verdad en la Parte 13), y cierre de
 sesión.
+
+El selector de sucursal **nunca** es un campo de texto libre para el
+`sucursal_id` (es un UUID) — es una lista: en modo local, preseleccionada
+con la sucursal por defecto (Parte 3, "Sucursal por defecto"); en modo
+remoto o local-con-sincronización, poblada con `GET /sucursales`.
 
 **Este módulo va primero entre los 7 módulos del POS**, a diferencia del
 orden original, porque las Partes 7-12 necesitan que `BackendMode` funcione
@@ -193,9 +226,16 @@ de verdad para poder probar sus modos remoto y local-con-sincronización.
 
 1. **UI**: propuesta de pantalla (campos, tipo, layout) — aprobación del
    usuario antes de implementar.
-2. **Persistencia local**: guardado real en DataStore de `BackendMode`,
-   parámetros de conexión y `sucursal_id` (preferencia de dispositivo, no
-   dato de dominio — no usa Room). Pruebas unitarias.
+2. **Persistencia local**: dos mecanismos distintos, no uno solo:
+   - DataStore para `BackendMode`, parámetros de conexión, y **cuál**
+     `sucursal_id` está seleccionado — son preferencia de dispositivo, no
+     dato de dominio.
+   - `SucursalRepository` (interfaz) + `LocalSucursalRepository` (Room) para
+     el catálogo de sucursales en sí (`id`, `nombre`, `direccion`,
+     `activa`) — esto sí es dato de dominio, sigue el patrón repositorio de
+     `CLAUDE.md`, e incluye la creación de la sucursal por defecto al
+     primer arranque (Parte 3, "Sucursal por defecto").
+   Pruebas unitarias de ambos.
 3. **Motor de sync genérico**: a diferencia de los demás módulos, aquí se
    implementa la lógica compartida que todas las Partes de módulo
    transaccional (7-11) reutilizarán, en vez de repetirse por módulo:
@@ -226,8 +266,15 @@ de verdad para poder probar sus modos remoto y local-con-sincronización.
         subirán 340 registros de inventario y 12 usuarios a la nube" / "Se
         descargarán 1,204 registros a este dispositivo"), no solo un
         "¿confirmar sí/no?" genérico.
-   - Pruebas unitarias y de integración exhaustivas del motor de sync,
-     independientes de cualquier módulo específico.
+   - Pruebas del motor de sync: la rama `last-write-wins` se prueba de
+     punta a punta aquí mismo contra `Sucursal` (Parte 3, "Sucursal por
+     defecto"), que ya es una entidad sincronizable real en esta Parte —
+     evita construir una entidad de prueba descartable. La rama de
+     **eventos aditivos** (inventario/ventas/cortes/devoluciones) no tiene
+     todavía ninguna entidad real disponible: sus pruebas de integración
+     quedan explícitamente diferidas a la Parte 7, primer módulo
+     transaccional (ver `Venta`). Aquí en Parte 6 esa rama solo se cubre
+     con pruebas unitarias de la lógica de la política, sin entidad real.
 4. **Wiring**: a diferencia de los demás módulos, el selector de modo de
    esta pantalla queda conectado a la lógica real desde esta misma Parte
    (no es interfaz simulada) — es la base de la que dependen las Partes
@@ -253,7 +300,9 @@ mostrar sus datos principales alineados al esquema de la Parte 3.
 4. **Wiring**: conecta el `ViewModel` a los casos de uso reales según el
    `BackendMode` (Parte 6). En modo local-con-sincronización, las ventas se
    tratan como eventos aditivos (política de la Parte 6), no como estado
-   sobreescribible.
+   sobreescribible. **Esta es la primera entidad real de tipo "eventos
+   aditivos"** — aquí se completan las pruebas de integración de esa rama
+   del motor de sync que quedaron diferidas desde la Parte 6.
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
