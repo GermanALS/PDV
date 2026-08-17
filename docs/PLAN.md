@@ -18,6 +18,9 @@ exhaustivas"). Pendiente: ejecutar y aprobar el detalle campo-por-campo del
 esquema de datos (Parte 3) — es el primer paso real de implementación,
 todavía sin arrancar.
 
+Cómo leen estos checklists las herramientas de sincronización (`/jira-sync`,
+convención de ramas/commits): ver `CLAUDE.md` sección 10.
+
 ---
 
 ## Parte 1: Plan
@@ -185,7 +188,7 @@ pasó.
 - [ ] Aprobación explícita del usuario sobre el esquema — criterio:
   mensaje de aprobación registrado antes de continuar a la Parte 4;
   bloquea la sección 3 de `docs/api-contract.md` y cualquier endpoint
-  real por módulo (ver `docs/api-contract.md` §5).
+  real por módulo (ver `docs/api-contract.md` §5). `needs-approval`
 
 ---
 
@@ -367,7 +370,7 @@ que dependen las Partes 7-12.
 **3. Repositorio remoto**
 - [ ] Migración de Alembic para `sucursales`, con seed de la sucursal por
   defecto si la tabla está vacía — criterio: `alembic upgrade head` sobre
-  una base vacía deja exactamente una fila.
+  una base vacía deja exactamente una fila. `schema-parity`
 - [ ] Rutas `GET /sucursales` y `POST /sucursales` documentadas primero
   en `docs/api-contract.md` (CLAUDE.md §9) — criterio: sección nueva en
   el contrato, revisada.
