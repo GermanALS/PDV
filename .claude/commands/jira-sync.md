@@ -59,7 +59,7 @@ detente y pregunta en vez de resolverlo por tu cuenta.
    - `status` → ve a **Modo B**
    - `verify` → ve a **Modo C**
    - cualquier otra cosa → **Modo A**, tratando el argumento como el nombre de
-     la sección (ej. `Parte 2`, `Parte 6a`, `P4 módulo 3`)
+     la sección (ej. `Parte 2`, `Parte 6`, `Parte 13`)
    - sin argumento → pregunta qué sección sincronizar y **detente**. No elijas
      tú. No sincronices "todo el plan".
 
@@ -89,8 +89,9 @@ Reglas de granularidad:
   cabe, pártela. Si dos stories no tienen sentido por separado, únelas.
 - **Cortes verticales, no por capa.** Prefiere "Devoluciones: Room + ruta
   FastAPI + ViewModel cableado + tests" sobre stories separadas para entity,
-  DAO, repositorio y ViewModel. Excepción: la Parte 4 es UI estática y sus
-  stories sí son una por módulo de pantalla.
+  DAO, repositorio y ViewModel. Cada grupo en negrita del `### Checklist`
+  (`**1. UI**`, `**2. Repositorio local**`, etc.) es ya un corte vertical
+  razonable — ver `CLAUDE.md` §10, "Convención de mapeo épica/story".
 - **Sin subtareas.** Épica → Story y nada más.
 - **Entre 3 y 12 stories por épica.** Menos de 3, la épica es innecesaria y son
   stories sueltas. Más de 12, la sección debía partirse en dos épicas —
