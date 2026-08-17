@@ -18,6 +18,12 @@ exhaustivas"). Pendiente: ejecutar y aprobar el detalle campo-por-campo del
 esquema de datos (Parte 3) — es el primer paso real de implementación,
 todavía sin arrancar.
 
+Las Partes con decisiones sin cerrar llevan además una subsección
+`### Decisiones abiertas` con checkboxes: son preguntas que el agente debe
+hacer antes de implementar, nunca resolver por cuenta propia
+(`CLAUDE.md` §9). Cuando una se cierra, la decisión se migra a
+`CLAUDE.md` y aquí queda el registro histórico.
+
 Cómo leen estos checklists las herramientas de sincronización (`/jira-sync`,
 convención de ramas/commits): ver `CLAUDE.md` sección 10.
 
@@ -28,7 +34,7 @@ convención de ramas/commits): ver `CLAUDE.md` sección 10.
 Amplía este documento para planificar cada una de estas partes en detalle,
 con los subpasos enumerados en forma de lista de verificación que el agente
 deberá marcar, y con pruebas y criterios de éxito para cada uno. Asegúrate
-de que el usuario revise y apruebe el plan.
+de que el usuario revise y apruebe el plan. 
 
 ### Checklist
 - [ ] Las Partes 2-16 tienen su propia sección `### Checklist` con ítems
@@ -317,6 +323,18 @@ estándar de Python a stdout, sin archivos ni rotación propios).
   cada categoría y confirmar que el archivo `.txt` las contiene —
   `needs-device`
 
+### Decisiones abiertas
+
+- [ ] Concurrencia e I/O del logger: función `suspend` sobre un dispatcher
+  de I/O, o escritura bloqueante en un hilo dedicado. La firma la consumen
+  las Partes 6-13, así que cambiarla después implica reescribir siete
+  módulos.
+- [ ] Provisión del logger: singleton de Hilt inyectado en cada
+  repositorio, u `object` de nivel superior.
+- [ ] Comportamiento si falla la escritura del archivo `.txt`: propagar la
+  excepción, degradar a stdout, o descartar la línea. Debe ser compatible
+  con `CLAUDE.md` §9 (no programar a la defensiva).
+
 ---
 
 ## Parte 6: Módulo Configuración
@@ -403,6 +421,16 @@ que dependen las Partes 7-12.
 
 ---
 
+### Decisiones abiertas
+
+- [ ] Política de sincronización para las cantidades de inventario:
+  `last-write-wins` sobre el campo, o saldo derivado de eventos aditivos.
+  Se decide aquí porque el motor de sync se construye en esta Parte y las
+  Partes 7-12 lo heredan. La Parte 9 permite modificar atributos de
+  artículos consultados, y la cantidad en existencia es justo el caso
+  donde `last-write-wins` pierde decrementos concurrentes de dos
+  dispositivos de la misma sucursal.
+
 ## Parte 7: Módulo Venta de mostrador
 
 Escanear un barcode con la cámara o ingresar la descripción del producto, y
@@ -458,6 +486,14 @@ mostrar sus datos principales alineados al esquema de la Parte 3.
   desde la Parte 6.
 - [ ] Verificado end-to-end en el Xiaomi en los tres modos (local / remoto
   / local-con-sync) — `needs-device`
+
+### Decisiones abiertas
+
+- [ ] Librería de escaneo de barcode y manejo del permiso de cámara
+  (`CLAUDE.md` §9: no introducir dependencias de terceros sin señalarlo).
+- [ ] Modelado de la venta como evento aditivo: si el evento incluye el
+  decremento de inventario, o si el inventario se deriva de la suma de
+  ventas. Depende de la decisión de cantidades de la Parte 6.
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
@@ -756,6 +792,17 @@ Las acciones rechazadas por falta de permiso se registran en el log
 
 ---
 
+### Decisiones abiertas
+
+- [ ] Autenticación en modo local: no existe backend que emita
+  `access_token`, así que el login debe validar contra Room usando la
+  contraseña hasheada. Definir si es un segundo camino de autenticación
+  explícito o una implementación local de la misma interfaz de sesión.
+- [ ] Librería de hashing de contraseñas y dónde se calcula el hash: solo
+  backend, solo dispositivo, o ambos con el mismo algoritmo para que un
+  usuario creado en modo local pueda sincronizarse al remoto sin
+  reescribir la credencial.
+
 ## Parte 14: Conectividad de IA
 
 Permite que el backend realice una llamada de IA a través de DeepSeek.
@@ -806,6 +853,17 @@ al usuario en el chat por qué no se ejecutó.
   cosas.
 
 ---
+
+### Decisiones abiertas
+
+- [ ] Ruta de escritura de las actualizaciones propuestas por la IA: si
+  pasan por el mismo `LocalXRepository`/`RemoteXRepository` —y por tanto
+  registran `DB_WRITE` y participan del sync como cualquier otra
+  escritura— o si toman un camino aparte.
+- [ ] Dónde vive la validación de permisos: el backend propone la
+  actualización, pero el catálogo de permisos existe en ambos lados vía
+  `UsuarioRepository`. Definir si la validación es de servidor, de
+  cliente, o doble.
 
 ## Parte 16: Chat IA
 

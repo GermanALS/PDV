@@ -21,6 +21,8 @@ mantén este archivo enfocado (evita que crezca de forma descontrolada).
 
 ```
 PDV/
+├── .claude/
+│   └── commands/    -> Comandos slash del proyecto (versionados en git)
 ├── android/     -> App Android nativa (Kotlin)
 ├── backend/     -> API FastAPI (Python)
 ├── scripts/     -> Scripts multiplataforma de arranque/detención del backend
@@ -30,8 +32,11 @@ PDV/
 ```
 
 Todos los documentos necesarios para planificar y ejecutar este proyecto se
-encontrarán en el directorio `docs/`. **Por favor, revisa el documento
-`docs/PLAN.md` antes de continuar.**
+encontrarán en el directorio `docs/`. Consulta `docs/PLAN.md` cuando
+trabajes en una Parte específica del plan; el comando `/parte` lo carga
+automáticamente junto con las secciones que esa Parte referencie. No es
+necesario cargarlo para tareas de mantenimiento, revisión del contrato de
+API o corrección de pruebas.
 
 Los dos módulos (`android/` y `backend/`) son independientes en cuanto a build
 system, pero deben mantenerse sincronizados vía `docs/api-contract.md`.
@@ -244,6 +249,24 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
 - Si una tarea requiere decisiones de arquitectura no cubiertas aquí, preguntar
   antes de asumir (ej. elegir ORM, elegir gestor de estado, etc.).
 - Actualizar este archivo cuando se tomen decisiones arquitectónicas nuevas.
+- **El checklist manda**: cuando trabajes en una Parte de `docs/PLAN.md`,
+    su sección `### Checklist` es la fuente de verdad del alcance. No
+    agregues, reescribas ni reordenes ítems, y no adelantes trabajo de otras
+    Partes.
+- **Compuerta por sub-paso**: al terminar cada sub-paso numerado de una
+  Parte, detente y espera confirmación explícita antes de pasar al
+  siguiente.
+- **Decisiones abiertas**: si la Parte tiene una subsección
+  `### Decisiones abiertas`, pregúntalas antes de implementar. No las
+  resuelvas por cuenta propia ni las marques como resueltas sin
+  confirmación del usuario.
+- **Etiquetas de verificación de los checklists de `docs/PLAN.md`**:
+  - `needs-device`: requiere instalación y confirmación manual en el
+    dispositivo físico. El agente nunca marca estos ítems por su cuenta;
+    indica el comando exacto y espera la confirmación del usuario.
+  - `jvm-tests`: se cierra corriendo el comando indicado y mostrando su
+    salida completa. Compilar no es evidencia suficiente (ver sección 3,
+    "Definición de hecho").
 - **No usar try/catch de forma excesiva ni programar a la defensiva.**
   Capturar excepciones solo en los puntos donde realmente se espera un fallo
   recuperable (ej. una llamada de red, una operación de I/O). No envolver
@@ -277,3 +300,40 @@ etc.) es una story candidata para `/jira-sync` — sus checkboxes internos
 son los criterios de aceptación de esa story, no stories individuales.
 Evita que un módulo con ~14 checkboxes dispare el límite de 12 stories por
 épica de `/jira-sync` §A.2.
+
+## 11. Flujos con plugins
+
+### feature-dev
+
+Se usa únicamente en las Partes 6, 7, 13 y 15 de `docs/PLAN.md`: las que
+implican decisiones de arquitectura compartida por varios módulos. En el
+resto de las Partes se trabaja sin el plugin, porque sus fases de
+descubrimiento y diseño ya están resueltas por el checklist
+correspondiente y solo agregarían costo.
+
+Mapeo de sus fases a este proyecto:
+
+- Fases 1 y 3 (descubrimiento y clarificación): el brief y los criterios
+  de éxito ya están escritos en el checklist de la Parte. No los rehagas.
+  Usa estas fases únicamente para preguntar la subsección
+  `### Decisiones abiertas`.
+- Fase 4 (arquitectura): su aprobación ES el ítem de aprobación del
+  sub-paso 1 de la Parte. No generes una compuerta de aprobación
+  adicional.
+- Fase 5 (implementación): recorre los sub-pasos en orden, respetando la
+  compuerta de la sección 9.
+- Fase 6 (revisión): córrela antes de marcar los ítems del checklist, no
+  después.
+- Fase 7 (resumen): en vez de un resumen suelto, marca en `docs/PLAN.md`
+  los ítems cumplidos de la Parte, indicando con qué criterio se verificó
+  cada uno. No agregues ítems nuevos al checklist.
+
+Los revisores de la fase 6 tienden a proponer más manejo de errores del
+que este proyecto acepta. La sección 9 (no programar a la defensiva) tiene
+precedencia sobre sus hallazgos.
+
+Los agentes del plugin (`code-explorer`, `code-architect`,
+`code-reviewer`) pueden invocarse por separado, sin el flujo completo de
+7 fases. Casos previstos: `code-architect` para el detalle
+campo-por-campo del esquema (Parte 3) y para la firma del logger
+(Parte 5), donde el entregable no es código de aplicación.
