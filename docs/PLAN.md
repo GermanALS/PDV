@@ -419,8 +419,6 @@ que dependen las Partes 7-12.
   DataStore cambia y el repositorio inyectado cambia en consecuencia.
 - [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
 
----
-
 ### Decisiones abiertas
 
 - [ ] Política de sincronización para las cantidades de inventario:
@@ -430,6 +428,8 @@ que dependen las Partes 7-12.
   artículos consultados, y la cantidad en existencia es justo el caso
   donde `last-write-wins` pierde decrementos concurrentes de dos
   dispositivos de la misma sucursal.
+
+---
 
 ## Parte 7: Módulo Venta de mostrador
 
@@ -790,8 +790,6 @@ Las acciones rechazadas por falta de permiso se registran en el log
 - [ ] Instalado y verificado end-to-end en el Xiaomi (login real,
   permisos aplicados) — `needs-device`
 
----
-
 ### Decisiones abiertas
 
 - [ ] Autenticación en modo local: no existe backend que emita
@@ -802,6 +800,8 @@ Las acciones rechazadas por falta de permiso se registran en el log
   backend, solo dispositivo, o ambos con el mismo algoritmo para que un
   usuario creado en modo local pueda sincronizarse al remoto sin
   reescribir la credencial.
+
+---
 
 ## Parte 14: Conectividad de IA
 
@@ -852,8 +852,6 @@ al usuario en el chat por qué no se ejecutó.
   `AUTH`) y se informan en el chat — criterio: prueba verifica ambas
   cosas.
 
----
-
 ### Decisiones abiertas
 
 - [ ] Ruta de escritura de las actualizaciones propuestas por la IA: si
@@ -864,6 +862,8 @@ al usuario en el chat por qué no se ejecutó.
   actualización, pero el catálogo de permisos existe en ambos lados vía
   `UsuarioRepository`. Definir si la validación es de servidor, de
   cliente, o doble.
+
+---
 
 ## Parte 16: Chat IA
 
