@@ -267,6 +267,15 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
   - `jvm-tests`: se cierra corriendo el comando indicado y mostrando su
     salida completa. Compilar no es evidencia suficiente (ver sección 3,
     "Definición de hecho").
+  - `needs-approval`: el ítem es una propuesta (esquema de datos, layout de
+    módulo) que requiere aprobación explícita del usuario antes de
+    implementar. No se marca `[x]` ni se empieza a programar sobre lo que
+    propone sin esa confirmación — es una compuerta, igual que "Decisiones
+    abiertas".
+  - `schema-parity`: el ítem toca el esquema de datos. Se cierra solo
+    cuando el JSON de `docs/`, la entidad Room correspondiente, y la
+    migración de Alembic del backend quedan alineados entre sí — no basta
+    con que uno de los tres compile o pase sus pruebas por separado.
 - **No usar try/catch de forma excesiva ni programar a la defensiva.**
   Capturar excepciones solo en los puntos donde realmente se espera un fallo
   recuperable (ej. una llamada de red, una operación de I/O). No envolver
@@ -317,9 +326,13 @@ Mapeo de sus fases a este proyecto:
   de éxito ya están escritos en el checklist de la Parte. No los rehagas.
   Usa estas fases únicamente para preguntar la subsección
   `### Decisiones abiertas`.
-- Fase 4 (arquitectura): su aprobación ES el ítem de aprobación del
-  sub-paso 1 de la Parte. No generes una compuerta de aprobación
-  adicional.
+- Fase 4 (arquitectura): en Partes con pantalla nueva (6, 7), su
+  aprobación ES el ítem de aprobación del sub-paso 1 ("propuesta...
+  aprobada"). En Partes 13 y 15, que no tienen pantalla nueva, no existe
+  ese ítem — la aprobación de arquitectura ya ocurrió al cerrar la
+  subsección `### Decisiones abiertas` en las Fases 1/3, así que Fase 4 no
+  agrega nada aparte. En ningún caso generes una compuerta de aprobación
+  adicional a las que ya define la sección 9.
 - Fase 5 (implementación): recorre los sub-pasos en orden, respetando la
   compuerta de la sección 9.
 - Fase 6 (revisión): córrela antes de marcar los ítems del checklist, no
