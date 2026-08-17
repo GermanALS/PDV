@@ -6,14 +6,21 @@ mantén este archivo enfocado (evita que crezca de forma descontrolada).
 
 ## 1. Resumen del proyecto
 
-- **Nombre**: [TODO: nombre del producto]
-- **Qué hace**: [TODO: 2-3 líneas describiendo el propósito de la app]
+- **Nombre**: PDV (código de proyecto Jira: `POS`; mismo prefijo usado en la
+  convención de nombres de builds Android, ej. `pos-hello-debug-v0.1`).
+- **Qué hace**: aplicación de punto de venta para comercios con varias
+  sucursales — venta de mostrador, control de inventario y entradas de
+  mercancía, corte de caja, devoluciones, y administración de usuarios y
+  turnos. Funciona completamente offline (Kotlin + Room) y puede
+  sincronizarse con un backend FastAPI remoto compartido entre sucursales;
+  incluye un asistente de IA (DeepSeek) opcional para consultas y
+  actualizaciones asistidas del punto de venta.
 - **Estado**: proyecto nuevo, en fase de scaffolding inicial.
 
 ## 2. Estructura del repositorio
 
 ```
-mi-proyecto/
+PDV/
 ├── android/     -> App Android nativa (Kotlin)
 ├── backend/     -> API FastAPI (Python)
 ├── scripts/     -> Scripts multiplataforma de arranque/detención del backend
@@ -76,6 +83,11 @@ el usuario activa el modo remoto. Reglas:
 - El diseño detallado del motor de sincronización diferida (resolución de
   conflictos, campos de tracking, fases de implementación) vive en
   `docs/PLAN.md` mientras esté en desarrollo activo.
+- **Excepción al patrón repositorio/Room**: el módulo de Configuración
+  (`docs/PLAN.md`, módulo Configuración) no usa Room ni `LocalXRepository`
+  — es preferencia de dispositivo, no dato de dominio, y se persiste
+  directamente en DataStore (`BackendMode`, parámetros de conexión,
+  `sucursal_id`).
 
 ### Paleta de colores ("Recibo")
 Identidad visual: tinta sobre papel térmico — sobria, alto contraste,
@@ -108,14 +120,23 @@ cd android
 ./gradlew test                # tests unitarios
 ./gradlew connectedAndroidTest  # tests instrumentados (requiere emulador/dispositivo)
 ./gradlew lint                 # análisis estático
+./gradlew assembleDebug        # genera el APK (renombrar según convención {app}-{proposito}-{tipo-build}-v{version}, ej. pos-hello-debug-v0.1)
+./gradlew installDebug          # instala el APK en el dispositivo/emulador conectado
 ```
+
+**Definición de hecho**: un cambio en `android/` no se considera terminado
+solo por compilar o pasar revisión textual. Debe quedar instalado y
+verificado corriendo en el dispositivo físico Xiaomi M2102J20SG (objetivo
+principal de pruebas del entorno actual), o en el emulador de fallback si el
+dispositivo no está disponible.
 
 ## 4. Backend FastAPI (`backend/`)
 
 ### Stack técnico
 - Python 3.11+, FastAPI, Pydantic v2 para esquemas/validación
 - Servidor: Uvicorn (dev) / Gunicorn+Uvicorn workers (prod)
-- ORM: [TODO: SQLAlchemy / Tortoise / ninguno todavía]
+- ORM: SQLAlchemy 2.0 (async — `DeclarativeBase` + `Mapped`/`mapped_column`)
+  + Alembic para migraciones. Motor: PostgreSQL vía `asyncpg`.
 - Testing: pytest + httpx (TestClient)
 
 ### Convenciones
@@ -123,6 +144,15 @@ cd android
 - Esquemas de entrada/salida en `app/schemas/` (Pydantic), nunca reutilizar modelos ORM directamente como response_model.
 - Manejo de errores centralizado con `HTTPException` + un exception handler global.
 - Todas las rutas versionadas bajo `/api/v1/...`.
+
+### Logging
+- Módulo `logging` estándar de Python, nunca `print()`.
+- Nivel `INFO` por defecto; `ERROR` en excepciones no capturadas por el
+  exception handler global.
+- Salida a stdout/stderr (el contenedor Docker la captura); sin archivos
+  propios ni rotación — es logging operativo del servidor, distinto del
+  sistema de auditoría de la app Android (`docs/PLAN.md`, módulo Logs), que
+  vive únicamente en el dispositivo.
 
 ### Comandos habituales
 
