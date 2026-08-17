@@ -254,3 +254,26 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
 - **No usar emojis ni imágenes** en código, comentarios, mensajes de commit,
   logs, ni documentación (incluyendo este archivo y el contrato de API).
   Texto plano únicamente.
+
+## 10. Sincronización con Jira
+
+El proyecto sincroniza el alcance de `docs/PLAN.md` hacia Jira (proyecto
+`POS`) de forma unidireccional vía `/jira-sync`
+(`.claude/commands/jira-sync.md`) — `PLAN.md` es la única fuente de verdad
+del alcance; Jira es una proyección del estado de ejecución, nunca al
+revés.
+
+**Convención de ramas y commits** (referenciada por `/jira-sync`):
+- Rama: `feature/POS-XX-descripcion-corta`
+- Commit: `POS-XX: mensaje en imperativo`
+- Al cerrar una story: comentario en la issue con resumen + hash del
+  commit, y proponer transición a `In Review` (el cierre a `Done` lo hace
+  el usuario). Marcar el checkbox correspondiente en `PLAN.md` en el mismo
+  commit.
+
+**Convención de mapeo épica/story**: dentro de cada `### Checklist` de
+`PLAN.md`, cada grupo en negrita (`**1. UI**`, `**2. Repositorio local**`,
+etc.) es una story candidata para `/jira-sync` — sus checkboxes internos
+son los criterios de aceptación de esa story, no stories individuales.
+Evita que un módulo con ~14 checkboxes dispare el límite de 12 stories por
+épica de `/jira-sync` §A.2.
