@@ -82,32 +82,55 @@ prueba posteriores siguen este mismo esquema para mantener trazabilidad.
 ### Checklist
 
 **1. Backend + Docker**
-- [ ] `docker-compose.yml` levanta `backend` + PostgreSQL juntos —
+- [x] `docker-compose.yml` levanta `backend` + PostgreSQL juntos —
   criterio: `docker compose up` deja ambos contenedores en estado
-  healthy.
-- [ ] Scripts de inicio/detención multiplataforma
+  healthy. Verificado: `docker compose ps` muestra `pdv-backend-1` y
+  `pdv-db-1` en estado `healthy`.
+- [x] Scripts de inicio/detención multiplataforma
   (`scripts/start-*`/`stop-*`) — criterio: cada script levanta/detiene el
-  stack sin errores en su SO correspondiente.
-- [ ] Endpoint `GET /health` responde — criterio: `curl
+  stack sin errores en su SO correspondiente. Verificado en Windows
+  (`start-windows.ps1`/`stop-windows.ps1`); los de Mac/Linux tienen el
+  mismo contenido (`docker compose up -d --build` / `docker compose
+  down`) pero no se probaron en esos SO por no estar disponibles en este
+  entorno.
+- [x] Endpoint `GET /health` responde — criterio: `curl
   http://localhost:8000/api/v1/health` devuelve `200` (ver
-  `docs/api-contract.md` §1).
+  `docs/api-contract.md` §1). Verificado: respuesta
+  `{"status": "ok", "version": "0.1.0"}`.
 
 **2. Hello world**
-- [ ] Función local en Android que muestra texto estático — criterio:
-  pantalla visible al abrir la app.
-- [ ] Llamada real desde Android a `GET /health` del backend — criterio:
+- [x] Función local en Android que muestra texto estático — criterio:
+  pantalla visible al abrir la app. Verificado: capturas de pantalla en el
+  Xiaomi M2102J20SG muestran "Hola desde una funcion local de Kotlin".
+- [x] Llamada real desde Android a `GET /health` del backend — criterio:
   la pantalla muestra la respuesta del backend, no un valor hardcodeado.
+  Verificado: la pantalla muestra "Backend: ok (v0.1.0)" tras la llamada
+  Retrofit real (con `adb reverse tcp:8000 tcp:8000` y network security
+  config de cleartext a `localhost` solo en el build type `debug`).
 
 **3. Ambiente Android físico**
-- [ ] Xiaomi M2102J20SG conectado y reconocido (o emulador de fallback) —
-  criterio: `adb devices` lo lista.
-- [ ] APK nombrado según la convención — criterio: `./gradlew
-  assembleDebug` produce `pos-hello-debug-v0.1.apk`.
-- [ ] Instalado y verificado corriendo en el Xiaomi — criterio: `./gradlew
+- [x] Xiaomi M2102J20SG conectado y reconocido (o emulador de fallback) —
+  criterio: `adb devices` lo lista. Verificado: `adb devices -l` lista
+  `ee823e02 device product:vayu_global model:M2102J20SG`.
+- [x] APK nombrado según la convención — criterio: `./gradlew
+  assembleDebug` produce `pos-hello-debug-v0.1.apk`. Verificado: el build
+  genera `app/build/outputs/apk/debug/pos-hello-debug-v0.1.apk` (naming
+  configurado vía `androidComponents.onVariants` en `app/build.gradle.kts`).
+- [x] Instalado y verificado corriendo en el Xiaomi — criterio: `./gradlew
   installDebug` + confirmación manual de las dos formas del hello world.
-  `needs-device`
+  `needs-device`. Confirmado por el usuario el 2026-08-18.
 
----
+**Nota de versiones (Android)**: al armar el scaffolding se probó primero
+la combinación mas reciente disponible (AGP 9.3.1 + Kotlin built-in de
+AGP), pero KSP todavia no soporta el Kotlin built-in de AGP 9, y el plugin
+tradicional `org.jetbrains.kotlin.android` rompe contra las clases internas
+de AGP 9.x. Como Hilt depende de KSP, el proyecto quedo fijado en la ultima
+combinacion estable verificada: AGP 8.13.2 + Gradle wrapper 9.5.1 (AGP 8.x
+no soporta Gradle 9.6+) + Kotlin 2.2.21 + Hilt 2.57.2 (Hilt >= 2.58 exige
+AGP >= 9) + compileSdk/targetSdk 36 (varias librerias de AndroidX en sus
+ultimas versiones exigen compileSdk 37 + AGP >= 9.1, incompatible con lo
+anterior). Revisar este set de versiones antes de actualizarlas a ciegas en
+Partes futuras.
 
 ## Parte 3: Modelado de base de datos
 
