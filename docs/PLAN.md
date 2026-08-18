@@ -278,7 +278,7 @@ cualquier entorno Windows independientemente de este cambio.
 
 ---
 
-## Parte 5: Logs de la aplicación
+## Parte 5: Logs de la aplicación  <!-- POS-9 -->
 
 Genera un sistema de logs que capture:
 
@@ -345,44 +345,61 @@ estándar de Python a stdout, sin archivos ni rotación propios).
 
 ### Checklist
 
-**1. Logger genérico**
-- [ ] API del logger recibe `tipo`, `sucursalId`, `usuario` y mensaje como
+**1. Logger genérico** (POS-10)
+- [x] API del logger recibe `tipo`, `sucursalId`, `usuario` y mensaje como
   parámetros explícitos — criterio: la firma compila sin importar código
-  de la Parte 4 ni de la Parte 6.
-- [ ] Escribe archivos `.txt` en almacenamiento privado de la app con el
+  de la Parte 4 ni de la Parte 6. Verificado: `AppLogger.log(tipo,
+  sucursalId, usuario, mensaje)` en `com.pdv.pos.logging`, sin imports de
+  `auth` ni de módulos de negocio.
+- [x] Escribe archivos `.txt` en almacenamiento privado de la app con el
   formato `[TIPO][fecha][sucursal_id][usuario] mensaje` — criterio:
   prueba unitaria verifica el formato exacto de una línea escrita.
-- [ ] Las 6 categorías soportadas (`ERROR`, `WARN`, `INFO`, `DB_WRITE`,
+  Verificado: `AppLoggerTest."log writes a line with the exact expected
+  format"` en verde.
+- [x] Las 6 categorías soportadas (`ERROR`, `WARN`, `INFO`, `DB_WRITE`,
   `SYNC_CONFLICT`, `AUTH`) — criterio: enum/sealed class con las 6,
-  prueba unitaria por categoría.
+  prueba unitaria por categoría. Verificado: enum `LogType` con las 6,
+  `AppLoggerTest."log supports all six categories"` en verde.
 
-**2. Rotación y retención**
-- [ ] Rotación al llegar a 5 MB, archivo nuevo con nombre
+**2. Rotación y retención** (POS-11)
+- [x] Rotación al llegar a 5 MB, archivo nuevo con nombre
   `app-log-YYYYMMDD-HHMMSS.txt` — criterio: prueba unitaria fuerza el
   límite y verifica que se crea un archivo nuevo con el nombre esperado.
-- [ ] Purga automática de archivos con más de 30 días de retención —
+  Verificado: `AppLoggerTest."rotates to a new file..."` en verde.
+- [x] Purga automática de archivos con más de 30 días de retención —
   criterio: prueba unitaria con archivos de fecha simulada verifica que
-  los vencidos se eliminan y los vigentes no.
+  los vencidos se eliminan y los vigentes no. Verificado:
+  `AppLoggerTest."purges files older than..."` en verde.
 
-**3. Verificación de alcance**
-- [ ] El módulo de logging compila de forma aislada, sin depender de
+**3. Verificación de alcance** (POS-12)
+- [x] El módulo de logging compila de forma aislada, sin depender de
   ningún módulo de negocio — criterio: build independiente del paquete
-  del logger.
-- [ ] Instalado y verificado en el Xiaomi: generar al menos una línea de
+  del logger. Verificado: `./gradlew build` en verde (`BUILD
+  SUCCESSFUL`); `com.pdv.pos.logging` solo depende de `java.io`/Android
+  framework, no de `auth` ni de ningún repositorio.
+- [x] Instalado y verificado en el Xiaomi: generar al menos una línea de
   cada categoría y confirmar que el archivo `.txt` las contiene —
-  `needs-device`
+  `needs-device`. Verificado el 2026-08-18: `adb shell run-as com.pdv.pos
+  cat files/logs/app-log-20260818-163132.txt` muestra las 6 categorías
+  (`ERROR`, `WARN`, `INFO`, `DB_WRITE`, `SYNC_CONFLICT`, `AUTH`) con el
+  formato `[TIPO][fecha][sucursal_id][usuario] mensaje`.
 
 ### Decisiones abiertas
 
-- [ ] Concurrencia e I/O del logger: función `suspend` sobre un dispatcher
+- [x] Concurrencia e I/O del logger: función `suspend` sobre un dispatcher
   de I/O, o escritura bloqueante en un hilo dedicado. La firma la consumen
   las Partes 6-13, así que cambiarla después implica reescribir siete
-  módulos.
-- [ ] Provisión del logger: singleton de Hilt inyectado en cada
-  repositorio, u `object` de nivel superior.
-- [ ] Comportamiento si falla la escritura del archivo `.txt`: propagar la
+  módulos. **Decidido**: `suspend fun` sobre `Dispatchers.IO`, consistente
+  con el resto del proyecto (corrutinas estructuradas).
+- [x] Provisión del logger: singleton de Hilt inyectado en cada
+  repositorio, u `object` de nivel superior. **Decidido**: singleton de
+  Hilt (`@Singleton @Inject constructor`), mismo patrón que
+  `SessionManager` (Parte 4).
+- [x] Comportamiento si falla la escritura del archivo `.txt`: propagar la
   excepción, degradar a stdout, o descartar la línea. Debe ser compatible
-  con `CLAUDE.md` §9 (no programar a la defensiva).
+  con `CLAUDE.md` §9 (no programar a la defensiva). **Decidido**: se
+  captura la `IOException` (es E/S, `CLAUDE.md` §9 lo permite) y se
+  degrada a Logcat (`Log.e`) sin tumbar el flujo que disparó el log.
 
 ---
 
