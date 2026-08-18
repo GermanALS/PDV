@@ -14,9 +14,8 @@ que los módulos que la usan, y cada módulo del POS es una Parte independiente
 remoto/contrato → wiring). Las 16 Partes tienen su propia sección
 `### Checklist` con ítems verificables y criterios de éxito concretos
 (comando, archivo, o comportamiento observable — nunca "pruebas
-exhaustivas"). Pendiente: ejecutar y aprobar el detalle campo-por-campo del
-esquema de datos (Parte 3) — es el primer paso real de implementación,
-todavía sin arrancar.
+exhaustivas"). La Parte 3 (esquema de datos, `docs/schema-pos.json`) quedó
+aprobada el 2026-08-18; el siguiente paso es la Parte 4 (login ficticio).
 
 Las Partes con decisiones sin cerrar llevan además una subsección
 `### Decisiones abiertas` con checkboxes: son preguntas que el agente debe
@@ -47,7 +46,7 @@ de que el usuario revise y apruebe el plan.
 
 ---
 
-## Parte 2: Estructura básica
+## Parte 2: Estructura básica  <!-- POS-1 -->
 
 Configura la infraestructura de Docker, el backend en la carpeta `backend/`
 con FastAPI, un contenedor de PostgreSQL (motor definido en `CLAUDE.md`
@@ -81,7 +80,7 @@ prueba posteriores siguen este mismo esquema para mantener trazabilidad.
 
 ### Checklist
 
-**1. Backend + Docker**
+**1. Backend + Docker** (POS-2)
 - [x] `docker-compose.yml` levanta `backend` + PostgreSQL juntos —
   criterio: `docker compose up` deja ambos contenedores en estado
   healthy. Verificado: `docker compose ps` muestra `pdv-backend-1` y
@@ -98,7 +97,7 @@ prueba posteriores siguen este mismo esquema para mantener trazabilidad.
   `docs/api-contract.md` §1). Verificado: respuesta
   `{"status": "ok", "version": "0.1.0"}`.
 
-**2. Hello world**
+**2. Hello world** (POS-3)
 - [x] Función local en Android que muestra texto estático — criterio:
   pantalla visible al abrir la app. Verificado: capturas de pantalla en el
   Xiaomi M2102J20SG muestran "Hola desde una funcion local de Kotlin".
@@ -108,7 +107,7 @@ prueba posteriores siguen este mismo esquema para mantener trazabilidad.
   Retrofit real (con `adb reverse tcp:8000 tcp:8000` y network security
   config de cleartext a `localhost` solo en el build type `debug`).
 
-**3. Ambiente Android físico**
+**3. Ambiente Android físico** (POS-4)
 - [x] Xiaomi M2102J20SG conectado y reconocido (o emulador de fallback) —
   criterio: `adb devices` lo lista. Verificado: `adb devices -l` lista
   `ee823e02 device product:vayu_global model:M2102J20SG`.
@@ -132,7 +131,7 @@ ultimas versiones exigen compileSdk 37 + AGP >= 9.1, incompatible con lo
 anterior). Revisar este set de versiones antes de actualizarlas a ciegas en
 Partes futuras.
 
-## Parte 3: Modelado de base de datos
+## Parte 3: Modelado de base de datos  <!-- POS-5 -->
 
 Propone un esquema de base de datos para el punto de venta y guárdalo en
 formato JSON dentro de `docs/`. Para la definición de los campos y su
@@ -201,28 +200,38 @@ sincronización, incluso los resueltos automáticamente (ver política en
 Parte 6, módulo Configuración), para que el administrador pueda auditar qué
 pasó.
 
-### Checklist
-- [ ] Esquema JSON de los 7 módulos creado en `docs/` (ej.
+### Checklist (POS-6)
+- [x] Esquema JSON de los 7 módulos creado en `docs/` (ej.
   `docs/schema-pos.json`) — criterio: el archivo existe y cubre las
   tablas transaccionales (`inventario`, `ventas`, `cortes_caja`,
   `devoluciones`, `movimientos`), más `articulos`, `sucursales` y
-  `usuarios`, con `sucursal_id` en cada tabla transaccional.
-- [ ] Esquema incorpora los campos de tracking de sincronización en toda
+  `usuarios`, con `sucursal_id` en cada tabla transaccional. Verificado:
+  `docs/schema-pos.json` cubre las 8 tablas nombradas más `venta_detalle`
+  y `devolucion_detalle` (líneas de venta/devolución, aprobadas junto con
+  el resto del esquema); `sucursal_scoped: true` marca `sucursal_id` en
+  `inventario`, `ventas`, `cortes_caja`, `devoluciones` y `movimientos`.
+- [x] Esquema incorpora los campos de tracking de sincronización en toda
   tabla sincronizable — criterio: `local_id`, `remote_id`, `updated_at`,
   `is_synced`, `deleted_at` presentes en el JSON de cada tabla afectada.
-- [ ] Esquema incorpora `sync_conflicts` — criterio: presente en el JSON
-  con sus campos.
-- [ ] Esquema documenta el seed de la sucursal por defecto — criterio:
+  Verificado: bloque `sync_tracking_fields` referenciado vía
+  `tracking_fields: true` en las 10 tablas de negocio (todas excepto
+  `sync_conflicts`, que no participa del ciclo de sync).
+- [x] Esquema incorpora `sync_conflicts` — criterio: presente en el JSON
+  con sus campos. Verificado: tabla `sync_conflicts` con `entidad`,
+  `entidad_local_id`, `valor_local`/`valor_remoto`/`valor_resuelto`,
+  `politica_aplicada`, `resuelto_automaticamente`, `fecha_deteccion`.
+- [x] Esquema documenta el seed de la sucursal por defecto — criterio:
   nota adjunta al JSON o campo `seed` describiendo la fila inicial de
-  `sucursales`.
-- [ ] Aprobación explícita del usuario sobre el esquema — criterio:
+  `sucursales`. Verificado: bloque `seed` en `docs/schema-pos.json`.
+- [x] Aprobación explícita del usuario sobre el esquema — criterio:
   mensaje de aprobación registrado antes de continuar a la Parte 4;
   bloquea la sección 3 de `docs/api-contract.md` y cualquier endpoint
   real por módulo (ver `docs/api-contract.md` §5). `needs-approval`
+  Aprobado el 2026-08-18.
 
 ---
 
-## Parte 4: Experiencia de inicio de sesión (usuario ficticio)
+## Parte 4: Experiencia de inicio de sesión (usuario ficticio)  <!-- POS-7 -->
 
 Actualiza el código para que, al acceder por primera vez a la app, sea
 necesario iniciar sesión con credenciales ficticias ("admin", "password";
@@ -239,17 +248,33 @@ concepto de "usuario en turno" desde el inicio, y varios módulos (ej.
 entrada de mercancía, administración de usuarios) requieren atribuir
 acciones a ese usuario desde su primera implementación.
 
-### Checklist
-- [ ] Pantalla de login con credenciales ficticias (`admin`/`password`,
+### Checklist (POS-8)
+- [x] Pantalla de login con credenciales ficticias (`admin`/`password`,
   `user1`/`password`) — criterio: `./gradlew build` pasa y la pantalla
-  aparece al abrir la app sin sesión activa.
-- [ ] Sesión persiste mientras la app está abierta y permite cerrar
+  aparece al abrir la app sin sesión activa. `./gradlew build` verificado
+  en verde; confirmación visual en el Xiaomi confirmada por el usuario el
+  2026-08-18.
+- [x] Sesión persiste mientras la app está abierta y permite cerrar
   sesión — criterio: prueba de `ViewModel`/Compose UI Test que abre
-  sesión, navega, y cierra sesión correctamente.
-- [ ] Credenciales inválidas muestran error sin crashear — criterio:
-  prueba unitaria cubre el caso de error (CLAUDE.md §6).
-- [ ] Instalado y verificado en el Xiaomi con ambos usuarios ficticios —
-  `needs-device`
+  sesión, navega, y cierra sesión correctamente. Verificado:
+  `SessionManagerTest` (login/logout) y `HelloViewModelTest` (logout
+  delega al `SessionManager`) en verde.
+- [x] Credenciales inválidas muestran error sin crashear — criterio:
+  prueba unitaria cubre el caso de error (CLAUDE.md §6). Verificado:
+  `LoginViewModelTest` cubre credenciales inválidas y limpieza del error
+  al volver a escribir.
+- [x] Instalado y verificado en el Xiaomi con ambos usuarios ficticios —
+  `needs-device`. Confirmado por el usuario el 2026-08-18: instalado y
+  probados exitosamente todos los casos de uso en el dispositivo.
+
+**Evidencia de `./gradlew build` y `./gradlew testDebugUnitTest`**: `BUILD
+SUCCESSFUL`; 11 pruebas unitarias en verde (`SessionManagerTest`,
+`LoginViewModelTest`, `HelloViewModelTest`, incluyendo los casos nuevos de
+logout y username de sesión). Se deshabilitó el lint check `PropertyEscape`
+en `android/app/build.gradle.kts` porque marcaba como error el
+`local.properties` generado por Android Studio en Windows (archivo fuera de
+git, `.gitignore` línea 11) — sin este ajuste `./gradlew build` fallaba en
+cualquier entorno Windows independientemente de este cambio.
 
 ---
 

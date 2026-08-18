@@ -1,12 +1,17 @@
 package com.pdv.pos.ui
 
+import com.pdv.pos.auth.Session
+import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.data.remote.HealthApiService
 import com.pdv.pos.data.remote.dto.HealthResponseDto
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -33,6 +38,12 @@ class HelloViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private fun sessionManager(username: String = "admin"): SessionManager {
+        val sessionManager = mockk<SessionManager>(relaxed = true)
+        every { sessionManager.session } returns MutableStateFlow(Session(username))
+        return sessionManager
+    }
+
     @Test
     fun `local greeting is set immediately without waiting on the network call`() {
         val api = mockk<HealthApiService>()
@@ -41,7 +52,7 @@ class HelloViewModelTest {
             HealthResponseDto(status = "ok", version = "0.1.0")
         }
 
-        val viewModel = HelloViewModel(api)
+        val viewModel = HelloViewModel(api, sessionManager())
 
         assertTrue(viewModel.uiState.value.localGreeting.isNotBlank())
     }
@@ -51,7 +62,7 @@ class HelloViewModelTest {
         val api = mockk<HealthApiService>()
         coEvery { api.getHealth() } returns HealthResponseDto(status = "ok", version = "0.1.0")
 
-        val viewModel = HelloViewModel(api)
+        val viewModel = HelloViewModel(api, sessionManager())
         dispatcher.scheduler.advanceUntilIdle()
 
         val result = viewModel.uiState.value.healthResult
@@ -63,10 +74,32 @@ class HelloViewModelTest {
         val api = mockk<HealthApiService>()
         coEvery { api.getHealth() } throws IOException("sin conexion")
 
-        val viewModel = HelloViewModel(api)
+        val viewModel = HelloViewModel(api, sessionManager())
         dispatcher.scheduler.advanceUntilIdle()
 
         val result = viewModel.uiState.value.healthResult
         assertEquals(ApiResult.Error("sin conexion"), result)
+    }
+
+    @Test
+    fun `uiState exposes the username from the active session`() {
+        val api = mockk<HealthApiService>()
+        coEvery { api.getHealth() } returns HealthResponseDto(status = "ok", version = "0.1.0")
+
+        val viewModel = HelloViewModel(api, sessionManager(username = "user1"))
+
+        assertEquals("user1", viewModel.uiState.value.username)
+    }
+
+    @Test
+    fun `logout delegates to the session manager`() {
+        val api = mockk<HealthApiService>()
+        coEvery { api.getHealth() } returns HealthResponseDto(status = "ok", version = "0.1.0")
+        val session = sessionManager()
+
+        val viewModel = HelloViewModel(api, session)
+        viewModel.logout()
+
+        verify { session.logout() }
     }
 }

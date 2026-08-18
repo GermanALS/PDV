@@ -2,6 +2,7 @@ package com.pdv.pos.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.data.remote.HealthApiService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,9 +18,15 @@ private fun buildLocalGreeting(): String = "Hola desde una funcion local de Kotl
 @HiltViewModel
 class HelloViewModel @Inject constructor(
     private val healthApiService: HealthApiService,
+    private val sessionManager: SessionManager,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(HelloUiState(localGreeting = buildLocalGreeting()))
+    private val _uiState = MutableStateFlow(
+        HelloUiState(
+            username = sessionManager.session.value?.username.orEmpty(),
+            localGreeting = buildLocalGreeting(),
+        )
+    )
     val uiState: StateFlow<HelloUiState> = _uiState.asStateFlow()
 
     init {
@@ -36,5 +43,9 @@ class HelloViewModel @Inject constructor(
             }
             _uiState.value = _uiState.value.copy(healthResult = result)
         }
+    }
+
+    fun logout() {
+        sessionManager.logout()
     }
 }

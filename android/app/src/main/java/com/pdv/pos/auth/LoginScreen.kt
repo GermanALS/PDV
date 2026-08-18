@@ -1,4 +1,4 @@
-package com.pdv.pos.ui
+package com.pdv.pos.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -14,12 +15,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.pdv.pos.data.remote.ApiResult
 
 @Composable
-fun HelloScreen(viewModel: HelloViewModel = hiltViewModel()) {
+fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold { innerPadding ->
@@ -30,18 +31,29 @@ fun HelloScreen(viewModel: HelloViewModel = hiltViewModel()) {
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         ) {
-            Text(text = "Sesión: ${uiState.username}", style = MaterialTheme.typography.bodyMedium)
-            Text(text = uiState.localGreeting, style = MaterialTheme.typography.titleLarge)
+            Text(text = "Iniciar sesión", style = MaterialTheme.typography.titleLarge)
 
-            val healthText = when (val result = uiState.healthResult) {
-                null -> "Consultando backend..."
-                is ApiResult.Success -> "Backend: ${result.data}"
-                is ApiResult.Error -> "Error de backend: ${result.message}"
+            OutlinedTextField(
+                value = uiState.username,
+                onValueChange = viewModel::onUsernameChange,
+                label = { Text("Usuario") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = uiState.password,
+                onValueChange = viewModel::onPasswordChange,
+                label = { Text("Contraseña") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            uiState.errorMessage?.let { message ->
+                Text(text = message, color = MaterialTheme.colorScheme.error)
             }
-            Text(text = healthText, style = MaterialTheme.typography.bodyLarge)
 
-            Button(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
-                Text("Cerrar sesión")
+            Button(onClick = viewModel::login, modifier = Modifier.fillMaxWidth()) {
+                Text("Ingresar")
             }
         }
     }

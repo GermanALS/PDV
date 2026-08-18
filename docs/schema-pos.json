@@ -1,0 +1,191 @@
+{
+  "schema_version": "0.1",
+  "description": "Esquema de datos del PDV. Fuente de verdad para las entidades Room (Android) y las migraciones de Alembic (backend) - ver PLAN.md Parte 3 y CLAUDE.md seccion 'schema-parity'.",
+  "sync_tracking_fields": {
+    "description": "Campos presentes en toda tabla con \"tracking_fields\": true. No se repiten en cada tabla para mantener este archivo legible.",
+    "fields": [
+      { "name": "local_id", "type": "uuid", "nullable": false, "description": "PK local (Room), generado en el dispositivo" },
+      { "name": "remote_id", "type": "uuid", "nullable": true, "description": "PK remota (Postgres); nulo hasta el primer push exitoso" },
+      { "name": "updated_at", "type": "datetime", "nullable": false, "description": "ISO 8601 UTC; usado por la politica last-write-wins" },
+      { "name": "is_synced", "type": "bool", "nullable": false, "description": "false mientras haya cambios locales sin subir" },
+      { "name": "deleted_at", "type": "datetime", "nullable": true, "description": "soft-delete; nulo = fila activa. Nunca DELETE fisico" }
+    ]
+  },
+  "sucursal_scoped_field": {
+    "description": "Campo implicito en toda tabla con \"sucursal_scoped\": true.",
+    "field": { "name": "sucursal_id", "type": "uuid", "nullable": false, "description": "FK a sucursales" }
+  },
+  "seed": {
+    "table": "sucursales",
+    "description": "Si al arrancar no existe ninguna fila en sucursales, se crea una por defecto: en el backend, como parte de la migracion inicial de Alembic (una sola vez); en Android modo local, en el primer arranque si Room no tiene ninguna sucursal guardada (con remote_id nulo).",
+    "row": { "nombre": "Sucursal principal", "activa": true }
+  },
+  "tables": {
+    "sucursales": {
+      "tracking_fields": true,
+      "sucursal_scoped": false,
+      "primary_key": "local_id",
+      "foreign_keys": {},
+      "fields": [
+        { "name": "nombre", "type": "string", "nullable": false, "description": "ej. \"Sucursal principal\"" },
+        { "name": "direccion", "type": "string", "nullable": true },
+        { "name": "activa", "type": "bool", "nullable": false, "default": true, "description": "sucursales inactivas no aparecen en el selector de la Parte 6" }
+      ]
+    },
+    "articulos": {
+      "tracking_fields": true,
+      "sucursal_scoped": false,
+      "primary_key": "local_id",
+      "foreign_keys": {},
+      "notes": "Catalogo maestro, global entre sucursales - no se duplica por sucursal (PLAN.md Parte 3).",
+      "fields": [
+        { "name": "codigo_barras", "type": "string", "nullable": true, "description": "usado por el escaneo de la Parte 7; nulo si el articulo no tiene barcode fisico" },
+        { "name": "sku", "type": "string", "nullable": false, "unique": true, "description": "codigo interno" },
+        { "name": "nombre", "type": "string", "nullable": false },
+        { "name": "descripcion", "type": "string", "nullable": true },
+        { "name": "categoria", "type": "string", "nullable": true },
+        { "name": "unidad_medida", "type": "string", "nullable": false, "description": "ej. \"pieza\", \"kg\"" },
+        { "name": "precio_venta", "type": "decimal", "nullable": false },
+        { "name": "costo", "type": "decimal", "nullable": true, "description": "costo de compra; puede no capturarse siempre" },
+        { "name": "activo", "type": "bool", "nullable": false, "default": true, "description": "baja logica de catalogo, distinta de deleted_at (baja de sync)" }
+      ]
+    },
+    "usuarios": {
+      "tracking_fields": true,
+      "sucursal_scoped": false,
+      "primary_key": "local_id",
+      "foreign_keys": {},
+      "fields": [
+        { "name": "username", "type": "string", "nullable": false, "unique": true },
+        { "name": "nombre_completo", "type": "string", "nullable": false },
+        { "name": "password_hash", "type": "string", "nullable": true, "description": "reservado para la Parte 13; nulo mientras el login sea ficticio (Parte 4)" },
+        { "name": "rol", "type": "string", "nullable": false, "description": "ej. \"administrador\", \"encargado_turno\"; catalogo real de roles llega en la Parte 13" },
+        { "name": "activo", "type": "bool", "nullable": false, "default": true }
+      ]
+    },
+    "inventario": {
+      "tracking_fields": true,
+      "sucursal_scoped": true,
+      "primary_key": "local_id",
+      "unique_together": ["sucursal_id", "articulo_id"],
+      "foreign_keys": { "articulo_id": "articulos" },
+      "notes": "cantidad es un snapshot de existencia. La politica de como se sincroniza (campo directo vs. derivado de movimientos) es la decision abierta de la Parte 6.",
+      "fields": [
+        { "name": "articulo_id", "type": "uuid", "nullable": false },
+        { "name": "cantidad", "type": "decimal", "nullable": false, "default": 0 },
+        { "name": "ubicacion", "type": "string", "nullable": true, "description": "estante/almacen (Parte 8)" }
+      ]
+    },
+    "ventas": {
+      "tracking_fields": true,
+      "sucursal_scoped": true,
+      "primary_key": "local_id",
+      "foreign_keys": { "usuario_id": "usuarios" },
+      "fields": [
+        { "name": "usuario_id", "type": "uuid", "nullable": false, "description": "usuario en turno que realizo la venta" },
+        { "name": "folio", "type": "string", "nullable": false, "description": "numero de venta visible al usuario" },
+        { "name": "fecha", "type": "datetime", "nullable": false },
+        { "name": "subtotal", "type": "decimal", "nullable": false },
+        { "name": "descuento", "type": "decimal", "nullable": false, "default": 0 },
+        { "name": "impuestos", "type": "decimal", "nullable": false, "default": 0 },
+        { "name": "total", "type": "decimal", "nullable": false },
+        { "name": "metodo_pago", "type": "string", "nullable": false, "description": "ej. \"efectivo\", \"tarjeta\"" },
+        { "name": "estado", "type": "string", "nullable": false, "default": "completada", "description": "\"completada\" / \"cancelada\"" }
+      ]
+    },
+    "venta_detalle": {
+      "tracking_fields": true,
+      "sucursal_scoped": false,
+      "primary_key": "local_id",
+      "foreign_keys": { "venta_id": "ventas", "articulo_id": "articulos" },
+      "notes": "no nombrada explicitamente en el checklist de la Parte 3; se agrega porque una venta con mas de un articulo la necesita (aprobado junto con el resto del esquema).",
+      "fields": [
+        { "name": "venta_id", "type": "uuid", "nullable": false },
+        { "name": "articulo_id", "type": "uuid", "nullable": false },
+        { "name": "cantidad", "type": "decimal", "nullable": false },
+        { "name": "precio_unitario", "type": "decimal", "nullable": false, "description": "precio al momento de la venta, no se referencia articulos.precio_venta a futuro" },
+        { "name": "subtotal", "type": "decimal", "nullable": false }
+      ]
+    },
+    "cortes_caja": {
+      "tracking_fields": true,
+      "sucursal_scoped": true,
+      "primary_key": "local_id",
+      "foreign_keys": { "usuario_id": "usuarios" },
+      "fields": [
+        { "name": "usuario_id", "type": "uuid", "nullable": false, "description": "quien realiza el corte" },
+        { "name": "fecha_inicio", "type": "datetime", "nullable": false, "description": "inicio del periodo cortado" },
+        { "name": "fecha_fin", "type": "datetime", "nullable": false, "description": "fin del periodo cortado" },
+        { "name": "total_ventas", "type": "decimal", "nullable": false, "description": "suma de ventas del periodo" },
+        { "name": "total_efectivo", "type": "decimal", "nullable": false },
+        { "name": "total_tarjeta", "type": "decimal", "nullable": false },
+        { "name": "monto_esperado", "type": "decimal", "nullable": false, "description": "calculado" },
+        { "name": "monto_contado", "type": "decimal", "nullable": true, "description": "ingresado manualmente al hacer el corte" },
+        { "name": "diferencia", "type": "decimal", "nullable": true, "description": "monto_contado - monto_esperado" }
+      ]
+    },
+    "devoluciones": {
+      "tracking_fields": true,
+      "sucursal_scoped": true,
+      "primary_key": "local_id",
+      "foreign_keys": { "usuario_id": "usuarios", "venta_id": "ventas" },
+      "fields": [
+        { "name": "usuario_id", "type": "uuid", "nullable": false },
+        { "name": "venta_id", "type": "uuid", "nullable": true, "description": "venta original, si se conoce" },
+        { "name": "folio", "type": "string", "nullable": false },
+        { "name": "fecha", "type": "datetime", "nullable": false },
+        { "name": "estado", "type": "string", "nullable": false, "default": "registrada", "description": "\"registrada\" / \"en_gestion_proveedor\" / \"cerrada\" - soporta consultar la lista para gestionar con el proveedor" }
+      ]
+    },
+    "devolucion_detalle": {
+      "tracking_fields": true,
+      "sucursal_scoped": false,
+      "primary_key": "local_id",
+      "foreign_keys": { "devolucion_id": "devoluciones", "articulo_id": "articulos" },
+      "notes": "no nombrada explicitamente en el checklist de la Parte 3; misma justificacion que venta_detalle (aprobado junto con el resto del esquema).",
+      "fields": [
+        { "name": "devolucion_id", "type": "uuid", "nullable": false },
+        { "name": "articulo_id", "type": "uuid", "nullable": false },
+        { "name": "cantidad", "type": "decimal", "nullable": false },
+        { "name": "motivo", "type": "string", "nullable": true },
+        { "name": "condicion", "type": "string", "nullable": true, "description": "ej. \"defectuoso\" / \"no_defectuoso\"" }
+      ]
+    },
+    "movimientos": {
+      "tracking_fields": true,
+      "sucursal_scoped": true,
+      "primary_key": "local_id",
+      "foreign_keys": { "articulo_id": "articulos", "usuario_id": "usuarios" },
+      "notes": "cubre la entrada de mercancia de la Parte 8 (tipo=entrada) ademas de salidas y ajustes.",
+      "fields": [
+        { "name": "articulo_id", "type": "uuid", "nullable": false },
+        { "name": "usuario_id", "type": "uuid", "nullable": false },
+        { "name": "tipo", "type": "string", "nullable": false, "description": "\"entrada\" / \"salida\" / \"ajuste\"" },
+        { "name": "cantidad", "type": "decimal", "nullable": false, "description": "siempre positiva; el signo lo da tipo" },
+        { "name": "ubicacion", "type": "string", "nullable": true, "description": "estante (Parte 8)" },
+        { "name": "referencia_tipo", "type": "string", "nullable": true, "description": "ej. \"venta\", \"devolucion\", \"entrada_manual\" - origen del movimiento" },
+        { "name": "referencia_id", "type": "uuid", "nullable": true, "description": "id de la venta/devolucion que origino el movimiento, si aplica" },
+        { "name": "fecha", "type": "datetime", "nullable": false }
+      ]
+    },
+    "sync_conflicts": {
+      "tracking_fields": false,
+      "sucursal_scoped": false,
+      "primary_key": "id",
+      "foreign_keys": { "sucursal_id": "sucursales" },
+      "notes": "no participa del patron local_id/remote_id/is_synced/deleted_at porque es en si misma el registro de auditoria de sync, no una entidad que se sincroniza.",
+      "fields": [
+        { "name": "id", "type": "uuid", "nullable": false },
+        { "name": "entidad", "type": "string", "nullable": false, "description": "nombre de la tabla afectada, ej. \"inventario\"" },
+        { "name": "entidad_local_id", "type": "uuid", "nullable": false, "description": "local_id de la fila en conflicto" },
+        { "name": "sucursal_id", "type": "uuid", "nullable": true, "description": "si la entidad afectada tiene sucursal" },
+        { "name": "valor_local", "type": "json", "nullable": false, "description": "snapshot del lado local al momento del conflicto" },
+        { "name": "valor_remoto", "type": "json", "nullable": false, "description": "snapshot del lado remoto" },
+        { "name": "valor_resuelto", "type": "json", "nullable": false, "description": "valor final aplicado" },
+        { "name": "politica_aplicada", "type": "string", "nullable": false, "description": "\"last_write_wins\" / \"evento_aditivo\"" },
+        { "name": "resuelto_automaticamente", "type": "bool", "nullable": false, "description": "false si quedo pendiente de revision manual" },
+        { "name": "fecha_deteccion", "type": "datetime", "nullable": false }
+      ]
+    }
+  }
+}

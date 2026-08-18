@@ -38,6 +38,13 @@ android {
     testOptions {
         unitTests.all { it.useJUnitPlatform() }
     }
+
+    lint {
+        // local.properties es generado por Android Studio con rutas Windows sin
+        // escapar y no esta versionado (.gitignore); PropertyEscape lo marca
+        // como error en todo entorno Windows sin que el proyecto pueda arreglarlo.
+        disable += "PropertyEscape"
+    }
 }
 
 kotlin {
