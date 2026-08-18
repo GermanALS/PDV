@@ -278,7 +278,7 @@ cualquier entorno Windows independientemente de este cambio.
 
 ---
 
-## Parte 5: Logs de la aplicación
+## Parte 5: Logs de la aplicación  <!-- POS-9 -->
 
 Genera un sistema de logs que capture:
 
@@ -345,7 +345,7 @@ estándar de Python a stdout, sin archivos ni rotación propios).
 
 ### Checklist
 
-**1. Logger genérico**
+**1. Logger genérico** (POS-10)
 - [x] API del logger recibe `tipo`, `sucursalId`, `usuario` y mensaje como
   parámetros explícitos — criterio: la firma compila sin importar código
   de la Parte 4 ni de la Parte 6. Verificado: `AppLogger.log(tipo,
@@ -361,7 +361,7 @@ estándar de Python a stdout, sin archivos ni rotación propios).
   prueba unitaria por categoría. Verificado: enum `LogType` con las 6,
   `AppLoggerTest."log supports all six categories"` en verde.
 
-**2. Rotación y retención**
+**2. Rotación y retención** (POS-11)
 - [x] Rotación al llegar a 5 MB, archivo nuevo con nombre
   `app-log-YYYYMMDD-HHMMSS.txt` — criterio: prueba unitaria fuerza el
   límite y verifica que se crea un archivo nuevo con el nombre esperado.
@@ -371,7 +371,7 @@ estándar de Python a stdout, sin archivos ni rotación propios).
   los vencidos se eliminan y los vigentes no. Verificado:
   `AppLoggerTest."purges files older than..."` en verde.
 
-**3. Verificación de alcance**
+**3. Verificación de alcance** (POS-12)
 - [x] El módulo de logging compila de forma aislada, sin depender de
   ningún módulo de negocio — criterio: build independiente del paquete
   del logger. Verificado: `./gradlew build` en verde (`BUILD
