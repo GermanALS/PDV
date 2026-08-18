@@ -231,7 +231,7 @@ pasó.
 
 ---
 
-## Parte 4: Experiencia de inicio de sesión (usuario ficticio)
+## Parte 4: Experiencia de inicio de sesión (usuario ficticio)  <!-- POS-7 -->
 
 Actualiza el código para que, al acceder por primera vez a la app, sea
 necesario iniciar sesión con credenciales ficticias ("admin", "password";
@@ -248,7 +248,7 @@ concepto de "usuario en turno" desde el inicio, y varios módulos (ej.
 entrada de mercancía, administración de usuarios) requieren atribuir
 acciones a ese usuario desde su primera implementación.
 
-### Checklist
+### Checklist (POS-8)
 - [x] Pantalla de login con credenciales ficticias (`admin`/`password`,
   `user1`/`password`) — criterio: `./gradlew build` pasa y la pantalla
   aparece al abrir la app sin sesión activa. `./gradlew build` verificado
