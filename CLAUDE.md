@@ -314,39 +314,8 @@ Evita que un módulo con ~14 checkboxes dispare el límite de 12 stories por
 
 ### feature-dev
 
-Se usa únicamente en las Partes 6, 7, 13 y 15 de `docs/PLAN.md`: las que
-implican decisiones de arquitectura compartida por varios módulos. En el
-resto de las Partes se trabaja sin el plugin, porque sus fases de
-descubrimiento y diseño ya están resueltas por el checklist
-correspondiente y solo agregarían costo.
-
-Mapeo de sus fases a este proyecto:
-
-- Fases 1 y 3 (descubrimiento y clarificación): el brief y los criterios
-  de éxito ya están escritos en el checklist de la Parte. No los rehagas.
-  Usa estas fases únicamente para preguntar la subsección
-  `### Decisiones abiertas`.
-- Fase 4 (arquitectura): en Partes con pantalla nueva (6, 7), su
-  aprobación ES el ítem de aprobación del sub-paso 1 ("propuesta...
-  aprobada"). En Partes 13 y 15, que no tienen pantalla nueva, no existe
-  ese ítem — la aprobación de arquitectura ya ocurrió al cerrar la
-  subsección `### Decisiones abiertas` en las Fases 1/3, así que Fase 4 no
-  agrega nada aparte. En ningún caso generes una compuerta de aprobación
-  adicional a las que ya define la sección 9.
-- Fase 5 (implementación): recorre los sub-pasos en orden, respetando la
-  compuerta de la sección 9.
-- Fase 6 (revisión): córrela antes de marcar los ítems del checklist, no
-  después.
-- Fase 7 (resumen): en vez de un resumen suelto, marca en `docs/PLAN.md`
-  los ítems cumplidos de la Parte, indicando con qué criterio se verificó
-  cada uno. No agregues ítems nuevos al checklist.
-
-Los revisores de la fase 6 tienden a proponer más manejo de errores del
-que este proyecto acepta. La sección 9 (no programar a la defensiva) tiene
-precedencia sobre sus hallazgos.
-
-Los agentes del plugin (`code-explorer`, `code-architect`,
-`code-reviewer`) pueden invocarse por separado, sin el flujo completo de
-7 fases. Casos previstos: `code-architect` para el detalle
-campo-por-campo del esquema (Parte 3) y para la firma del logger
-(Parte 5), donde el entregable no es código de aplicación.
+Del plugin se usan únicamente sus subagentes, delegados desde el comando
+`/parte` en las Partes 6, 7, 13 y 15 de `docs/PLAN.md`: las que implican
+decisiones de arquitectura compartida por varios módulos. El comando
+`/feature-dev` no se invoca; su flujo de 7 fases duplica las compuertas de
+aprobación que los checklists ya definen.
