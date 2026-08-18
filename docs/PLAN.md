@@ -37,12 +37,13 @@ deberá marcar, y con pruebas y criterios de éxito para cada uno. Asegúrate
 de que el usuario revise y apruebe el plan. 
 
 ### Checklist
-- [ ] Las Partes 2-16 tienen su propia sección `### Checklist` con ítems
+- [x] Las Partes 2-16 tienen su propia sección `### Checklist` con ítems
   verificables agrupados por sub-paso — criterio: cada Parte de módulo
   (6-12) usa el mismo formato validado en la Parte 7; el resto usa un
-  formato adaptado a su propio contenido.
-- [ ] Usuario revisó y aprobó el plan resultante — criterio: aprobación
-  explícita registrada en la conversación.
+  formato adaptado a su propio contenido. Verificado: 16 encabezados
+  `## Parte` y 16 secciones `### Checklist`, uno por Parte.
+- [x] Usuario revisó y aprobó el plan resultante — criterio: aprobación
+  explícita registrada en la conversación. Aprobado el 2026-08-17.
 
 ---
 
