@@ -1,0 +1,51 @@
+package com.pdv.pos.config
+
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.pdv.pos.domain.model.BackendMode
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+private val KEY_BACKEND_MODE = stringPreferencesKey("backend_mode")
+private val KEY_IP = stringPreferencesKey("ip")
+private val KEY_PUERTO = stringPreferencesKey("puerto")
+private val KEY_NOMBRE_BASE_DATOS = stringPreferencesKey("nombre_base_datos")
+private val KEY_SUCURSAL_ID = stringPreferencesKey("sucursal_id_seleccionada")
+
+// Preferencia de dispositivo, sin Room (excepcion documentada en CLAUDE.md
+// sec. 3: BackendMode, conexion y sucursal seleccionada viven en DataStore;
+// el catalogo de sucursales en si sigue el patron Room normal).
+@Singleton
+class ConfiguracionPreferences @Inject constructor(
+    private val dataStore: DataStore<Preferences>,
+) {
+    val deviceConfig: Flow<DeviceConfig> = dataStore.data.map { prefs ->
+        DeviceConfig(
+            backendMode = prefs[KEY_BACKEND_MODE]?.let { BackendMode.valueOf(it) } ?: BackendMode.LOCAL,
+            ip = prefs[KEY_IP].orEmpty(),
+            puerto = prefs[KEY_PUERTO].orEmpty(),
+            nombreBaseDatos = prefs[KEY_NOMBRE_BASE_DATOS].orEmpty(),
+            sucursalIdSeleccionada = prefs[KEY_SUCURSAL_ID],
+        )
+    }
+
+    suspend fun setBackendMode(mode: BackendMode) {
+        dataStore.edit { it[KEY_BACKEND_MODE] = mode.name }
+    }
+
+    suspend fun setConexion(ip: String, puerto: String, nombreBaseDatos: String) {
+        dataStore.edit {
+            it[KEY_IP] = ip
+            it[KEY_PUERTO] = puerto
+            it[KEY_NOMBRE_BASE_DATOS] = nombreBaseDatos
+        }
+    }
+
+    suspend fun setSucursalSeleccionada(sucursalId: String) {
+        dataStore.edit { it[KEY_SUCURSAL_ID] = sucursalId }
+    }
+}

@@ -85,6 +85,11 @@ dependencies {
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.kotlinx.serialization.json)
 
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.datastore.preferences)
+
     testImplementation(kotlin("test"))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

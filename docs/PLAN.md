@@ -447,17 +447,25 @@ que dependen las Partes 7-12.
   verificada (secciones Conexión, Sucursal, Modo, Permisos, Cerrar
   sesión).
 
-**2. Persistencia local**
-- [ ] DataStore guarda `BackendMode`, parámetros de conexión, y
+**2. Persistencia local** (POS-15)
+- [x] DataStore guarda `BackendMode`, parámetros de conexión, y
   `sucursal_id` seleccionado — criterio: prueba unitaria escribe y relee
-  cada valor.
-- [ ] `SucursalRepository` (interfaz) + `LocalSucursalRepository` (Room)
+  cada valor. Verificado: `ConfiguracionPreferencesTest` (4 pruebas,
+  `PreferenceDataStoreFactory` sobre archivo temporal) en verde.
+- [x] `SucursalRepository` (interfaz) + `LocalSucursalRepository` (Room)
   implementados — criterio: `./gradlew testDebugUnitTest` en verde.
-  `jvm-tests`
-- [ ] Sucursal por defecto se crea automáticamente en modo local si no
+  `jvm-tests` Verificado: `assembleDebug`/`testDebugUnitTest` en verde
+  (`BUILD SUCCESSFUL`).
+- [x] Sucursal por defecto se crea automáticamente en modo local si no
   existe ninguna al primer arranque (Parte 3, "Sucursal por defecto") —
   criterio: prueba unitaria arranca con Room vacío y verifica que aparece
   exactamente una sucursal `"Sucursal principal"` con `remote_id` nulo.
+  Verificado: `LocalSucursalRepositoryTest` (3 pruebas) en verde. Hallazgo
+  de `code-reviewer` corregido antes de cerrar: el check-then-insert
+  original no era atómico (`observeSucursales()` es un `flow` frío que
+  reevalúa el seed en cada colector), lo que permitía crear dos
+  "Sucursal principal" con dos colectores concurrentes; se movió a
+  `SucursalDao.insertIfEmpty` con `@Transaction`, que Room serializa.
 
 **3. Repositorio remoto**
 - [ ] Migración de Alembic para `sucursales`, con seed de la sucursal por
