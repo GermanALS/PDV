@@ -496,20 +496,36 @@ que dependen las Partes 7-12.
   `RemoteSucursalRepository` — a reconciliar en el sub-paso 4/5 (motor
   de sync / wiring), no antes.
 
-**4. Motor de sync genérico**
-- [ ] Política `last-write-wins` — criterio: prueba de integración
+**4. Motor de sync genérico** (POS-17)
+- [x] Política `last-write-wins` — criterio: prueba de integración
   sincroniza dos versiones de la misma `Sucursal` con `updated_at`
-  distintos y verifica que gana la más reciente.
-- [ ] Lógica de la política de eventos aditivos (sin entidad real
+  distintos y verifica que gana la más reciente. Verificado:
+  `LastWriteWinsSyncEngineTest` (`sync/`), 3 pruebas en verde.
+- [x] Lógica de la política de eventos aditivos (sin entidad real
   todavía) — criterio: prueba unitaria de la función que combina dos
   eventos, sin depender de Room/Retrofit; su validación de integración
-  queda diferida a la Parte 7.
-- [ ] Conflictos se registran en `sync_conflicts` (Parte 3) y en el log
+  queda diferida a la Parte 7. Verificado: `EventoAditivoCombiner.combinar`
+  (`cantidad_resultante = base + deltaLocal + deltaRemoto`, sin comparar
+  `updated_at`, per la decisión híbrida registrada arriba) +
+  `EventoAditivoCombinerTest`, 3 pruebas en verde. La rama "delta negativo
+  → marcar conflicto" queda diferida a la Parte 7/9 a propósito: escribir
+  a `sync_conflicts`/el log desde esta función violaría el propio
+  criterio del checklist ("sin depender de Room/Retrofit").
+- [x] Conflictos se registran en `sync_conflicts` (Parte 3) y en el log
   con categoría `SYNC_CONFLICT` (Parte 5) — criterio: prueba de
   integración provoca un conflicto y verifica ambas escrituras.
-- [ ] Los 4 casos de migración de datos al cambiar de modo (solo local,
+  Verificado: `LastWriteWinsSyncEngine.sincronizar` registra en
+  `SyncConflictDao` (Room) y en `AppLogger` (`SYNC_CONFLICT`) toda
+  divergencia de `updated_at`, incluso resuelta automáticamente
+  (`resueltoAutomaticamente = true`), per PLAN.md Parte 3.
+- [x] Los 4 casos de migración de datos al cambiar de modo (solo local,
   solo remoto, ambos lados, diálogo con impacto concreto) implementados
-  — criterio: 4 pruebas de integración, una por caso.
+  — criterio: 4 pruebas de integración, una por caso. Verificado:
+  `MigrationPlanner.planificar` (`sync/PlanMigracion.kt`) + 4 pruebas en
+  `MigrationPlannerTest` en verde. Lógica pura; el wiring a UI/repositorios
+  reales es el sub-paso 5 (Wiring), todavía no implementado.
+
+`code-reviewer` revisó los 4 ítems de este sub-paso sin hallazgos.
 
 **5. Wiring**
 - [ ] Selector de modo conectado a la lógica real — criterio: prueba de
@@ -519,13 +535,28 @@ que dependen las Partes 7-12.
 
 ### Decisiones abiertas
 
-- [ ] Política de sincronización para las cantidades de inventario:
+- [x] Política de sincronización para las cantidades de inventario:
   `last-write-wins` sobre el campo, o saldo derivado de eventos aditivos.
   Se decide aquí porque el motor de sync se construye en esta Parte y las
   Partes 7-12 lo heredan. La Parte 9 permite modificar atributos de
   artículos consultados, y la cantidad en existencia es justo el caso
   donde `last-write-wins` pierde decrementos concurrentes de dos
-  dispositivos de la misma sucursal.
+  dispositivos de la misma sucursal. **Decidido**: enfoque híbrido —
+  `inventario.cantidad` sigue siendo un campo real (no una vista derivada
+  recalculada desde `movimientos`), pero se sincroniza aplicando deltas
+  con signo (`cantidad_resultante = cantidad_base + delta_local +
+  delta_remoto`), nunca comparando `updated_at` como en last-write-wins.
+  `movimientos` sigue siendo la tabla de auditoría/detalle tal como ya
+  está modelada en `docs/schema-pos.json`. El ajuste manual de la Parte 9
+  no es un `UPDATE cantidad = X` directo: se traduce a un `movimiento`
+  tipo `"ajuste"` con `delta = nuevo_valor - valor_conocido_localmente`.
+  Las Partes 7-11 nunca escriben `cantidad` directamente, solo a través de
+  la función de combinar deltas construida aquí. Si la suma de deltas
+  concurrentes deja `cantidad` en negativo (ej. dos ventas del mismo
+  artículo cuando solo había stock para una), el delta se aplica igual
+  (se permite negativo temporalmente) y se registra en `sync_conflicts`
+  con `resuelto_automaticamente=false` para revisión manual del
+  administrador — no bloquea la sincronización de ningún dispositivo.
 
 ---
 

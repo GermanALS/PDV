@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.pdv.pos.data.local.PdvDatabase
 import com.pdv.pos.data.local.SucursalDao
+import com.pdv.pos.data.local.SyncConflictDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -22,4 +23,7 @@ object DatabaseModule {
 
     @Provides
     fun provideSucursalDao(database: PdvDatabase): SucursalDao = database.sucursalDao()
+
+    @Provides
+    fun provideSyncConflictDao(database: PdvDatabase): SyncConflictDao = database.syncConflictDao()
 }
