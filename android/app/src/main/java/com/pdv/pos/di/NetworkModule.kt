@@ -2,6 +2,7 @@ package com.pdv.pos.di
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.pdv.pos.data.remote.HealthApiService
+import com.pdv.pos.data.remote.SucursalApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -45,4 +46,9 @@ object NetworkModule {
     @Singleton
     fun provideHealthApiService(retrofit: Retrofit): HealthApiService =
         retrofit.create(HealthApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSucursalApiService(retrofit: Retrofit): SucursalApiService =
+        retrofit.create(SucursalApiService::class.java)
 }

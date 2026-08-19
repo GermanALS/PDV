@@ -108,7 +108,63 @@ Response `404 Not Found` → item no existe
 
 ---
 
-## 4. Convenciones generales
+## 4. Sucursales
+
+Primer recurso real del dominio (PLAN.md Parte 6, módulo Configuración).
+`id` es la PK del backend — es el valor que el dispositivo Android guarda
+como `remote_id` una vez sincronizado; el backend no tiene un campo propio
+llamado `remote_id` (ese nombre solo tiene sentido del lado del
+dispositivo). `local_id` viaja en el `POST` para que el dispositivo
+correlacione la fila creada con su registro local (ej. la sucursal por
+defecto seedeada que nunca se sincronizó, PLAN.md Parte 3 "Al migrar de
+local a remoto"); es opcional. `is_synced` siempre es `true` en las
+respuestas del backend — una fila que existe en el servidor es por
+definición la versión sincronizada.
+
+### 4.1 Listar sucursales
+
+**GET** `/sucursales?page=1&page_size=20`
+
+Response `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "local_id": "uuid o null",
+      "nombre": "string",
+      "direccion": "string o null",
+      "activa": true,
+      "updated_at": "2026-08-18T12:00:00Z",
+      "is_synced": true,
+      "deleted_at": null
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+### 4.2 Crear sucursal
+
+**POST** `/sucursales`
+
+Request body
+```json
+{
+  "local_id": "uuid o null",
+  "nombre": "string, 1-120 caracteres",
+  "direccion": "string o null",
+  "activa": true
+}
+```
+
+Response `201 Created` → mismo shape que un ítem de 4.1.
+
+---
+
+## 5. Convenciones generales
 
 - Todas las fechas en ISO 8601 UTC (`created_at`, `updated_at`).
 - IDs como UUID v4 (string), nunca enteros autoincrementales expuestos en la API pública.
@@ -134,14 +190,16 @@ Response `404 Not Found` → item no existe
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
-## 5. Pendiente de definir
+## 6. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
 este contrato, sino prerequisitos pendientes):
 
-- [ ] Esquema de datos campo-por-campo de los 7 módulos (PLAN.md Parte 3,
-  sin ejecutar ni aprobar todavía) — bloquea la sección 3 y cualquier
-  endpoint real por módulo.
+- [ ] Rutas reales de `articulos`, `inventario`, `ventas`, `cortes_caja`,
+  `devoluciones`, `movimientos`, `usuarios` (PLAN.md Partes 7-12, una por
+  módulo) — `sucursales` (sección 4) ya está implementada; el placeholder
+  de la sección 3 se reemplaza módulo por módulo a medida que cada Parte
+  llega a su sub-paso de repositorio remoto.
 - [ ] Rutas de autenticación real y gestión de usuarios/roles (PLAN.md
   Partes 4 y 13, sin implementar).
 - [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,

@@ -403,13 +403,12 @@ estándar de Python a stdout, sin archivos ni rotación propios).
 
 ---
 
-## Parte 6: Módulo Configuración
+## Parte 6: Módulo Configuración  <!-- POS-13 -->
 
 Implementa de punta a punta el módulo de Configuración: parámetros de
 conexión al backend FastAPI (IP, puerto, nombre de base de datos), selector
 de sucursal del dispositivo, selector de modo (local / remoto / local con
-sincronización), gestión de permisos por tipo de usuario (interfaz
-simulada por ahora — se conecta de verdad en la Parte 13), y cierre de
+sincronización), gestión de permisos por tipo de usuario (intesimulada por ahora — se conecta de verdad en la Parte 13), y cierre de
 sesión.
 
 El selector de sucursal **nunca** es un campo de texto libre para el
@@ -429,71 +428,153 @@ que dependen las Partes 7-12.
 
 ### Checklist
 
-**1. UI**
-- [ ] Propuesta de pantalla (parámetros de conexión, selector de sucursal
+**1. UI** (POS-14)
+- [x] Propuesta de pantalla (parámetros de conexión, selector de sucursal
   como lista, selector de modo, permisos simulados, cerrar sesión)
   presentada y aprobada — criterio: aprobación explícita registrada antes
-  de implementar.
-- [ ] Selector de sucursal implementado como lista, nunca campo de texto
+  de implementar. Aprobado el 2026-08-18 (pantalla `ConfiguracionScreen`
+  con navegación manual por estado, sin Navigation Compose).
+- [x] Selector de sucursal implementado como lista, nunca campo de texto
   libre — criterio: revisión de código confirma que no existe ningún
-  campo editando `sucursal_id` directamente.
-- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+  campo editando `sucursal_id` directamente. Verificado: `code-reviewer`
+  confirmó que `SucursalSection` en `ConfiguracionScreen.kt` usa
+  `ExposedDropdownMenuBox` con `OutlinedTextField(readOnly = true)` y
+  selección solo vía `DropdownMenuItem`; `sucursal_id` (UUID) no aparece
+  como campo editable en ningún lado.
+- [x] Instalado y verificado en el Xiaomi — `needs-device` Confirmado por
+  el usuario el 2026-08-18: pantalla de Configuración instalada y
+  verificada (secciones Conexión, Sucursal, Modo, Permisos, Cerrar
+  sesión).
 
-**2. Persistencia local**
-- [ ] DataStore guarda `BackendMode`, parámetros de conexión, y
+**2. Persistencia local** (POS-15)
+- [x] DataStore guarda `BackendMode`, parámetros de conexión, y
   `sucursal_id` seleccionado — criterio: prueba unitaria escribe y relee
-  cada valor.
-- [ ] `SucursalRepository` (interfaz) + `LocalSucursalRepository` (Room)
+  cada valor. Verificado: `ConfiguracionPreferencesTest` (4 pruebas,
+  `PreferenceDataStoreFactory` sobre archivo temporal) en verde.
+- [x] `SucursalRepository` (interfaz) + `LocalSucursalRepository` (Room)
   implementados — criterio: `./gradlew testDebugUnitTest` en verde.
-  `jvm-tests`
-- [ ] Sucursal por defecto se crea automáticamente en modo local si no
+  `jvm-tests` Verificado: `assembleDebug`/`testDebugUnitTest` en verde
+  (`BUILD SUCCESSFUL`).
+- [x] Sucursal por defecto se crea automáticamente en modo local si no
   existe ninguna al primer arranque (Parte 3, "Sucursal por defecto") —
   criterio: prueba unitaria arranca con Room vacío y verifica que aparece
   exactamente una sucursal `"Sucursal principal"` con `remote_id` nulo.
+  Verificado: `LocalSucursalRepositoryTest` (3 pruebas) en verde. Hallazgo
+  de `code-reviewer` corregido antes de cerrar: el check-then-insert
+  original no era atómico (`observeSucursales()` es un `flow` frío que
+  reevalúa el seed en cada colector), lo que permitía crear dos
+  "Sucursal principal" con dos colectores concurrentes; se movió a
+  `SucursalDao.insertIfEmpty` con `@Transaction`, que Room serializa.
 
-**3. Repositorio remoto**
-- [ ] Migración de Alembic para `sucursales`, con seed de la sucursal por
+**3. Repositorio remoto** (POS-16)
+- [x] Migración de Alembic para `sucursales`, con seed de la sucursal por
   defecto si la tabla está vacía — criterio: `alembic upgrade head` sobre
-  una base vacía deja exactamente una fila. `schema-parity`
-- [ ] Rutas `GET /sucursales` y `POST /sucursales` documentadas primero
+  una base vacía deja exactamente una fila. `schema-parity` Verificado:
+  `alembic upgrade head` contra el Postgres de `docker compose` dejó
+  exactamente una fila (`SELECT nombre, local_id, activa FROM sucursales`
+  → `Sucursal principal | (null) | t`). Migración crea la tabla y siembra
+  la fila en el mismo archivo (`0001_create_sucursales.py`), sin
+  necesitar chequeo condicional de vacío.
+- [x] Rutas `GET /sucursales` y `POST /sucursales` documentadas primero
   en `docs/api-contract.md` (CLAUDE.md §9) — criterio: sección nueva en
-  el contrato, revisada.
-- [ ] Rutas implementadas — criterio: `pytest
+  el contrato, revisada. Aprobado el 2026-08-18 (`docs/api-contract.md`
+  §4: `id` es la PK del backend = `remote_id` del dispositivo, `local_id`
+  opcional en el POST para correlación, `is_synced` siempre `true` en
+  las respuestas del backend).
+- [x] Rutas implementadas — criterio: `pytest
   backend/tests/test_sucursales.py` en verde, happy path + 1 error
-  (CLAUDE.md §6).
-- [ ] `RemoteSucursalRepository` (Retrofit) — criterio: `./gradlew
-  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+  (CLAUDE.md §6). Verificado: 4 pruebas en verde (listar con seed, page
+  inválida → 422, crear happy path, crear sin `nombre` → 422). Backend
+  reconstruido en Docker y probado con `curl` real contra el contenedor.
+- [x] `RemoteSucursalRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests` Verificado:
+  `RemoteSucursalRepositoryTest` (2 pruebas, MockK) en verde;
+  `assembleDebug`/`testDebugUnitTest` en verde. `code-reviewer` no
+  encontró hallazgos; señaló (no bloqueante) que `Sucursal.id` significa
+  `local_id` en `LocalSucursalRepository` y `id` remoto en
+  `RemoteSucursalRepository` — a reconciliar en el sub-paso 4/5 (motor
+  de sync / wiring), no antes.
 
-**4. Motor de sync genérico**
-- [ ] Política `last-write-wins` — criterio: prueba de integración
+**4. Motor de sync genérico** (POS-17)
+- [x] Política `last-write-wins` — criterio: prueba de integración
   sincroniza dos versiones de la misma `Sucursal` con `updated_at`
-  distintos y verifica que gana la más reciente.
-- [ ] Lógica de la política de eventos aditivos (sin entidad real
+  distintos y verifica que gana la más reciente. Verificado:
+  `LastWriteWinsSyncEngineTest` (`sync/`), 3 pruebas en verde.
+- [x] Lógica de la política de eventos aditivos (sin entidad real
   todavía) — criterio: prueba unitaria de la función que combina dos
   eventos, sin depender de Room/Retrofit; su validación de integración
-  queda diferida a la Parte 7.
-- [ ] Conflictos se registran en `sync_conflicts` (Parte 3) y en el log
+  queda diferida a la Parte 7. Verificado: `EventoAditivoCombiner.combinar`
+  (`cantidad_resultante = base + deltaLocal + deltaRemoto`, sin comparar
+  `updated_at`, per la decisión híbrida registrada arriba) +
+  `EventoAditivoCombinerTest`, 3 pruebas en verde. La rama "delta negativo
+  → marcar conflicto" queda diferida a la Parte 7/9 a propósito: escribir
+  a `sync_conflicts`/el log desde esta función violaría el propio
+  criterio del checklist ("sin depender de Room/Retrofit").
+- [x] Conflictos se registran en `sync_conflicts` (Parte 3) y en el log
   con categoría `SYNC_CONFLICT` (Parte 5) — criterio: prueba de
   integración provoca un conflicto y verifica ambas escrituras.
-- [ ] Los 4 casos de migración de datos al cambiar de modo (solo local,
+  Verificado: `LastWriteWinsSyncEngine.sincronizar` registra en
+  `SyncConflictDao` (Room) y en `AppLogger` (`SYNC_CONFLICT`) toda
+  divergencia de `updated_at`, incluso resuelta automáticamente
+  (`resueltoAutomaticamente = true`), per PLAN.md Parte 3.
+- [x] Los 4 casos de migración de datos al cambiar de modo (solo local,
   solo remoto, ambos lados, diálogo con impacto concreto) implementados
-  — criterio: 4 pruebas de integración, una por caso.
+  — criterio: 4 pruebas de integración, una por caso. Verificado:
+  `MigrationPlanner.planificar` (`sync/PlanMigracion.kt`) + 4 pruebas en
+  `MigrationPlannerTest` en verde. Lógica pura; el wiring a UI/repositorios
+  reales es el sub-paso 5 (Wiring), todavía no implementado.
 
-**5. Wiring**
-- [ ] Selector de modo conectado a la lógica real — criterio: prueba de
+`code-reviewer` revisó los 4 ítems de este sub-paso sin hallazgos.
+
+**5. Wiring** (POS-18)
+- [x] Selector de modo conectado a la lógica real — criterio: prueba de
   integración cambia el modo desde la UI y verifica que `BackendMode` en
   DataStore cambia y el repositorio inyectado cambia en consecuencia.
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Verificado: `ModeAwareSucursalRepository` (nuevo, `data/`) resuelve
+  `SucursalRepository` a `LocalSucursalRepository`/`RemoteSucursalRepository`
+  reactivamente según `ConfiguracionPreferences.deviceConfig.backendMode`
+  (`flatMapLatest`); `ConfiguracionViewModel` reescrito para leer/escribir
+  contra `ConfiguracionPreferences` y `SucursalRepository` reales en vez de
+  datos estáticos del sub-paso 1. `ModeAwareSucursalRepositoryTest` +
+  `ConfiguracionViewModelTest` (3 pruebas) en verde.
+  `code-reviewer` encontró un hallazgo real en la primera pasada — el
+  `combine` reactivo sobreescribía `ip`/`puerto`/`nombreBaseDatos` (un
+  borrador local sin guardar) cada vez que cambiaba la sucursal o el modo
+  — corregido separando esos tres campos en su propio seed de una sola
+  vez; prueba de regresión agregada. Verificación de una segunda pasada
+  confirmó el fix; señaló además una ventana de carrera mucho más
+  angosta y de confianza baja (60) entre la siembra inicial y una edición
+  del usuario antes del primer render de la pantalla — se deja sin
+  blindaje adicional a propósito, per CLAUDE.md §9 (no programar a la
+  defensiva ante una condición sin evidencia de ocurrir en la práctica).
+- [x] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Confirmado por el usuario el 2026-08-19: instalado y probados
+  exitosamente los tres modos (Local, Remoto, Local con sincronización).
 
 ### Decisiones abiertas
 
-- [ ] Política de sincronización para las cantidades de inventario:
+- [x] Política de sincronización para las cantidades de inventario:
   `last-write-wins` sobre el campo, o saldo derivado de eventos aditivos.
   Se decide aquí porque el motor de sync se construye en esta Parte y las
   Partes 7-12 lo heredan. La Parte 9 permite modificar atributos de
   artículos consultados, y la cantidad en existencia es justo el caso
   donde `last-write-wins` pierde decrementos concurrentes de dos
-  dispositivos de la misma sucursal.
+  dispositivos de la misma sucursal. **Decidido**: enfoque híbrido —
+  `inventario.cantidad` sigue siendo un campo real (no una vista derivada
+  recalculada desde `movimientos`), pero se sincroniza aplicando deltas
+  con signo (`cantidad_resultante = cantidad_base + delta_local +
+  delta_remoto`), nunca comparando `updated_at` como en last-write-wins.
+  `movimientos` sigue siendo la tabla de auditoría/detalle tal como ya
+  está modelada en `docs/schema-pos.json`. El ajuste manual de la Parte 9
+  no es un `UPDATE cantidad = X` directo: se traduce a un `movimiento`
+  tipo `"ajuste"` con `delta = nuevo_valor - valor_conocido_localmente`.
+  Las Partes 7-11 nunca escriben `cantidad` directamente, solo a través de
+  la función de combinar deltas construida aquí. Si la suma de deltas
+  concurrentes deja `cantidad` en negativo (ej. dos ventas del mismo
+  artículo cuando solo había stock para una), el delta se aplica igual
+  (se permite negativo temporalmente) y se registra en `sync_conflicts`
+  con `resuelto_automaticamente=false` para revisión manual del
+  administrador — no bloquea la sincronización de ningún dispositivo.
 
 ---
 

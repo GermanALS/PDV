@@ -19,7 +19,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.data.remote.ApiResult
 
 @Composable
-fun HelloScreen(viewModel: HelloViewModel = hiltViewModel()) {
+fun HelloScreen(
+    onNavigateToConfiguracion: () -> Unit,
+    viewModel: HelloViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold { innerPadding ->
@@ -40,6 +43,9 @@ fun HelloScreen(viewModel: HelloViewModel = hiltViewModel()) {
             }
             Text(text = healthText, style = MaterialTheme.typography.bodyLarge)
 
+            Button(onClick = onNavigateToConfiguracion, modifier = Modifier.fillMaxWidth()) {
+                Text("Configuración")
+            }
             Button(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
                 Text("Cerrar sesión")
             }
