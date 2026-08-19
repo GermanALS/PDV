@@ -467,18 +467,34 @@ que dependen las Partes 7-12.
   "Sucursal principal" con dos colectores concurrentes; se movió a
   `SucursalDao.insertIfEmpty` con `@Transaction`, que Room serializa.
 
-**3. Repositorio remoto**
-- [ ] Migración de Alembic para `sucursales`, con seed de la sucursal por
+**3. Repositorio remoto** (POS-16)
+- [x] Migración de Alembic para `sucursales`, con seed de la sucursal por
   defecto si la tabla está vacía — criterio: `alembic upgrade head` sobre
-  una base vacía deja exactamente una fila. `schema-parity`
-- [ ] Rutas `GET /sucursales` y `POST /sucursales` documentadas primero
+  una base vacía deja exactamente una fila. `schema-parity` Verificado:
+  `alembic upgrade head` contra el Postgres de `docker compose` dejó
+  exactamente una fila (`SELECT nombre, local_id, activa FROM sucursales`
+  → `Sucursal principal | (null) | t`). Migración crea la tabla y siembra
+  la fila en el mismo archivo (`0001_create_sucursales.py`), sin
+  necesitar chequeo condicional de vacío.
+- [x] Rutas `GET /sucursales` y `POST /sucursales` documentadas primero
   en `docs/api-contract.md` (CLAUDE.md §9) — criterio: sección nueva en
-  el contrato, revisada.
-- [ ] Rutas implementadas — criterio: `pytest
+  el contrato, revisada. Aprobado el 2026-08-18 (`docs/api-contract.md`
+  §4: `id` es la PK del backend = `remote_id` del dispositivo, `local_id`
+  opcional en el POST para correlación, `is_synced` siempre `true` en
+  las respuestas del backend).
+- [x] Rutas implementadas — criterio: `pytest
   backend/tests/test_sucursales.py` en verde, happy path + 1 error
-  (CLAUDE.md §6).
-- [ ] `RemoteSucursalRepository` (Retrofit) — criterio: `./gradlew
-  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+  (CLAUDE.md §6). Verificado: 4 pruebas en verde (listar con seed, page
+  inválida → 422, crear happy path, crear sin `nombre` → 422). Backend
+  reconstruido en Docker y probado con `curl` real contra el contenedor.
+- [x] `RemoteSucursalRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests` Verificado:
+  `RemoteSucursalRepositoryTest` (2 pruebas, MockK) en verde;
+  `assembleDebug`/`testDebugUnitTest` en verde. `code-reviewer` no
+  encontró hallazgos; señaló (no bloqueante) que `Sucursal.id` significa
+  `local_id` en `LocalSucursalRepository` y `id` remoto en
+  `RemoteSucursalRepository` — a reconciliar en el sub-paso 4/5 (motor
+  de sync / wiring), no antes.
 
 **4. Motor de sync genérico**
 - [ ] Política `last-write-wins` — criterio: prueba de integración
