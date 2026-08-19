@@ -765,51 +765,187 @@ módulo.
 
 ---
 
-## Parte 8: Módulo Entrada de mercancía
+## Parte 8: Módulo Entrada de mercancía  <!-- POS-24 -->
 
 Simular la entrada de artículos nuevos (agregándolos al maestro de datos y
 luego al inventario) y de artículos existentes (agregándolos solo al
 inventario), con los datos principales del artículo y el estante de
 almacenamiento. Toda entrada queda asociada al usuario en turno (Parte 4).
 
+**Nota (agregada tras revisión del sub-paso 1, 2026-08-19)**: se incorpora
+escaneo de código de barras vía cámara (mismo enfoque CameraX + ML Kit de la
+Parte 7) para agilizar la búsqueda de artículo existente y la captura del
+código en artículo nuevo — ampliación aprobada explícitamente por el usuario
+al checklist original. Categoría, unidad de medida y estante quedan como
+campos de texto libre en esta Parte; se evaluará convertirlos en listas
+cuando se implemente el módulo de Inventario (Parte 9), no antes.
+
 ### Checklist
 
-**1. UI**
-- [ ] Propuesta de pantalla (artículo nuevo vs. existente, estante de
+**1. UI** (POS-25)
+- [x] Propuesta de pantalla (artículo nuevo vs. existente, estante de
   almacenamiento) presentada y aprobada — criterio: aprobación explícita
-  registrada antes de implementar.
-- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
-  `./gradlew build` pasa y la pantalla es navegable.
-- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+  registrada antes de implementar. Aprobado el 2026-08-19 (pantalla
+  `EntradaScreen`: segmented button "Artículo nuevo"/"Artículo existente",
+  búsqueda del catálogo de ejemplo o formulario completo del artículo,
+  cantidad y estante comunes; navegación manual desde `HelloScreen`, mismo
+  patrón sin Navigation Compose que Venta/Configuración).
+- [x] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable. Verificado:
+  `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye lint); catálogo
+  estático de 5 artículos (mismo de `VentaViewModel`, Parte 7) en
+  `EntradaViewModel`; botón "Entrada de mercancía" en `HelloScreen` navega
+  a `EntradaScreen`.
+- [x] Escaneo de código de barras vía cámara (CameraX + ML Kit, mismo
+  enfoque que la Parte 7) disponible para buscar artículo existente y para
+  capturar el código de un artículo nuevo — criterio: `./gradlew build`
+  pasa y el diálogo de escaneo abre/cierra correctamente sin fugas de
+  cámara (mismo criterio de cierre que `BarcodeScannerDialog` de la Parte
+  7). Ampliación al checklist aprobada explícitamente por el usuario tras
+  revisar el sub-paso (2026-08-19), antes de cerrarlo. Verificado:
+  `EntradaScreen` reutiliza `BarcodeScannerDialog` (Parte 7, sin
+  duplicar lógica de cámara) desde ambos modos vía `ObjetivoEscaneo`
+  (`BUSQUEDA_EXISTENTE` / `CODIGO_BARRAS_NUEVO`); `./gradlew build` en
+  verde.
+- [x] Instalado y verificado en el Xiaomi — `needs-device` Confirmado por
+  el usuario el 2026-08-19: pantalla de Entrada instalada y verificada,
+  incluyendo el escaneo de código de barras en ambos modos (artículo
+  existente y artículo nuevo).
 
-**2. Repositorio local**
-- [ ] `EntradaRepository` (interfaz) en `domain/repository/` — criterio:
-  compila sin Room ni Retrofit.
-- [ ] `LocalEntradaRepository` (Room) en `data/local/` — criterio:
-  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
-- [ ] Cada entrada queda asociada al `usuario` en turno (Parte 4) —
+**2. Repositorio local** (POS-26)
+- [x] `EntradaRepository` (interfaz) en `domain/repository/` — criterio:
+  compila sin Room ni Retrofit. Verificado: `EntradaRepository` expone solo
+  `suspend fun registrarEntrada(entrada: Entrada)` sobre el modelo de
+  dominio `Entrada` (sealed class `DeArticuloNuevo`/`DeArticuloExistente`,
+  `domain/model/Entrada.kt`).
+- [x] `LocalEntradaRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado:
+  `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye
+  `testDebugUnitTest`). Primera escritura real de `articulos`/`inventario`
+  en Room (`ArticuloEntity`/`InventarioEntity`, nuevas) — hasta la Parte 7
+  solo existían como modelo de dominio con catálogo estático.
+  `LocalEntradaRepository.registrarEntrada` llama a
+  `EntradaDao.insertEntradaCompleta`, que en una sola transacción Room (a)
+  inserta el artículo si es nuevo, (b) hace upsert de `inventario`
+  aplicando el delta con signo vía `EventoAditivoCombiner.combinar` (nunca
+  un `UPDATE cantidad = X` directo, per PLAN.md Parte 6) y (c) inserta el
+  `movimiento` tipo `"entrada"` (`referencia_tipo="entrada_manual"`).
+  Cierra la validación de `EventoAditivoCombiner` contra una tabla
+  `inventario` real, diferida desde la Parte 6/7 (antes solo se probó con
+  `BigDecimal` sintéticos y con `MovimientoEntity` capturado, nunca contra
+  una fila de inventario persistida).
+- [x] Cada entrada queda asociada al `usuario` en turno (Parte 4) —
   criterio: prueba unitaria verifica que el registro guarda el usuario de
-  la sesión activa.
-- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
-  prueba unitaria verifica la invocación al logger.
-- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
-  criterio: `./gradlew testDebugUnitTest` en verde.
+  la sesión activa. Verificado: `LocalEntradaRepositoryTest` confirma que
+  el `MovimientoEntity` insertado lleva `usuarioId` igual al de la
+  `Entrada` pasada por el llamador (la `Entrada` la arma el `ViewModel`
+  con `SessionManager.session`, mismo patrón que `VentaViewModel`, en el
+  sub-paso 4 de wiring).
+- [x] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger. Verificado:
+  `LocalEntradaRepositoryTest` confirma `appLogger.log(LogType.DB_WRITE,
+  ...)` tras un `registrarEntrada` exitoso.
+- [x] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde. Verificado:
+  `LocalEntradaRepositoryTest`, 3 pruebas en verde (happy path artículo
+  existente: upsert de inventario + movimiento + log; happy path artículo
+  nuevo: además inserta la entidad `ArticuloEntity`; error: una falla del
+  DAO se propaga sin loguear `DB_WRITE`).
 
-**3. Repositorio remoto**
-- [ ] `docs/api-contract.md` actualizado con los endpoints de
+**3. Repositorio remoto** (POS-27)
+- [x] `docs/api-contract.md` actualizado con los endpoints de
   `entradas`/`movimientos` (CLAUDE.md §9) — criterio: sección nueva,
-  revisada.
-- [ ] Ruta FastAPI (`app/routers/entradas.py`) — criterio: `pytest
-  backend/tests/test_entradas.py` en verde.
-- [ ] `RemoteEntradaRepository` (Retrofit) — criterio: `./gradlew
-  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
-- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
-  criterio: prueba unitaria simula timeout.
+  revisada. Verificado: `docs/api-contract.md` §6 (Entradas de mercancía)
+  documenta `POST /entradas` (request para artículo nuevo y para artículo
+  existente, response con `movimiento`/`inventario`/`articulo`, 422 por
+  falta de datos o `articulo_id`+`articulo_nuevo` ambiguo, 404 por
+  `articulo_id` inexistente); reordena las secciones 6-7 originales
+  (Convenciones generales → 7, Pendiente de definir → 8) y actualiza el
+  pendiente de la 8 para reflejar que la alta de
+  `articulos`/`inventario`/`movimientos` ya no está bloqueada.
+- [x] Ruta FastAPI (`app/routers/entradas.py`) — criterio: `pytest
+  backend/tests/test_entradas.py` en verde. Verificado: 4 pruebas en verde
+  contra el Postgres real de `docker compose` (`alembic upgrade head`
+  aplicó `0003_create_articulos_inventario_movimientos` sin drift —
+  `alembic check` confirmó "No new upgrade operations detected" tras
+  registrar los 3 modelos nuevos en `alembic/env.py`). Smoke test manual
+  con `curl` contra el contenedor reconstruido confirma el 201 con
+  `movimiento`+`inventario`+`articulo` y el 422 por artículo ambiguo.
+  `POST /entradas` hace alta de artículo (si es nuevo) + upsert de
+  `inventario` (`cantidad_actual + cantidad_entrada`, nunca un `UPDATE`
+  directo — mismo principio que `EventoAditivoCombiner` del lado Android)
+  + inserción del `movimiento`, en una sola transacción de sesión
+  SQLAlchemy.
+- [x] `RemoteEntradaRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests` Verificado:
+  `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye lint y
+  `testDebugUnitTest`). `EntradaApiService.createEntrada` (POST
+  `/entradas`) + DTOs (`EntradaCreateRequestDto`/`ArticuloNuevoRequestDto`/
+  `EntradaDto`, montos como String); mapea el sealed class `Entrada` al
+  request (`articulo_id` XOR `articulo_nuevo` según la variante). Cableado
+  en `NetworkModule.provideEntradaApiService`. Aún sin `@Binds` a
+  `EntradaRepository` en `RepositoryModule` — se agrega en el sub-paso 4
+  (Wiring), mismo orden que siguieron Sucursal (Parte 6) y Venta (Parte 7).
+- [x] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout. Verificado:
+  `RemoteEntradaRepositoryTest`, 4 pruebas en verde (dos happy path —
+  artículo existente y artículo nuevo, sin loguear nada — y dos de fallo:
+  `IOException` y `HttpException` del API se loguean como `LogType.ERROR`
+  con `sucursalId`/`usuario` y se repropagan sin capturarlas
+  silenciosamente).
 
-**4. Wiring**
-- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
-  prueba con estados mockeados confirma el repositorio correcto.
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+**4. Wiring** (POS-28)
+- [x] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+  prueba con estados mockeados confirma el repositorio correcto. Verificado:
+  `./gradlew build` en verde (incluye lint). `ModeAwareEntradaRepository`
+  (mismo criterio que `ModeAwareVentaRepository`/`ModeAwareSucursalRepository`:
+  local y local-con-sincronización escriben en Room, remoto llama al
+  backend) cableado en `RepositoryModule` vía `@Binds`. `EntradaViewModel`
+  ahora inyecta `EntradaRepository` (interfaz, agnóstica del modo) +
+  `ConfiguracionPreferences` (sucursal seleccionada) + `SessionManager`
+  (usuario de sesión); `registrarEntrada()` valida el formulario, arma el
+  `Entrada` de dominio (`DeArticuloNuevo`/`DeArticuloExistente` según
+  `tipo`) y llama `registrarEntrada`. `ModeAwareEntradaRepositoryTest` (1
+  prueba) confirma que cambiar `BackendMode` en DataStore cambia a cuál
+  repositorio llega la entrada; `EntradaViewModelTest` (5 pruebas: happy
+  path artículo existente, happy path artículo nuevo, falta
+  sucursal/sesión, error de validación de cantidad, falla de red) confirma
+  el wiring del ViewModel.
+- [x] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Confirmado por el usuario el 2026-08-19. Verificado por el agente
+  inspeccionando el estado persistido directamente (no solo el mensaje de
+  éxito en pantalla), mismo criterio que la Parte 7: REMOTO — artículo
+  "Galletas" (sku `121212`) en `articulos`+`inventario`
+  (cantidad 2, ubicación "galletas") +`movimientos` (tipo `entrada`) del
+  Postgres del backend (`docker compose exec db psql`). LOCAL y
+  LOCAL_CON_SINCRONIZACION — artículos "Chocolate" (sku `212131`,
+  cantidad 3, ubicación "Dulces") y "Sabritas" (sku `124124`, cantidad 10,
+  ubicación "Sabritas") en `pdv.db` del dispositivo (`adb exec-out run-as
+  com.pdv.pos cat databases/pdv.db{,-wal,-shm}` — necesarios los 3 archivos
+  juntos porque Room usa WAL y los datos no confirmados viven en
+  `-wal`), cada uno con su `inventario`/`movimiento` de tipo `entrada`
+  asociado y `is_synced=false` (escritura local sin sincronizar).
+
+  **Hallazgo durante la verificación (no bloqueante, documentado)**: la
+  primera prueba del usuario en modo REMOTO con "Artículo existente" dio
+  `404 Not Found`. Causa raíz confirmada inspeccionando Postgres y los
+  logs del contenedor: el catálogo de 5 artículos del cuadro de búsqueda
+  (`EntradaViewModel`, mismo dato estático de ejemplo que
+  `VentaViewModel` desde el sub-paso 1) nunca existió como fila real en
+  ningún backend — la búsqueda de "artículo existente" sigue siendo
+  puramente demo, sin consultar datos reales, porque esa consulta es
+  alcance de la Parte 9 (Inventario), fuera de esta Parte (confirmado al
+  aprobar el alcance de la Parte 8). El backend rechaza correctamente un
+  `articulo_id` inexistente con 404 (comportamiento esperado del router,
+  sección 6.1 del contrato); Room, en cambio, no tiene FK real entre
+  `inventario`/`movimientos` y `articulos`, así que en LOCAL insertó la
+  fila igual sin validar — no es un bug de esta Parte, es la ausencia de
+  validación de integridad referencial local, consistente con el resto
+  del esquema (`venta_detalle.articulo_id` tampoco tiene FK real en el
+  backend, Parte 7). La verificación end-to-end final se hizo con
+  "Artículo nuevo" en los tres modos, que ejercita el mismo pipeline de
+  escritura sin depender de datos preexistentes. Queda para la Parte 9
+  reemplazar el catálogo estático por una consulta real de artículos.
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.

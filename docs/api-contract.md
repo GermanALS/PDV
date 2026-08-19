@@ -252,7 +252,128 @@ Response `422 Unprocessable Entity` — `lineas` vacío, o falta
 
 ---
 
-## 6. Convenciones generales
+## 6. Entradas de mercancía
+
+Tercer recurso real del dominio (PLAN.md Parte 8, módulo Entrada de
+mercancía). No existe una tabla `entradas` propia en `docs/schema-pos.json`
+— una entrada es, en sí misma, un `movimiento` (`tipo="entrada"`) más el
+efecto que produce sobre `articulos` (alta, si el artículo es nuevo) e
+`inventario` (alta o incremento de `cantidad`). El endpoint hace las tres
+escrituras en una sola llamada atómica, análogo a como `POST /ventas`
+persiste la venta y sus líneas juntas.
+
+`cantidad` viaja como **string JSON** (igual convención que Ventas, sección
+5) para no perder precisión decimal. El incremento de `inventario.cantidad`
+se aplica sumando el delta (`cantidad_actual + cantidad_entrada`), nunca
+sobrescribiendo el valor — mismo principio de "eventos aditivos" que el
+motor de sync del dispositivo (`EventoAditivoCombiner`, PLAN.md Parte 6),
+aunque el backend no reutiliza ese código Kotlin.
+
+Exactamente uno de `articulo_id` (artículo existente) o `articulo_nuevo`
+(artículo a dar de alta) debe venir en el body — nunca ambos, nunca
+ninguno.
+
+### 6.1 Registrar entrada
+
+**POST** `/entradas`
+
+Request body — artículo existente:
+```json
+{
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "fecha": "2026-08-19T12:00:00Z",
+  "cantidad": "10",
+  "ubicacion": "Estante A1",
+  "articulo_id": "uuid"
+}
+```
+
+Request body — artículo nuevo:
+```json
+{
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "fecha": "2026-08-19T12:00:00Z",
+  "cantidad": "25",
+  "ubicacion": "Estante B2",
+  "articulo_nuevo": {
+    "local_id": "uuid o null",
+    "codigo_barras": "string o null",
+    "sku": "string, 1-60 caracteres",
+    "nombre": "string, 1-160 caracteres",
+    "descripcion": "string o null",
+    "categoria": "string o null",
+    "unidad_medida": "string, 1-30 caracteres",
+    "precio_venta": "15.00",
+    "costo": "9.00 o null"
+  }
+}
+```
+
+Response `201 Created`
+```json
+{
+  "movimiento": {
+    "id": "uuid",
+    "local_id": "uuid o null",
+    "sucursal_id": "uuid",
+    "articulo_id": "uuid",
+    "usuario_id": "admin",
+    "tipo": "entrada",
+    "cantidad": "25.000",
+    "ubicacion": "Estante B2",
+    "referencia_tipo": "entrada_manual",
+    "referencia_id": null,
+    "fecha": "2026-08-19T12:00:00Z",
+    "updated_at": "2026-08-19T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  },
+  "inventario": {
+    "id": "uuid",
+    "local_id": "uuid o null",
+    "sucursal_id": "uuid",
+    "articulo_id": "uuid",
+    "cantidad": "25.000",
+    "ubicacion": "Estante B2",
+    "updated_at": "2026-08-19T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  },
+  "articulo": {
+    "id": "uuid",
+    "local_id": "uuid o null",
+    "codigo_barras": "string o null",
+    "sku": "string",
+    "nombre": "string",
+    "descripcion": "string o null",
+    "categoria": "string o null",
+    "unidad_medida": "string",
+    "precio_venta": "15.00",
+    "costo": "9.00",
+    "activo": true,
+    "updated_at": "2026-08-19T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  }
+}
+```
+`articulo` es `null` cuando la entrada fue de un artículo existente
+(`articulo_id`), ya que no hubo alta de catálogo.
+
+Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
+`cantidad`, o el body trae tanto `articulo_id` como `articulo_nuevo` (o
+ninguno de los dos).
+
+Response `404 Not Found` — `articulo_id` no corresponde a ningún artículo
+existente.
+
+---
+
+## 7. Convenciones generales
 
 - Todas las fechas en ISO 8601 UTC (`created_at`, `updated_at`).
 - IDs como UUID v4 (string), nunca enteros autoincrementales expuestos en la API pública.
@@ -278,17 +399,19 @@ Response `422 Unprocessable Entity` — `lineas` vacío, o falta
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
-## 7. Pendiente de definir
+## 8. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
 este contrato, sino prerequisitos pendientes):
 
-- [ ] Rutas reales de `articulos`, `inventario`, `cortes_caja`,
-  `devoluciones`, `movimientos`, `usuarios` (PLAN.md Partes 8-12, una por
-  módulo) — `sucursales` (sección 4) y `ventas` (sección 5) ya están
-  implementadas; el placeholder de la sección 3 se reemplaza módulo por
-  módulo a medida que cada Parte llega a su sub-paso de repositorio
-  remoto.
+- [ ] Rutas de lectura/consulta de `articulos`/`inventario` (listar,
+  ajustar atributos — PLAN.md Parte 9) y rutas reales de `cortes_caja`,
+  `devoluciones`, `usuarios` (PLAN.md Partes 10-12, una por módulo) —
+  `sucursales` (sección 4), `ventas` (sección 5) y la alta de
+  `articulos`/`inventario`/`movimientos` vía `POST /entradas` (sección 6)
+  ya están implementadas; el placeholder de la sección 3 se reemplaza
+  módulo por módulo a medida que cada Parte llega a su sub-paso de
+  repositorio remoto.
 - [ ] Rutas de autenticación real y gestión de usuarios/roles (PLAN.md
   Partes 4 y 13, sin implementar).
 - [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,

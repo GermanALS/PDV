@@ -22,6 +22,7 @@ import com.pdv.pos.data.remote.ApiResult
 fun HelloScreen(
     onNavigateToConfiguracion: () -> Unit,
     onNavigateToVenta: () -> Unit,
+    onNavigateToEntrada: () -> Unit,
     viewModel: HelloViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -46,6 +47,9 @@ fun HelloScreen(
 
             Button(onClick = onNavigateToVenta, modifier = Modifier.fillMaxWidth()) {
                 Text("Venta")
+            }
+            Button(onClick = onNavigateToEntrada, modifier = Modifier.fillMaxWidth()) {
+                Text("Entrada de mercancía")
             }
             Button(onClick = onNavigateToConfiguracion, modifier = Modifier.fillMaxWidth()) {
                 Text("Configuración")
