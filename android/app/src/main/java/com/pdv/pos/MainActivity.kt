@@ -5,8 +5,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import com.pdv.pos.auth.LoginScreen
 import com.pdv.pos.auth.SessionManager
+import com.pdv.pos.config.ConfiguracionScreen
 import com.pdv.pos.ui.HelloScreen
 import com.pdv.pos.ui.theme.PdvTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -26,7 +30,12 @@ class MainActivity : ComponentActivity() {
                 if (session == null) {
                     LoginScreen()
                 } else {
-                    HelloScreen()
+                    var showConfiguracion by rememberSaveable { mutableStateOf(false) }
+                    if (showConfiguracion) {
+                        ConfiguracionScreen(onBack = { showConfiguracion = false })
+                    } else {
+                        HelloScreen(onNavigateToConfiguracion = { showConfiguracion = true })
+                    }
                 }
             }
         }

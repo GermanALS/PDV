@@ -429,15 +429,23 @@ que dependen las Partes 7-12.
 
 ### Checklist
 
-**1. UI**
-- [ ] Propuesta de pantalla (parámetros de conexión, selector de sucursal
+**1. UI** (POS-14)
+- [x] Propuesta de pantalla (parámetros de conexión, selector de sucursal
   como lista, selector de modo, permisos simulados, cerrar sesión)
   presentada y aprobada — criterio: aprobación explícita registrada antes
-  de implementar.
-- [ ] Selector de sucursal implementado como lista, nunca campo de texto
+  de implementar. Aprobado el 2026-08-18 (pantalla `ConfiguracionScreen`
+  con navegación manual por estado, sin Navigation Compose).
+- [x] Selector de sucursal implementado como lista, nunca campo de texto
   libre — criterio: revisión de código confirma que no existe ningún
-  campo editando `sucursal_id` directamente.
-- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+  campo editando `sucursal_id` directamente. Verificado: `code-reviewer`
+  confirmó que `SucursalSection` en `ConfiguracionScreen.kt` usa
+  `ExposedDropdownMenuBox` con `OutlinedTextField(readOnly = true)` y
+  selección solo vía `DropdownMenuItem`; `sucursal_id` (UUID) no aparece
+  como campo editable en ningún lado.
+- [x] Instalado y verificado en el Xiaomi — `needs-device` Confirmado por
+  el usuario el 2026-08-18: pantalla de Configuración instalada y
+  verificada (secciones Conexión, Sucursal, Modo, Permisos, Cerrar
+  sesión).
 
 **2. Persistencia local**
 - [ ] DataStore guarda `BackendMode`, parámetros de conexión, y
