@@ -13,8 +13,11 @@ import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionScreen
 import com.pdv.pos.ui.HelloScreen
 import com.pdv.pos.ui.theme.PdvTheme
+import com.pdv.pos.venta.VentaScreen
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+
+private enum class Pantalla { HELLO, CONFIGURACION, VENTA }
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -30,11 +33,14 @@ class MainActivity : ComponentActivity() {
                 if (session == null) {
                     LoginScreen()
                 } else {
-                    var showConfiguracion by rememberSaveable { mutableStateOf(false) }
-                    if (showConfiguracion) {
-                        ConfiguracionScreen(onBack = { showConfiguracion = false })
-                    } else {
-                        HelloScreen(onNavigateToConfiguracion = { showConfiguracion = true })
+                    var pantalla by rememberSaveable { mutableStateOf(Pantalla.HELLO) }
+                    when (pantalla) {
+                        Pantalla.HELLO -> HelloScreen(
+                            onNavigateToConfiguracion = { pantalla = Pantalla.CONFIGURACION },
+                            onNavigateToVenta = { pantalla = Pantalla.VENTA },
+                        )
+                        Pantalla.CONFIGURACION -> ConfiguracionScreen(onBack = { pantalla = Pantalla.HELLO })
+                        Pantalla.VENTA -> VentaScreen(onBack = { pantalla = Pantalla.HELLO })
                     }
                 }
             }

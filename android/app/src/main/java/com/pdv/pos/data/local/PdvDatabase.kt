@@ -2,9 +2,22 @@ package com.pdv.pos.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
-@Database(entities = [SucursalEntity::class, SyncConflictEntity::class], version = 1, exportSchema = false)
+@Database(
+    entities = [
+        SucursalEntity::class,
+        SyncConflictEntity::class,
+        VentaEntity::class,
+        VentaDetalleEntity::class,
+        MovimientoEntity::class,
+    ],
+    version = 2,
+    exportSchema = false,
+)
+@TypeConverters(Converters::class)
 abstract class PdvDatabase : RoomDatabase() {
     abstract fun sucursalDao(): SucursalDao
     abstract fun syncConflictDao(): SyncConflictDao
+    abstract fun ventaDao(): VentaDao
 }

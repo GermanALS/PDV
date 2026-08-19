@@ -21,6 +21,7 @@ import com.pdv.pos.data.remote.ApiResult
 @Composable
 fun HelloScreen(
     onNavigateToConfiguracion: () -> Unit,
+    onNavigateToVenta: () -> Unit,
     viewModel: HelloViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -43,6 +44,9 @@ fun HelloScreen(
             }
             Text(text = healthText, style = MaterialTheme.typography.bodyLarge)
 
+            Button(onClick = onNavigateToVenta, modifier = Modifier.fillMaxWidth()) {
+                Text("Venta")
+            }
             Button(onClick = onNavigateToConfiguracion, modifier = Modifier.fillMaxWidth()) {
                 Text("Configuración")
             }
