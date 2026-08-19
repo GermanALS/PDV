@@ -403,13 +403,12 @@ estándar de Python a stdout, sin archivos ni rotación propios).
 
 ---
 
-## Parte 6: Módulo Configuración
+## Parte 6: Módulo Configuración  <!-- POS-13 -->
 
 Implementa de punta a punta el módulo de Configuración: parámetros de
 conexión al backend FastAPI (IP, puerto, nombre de base de datos), selector
 de sucursal del dispositivo, selector de modo (local / remoto / local con
-sincronización), gestión de permisos por tipo de usuario (interfaz
-simulada por ahora — se conecta de verdad en la Parte 13), y cierre de
+sincronización), gestión de permisos por tipo de usuario (intesimulada por ahora — se conecta de verdad en la Parte 13), y cierre de
 sesión.
 
 El selector de sucursal **nunca** es un campo de texto libre para el
@@ -527,11 +526,30 @@ que dependen las Partes 7-12.
 
 `code-reviewer` revisó los 4 ítems de este sub-paso sin hallazgos.
 
-**5. Wiring**
-- [ ] Selector de modo conectado a la lógica real — criterio: prueba de
+**5. Wiring** (POS-18)
+- [x] Selector de modo conectado a la lógica real — criterio: prueba de
   integración cambia el modo desde la UI y verifica que `BackendMode` en
   DataStore cambia y el repositorio inyectado cambia en consecuencia.
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Verificado: `ModeAwareSucursalRepository` (nuevo, `data/`) resuelve
+  `SucursalRepository` a `LocalSucursalRepository`/`RemoteSucursalRepository`
+  reactivamente según `ConfiguracionPreferences.deviceConfig.backendMode`
+  (`flatMapLatest`); `ConfiguracionViewModel` reescrito para leer/escribir
+  contra `ConfiguracionPreferences` y `SucursalRepository` reales en vez de
+  datos estáticos del sub-paso 1. `ModeAwareSucursalRepositoryTest` +
+  `ConfiguracionViewModelTest` (3 pruebas) en verde.
+  `code-reviewer` encontró un hallazgo real en la primera pasada — el
+  `combine` reactivo sobreescribía `ip`/`puerto`/`nombreBaseDatos` (un
+  borrador local sin guardar) cada vez que cambiaba la sucursal o el modo
+  — corregido separando esos tres campos en su propio seed de una sola
+  vez; prueba de regresión agregada. Verificación de una segunda pasada
+  confirmó el fix; señaló además una ventana de carrera mucho más
+  angosta y de confianza baja (60) entre la siembra inicial y una edición
+  del usuario antes del primer render de la pantalla — se deja sin
+  blindaje adicional a propósito, per CLAUDE.md §9 (no programar a la
+  defensiva ante una condición sin evidencia de ocurrir en la práctica).
+- [x] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Confirmado por el usuario el 2026-08-19: instalado y probados
+  exitosamente los tres modos (Local, Remoto, Local con sincronización).
 
 ### Decisiones abiertas
 

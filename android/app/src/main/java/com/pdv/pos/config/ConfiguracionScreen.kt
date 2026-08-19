@@ -61,6 +61,7 @@ fun ConfiguracionScreen(
                 onIpChange = viewModel::onIpChange,
                 onPuertoChange = viewModel::onPuertoChange,
                 onNombreBaseDatosChange = viewModel::onNombreBaseDatosChange,
+                onGuardarConexion = viewModel::onGuardarConexion,
             )
             SucursalSection(
                 sucursales = uiState.sucursales,
@@ -84,6 +85,7 @@ private fun ConexionSection(
     onIpChange: (String) -> Unit,
     onPuertoChange: (String) -> Unit,
     onNombreBaseDatosChange: (String) -> Unit,
+    onGuardarConexion: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Conexión al backend", style = MaterialTheme.typography.titleMedium)
@@ -105,6 +107,9 @@ private fun ConexionSection(
             label = { Text("Nombre de base de datos") },
             modifier = Modifier.fillMaxWidth(),
         )
+        Button(onClick = onGuardarConexion, modifier = Modifier.fillMaxWidth()) {
+            Text("Guardar conexión")
+        }
     }
 }
 
