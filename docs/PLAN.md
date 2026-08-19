@@ -578,14 +578,14 @@ que dependen las Partes 7-12.
 
 ---
 
-## Parte 7: Módulo Venta de mostrador
+## Parte 7: Módulo Venta de mostrador <!-- POS-19 -->
 
 Escanear un barcode con la cámara o ingresar la descripción del producto, y
 mostrar sus datos principales alineados al esquema de la Parte 3.
 
 ### Checklist
 
-**1. UI**
+**1. UI** (POS-20)
 - [x] Propuesta de pantalla (campos, tipo, layout) presentada y aprobada
   por el usuario — criterio: aprobación explícita registrada antes de
   escribir código. Aprobado el 2026-08-19 (pantalla `VentaScreen`:
@@ -614,7 +614,7 @@ mostrar sus datos principales alineados al esquema de la Parte 3.
   (búsqueda, escaneo con permiso de cámara, tarjeta de artículo, carrito,
   totales, método de pago).
 
-**2. Repositorio local**
+**2. Repositorio local** (POS-21)
 - [x] `VentaRepository` (interfaz) en `domain/repository/` — criterio:
   compila sin referencias a Room ni Retrofit. Verificado: `VentaRepository`
   expone solo `suspend fun registrarVenta(venta: Venta)` sobre el modelo de
@@ -646,32 +646,94 @@ mostrar sus datos principales alineados al esquema de la Parte 3.
   la transacción, y que el destructive migration es una pérdida de datos
   local intencional y razonable en esta etapa, no un descuido).
 
-**3. Repositorio remoto**
-- [ ] `docs/api-contract.md` actualizado con los endpoints de `ventas`
+**3. Repositorio remoto** (POS-22)
+- [x] `docs/api-contract.md` actualizado con los endpoints de `ventas`
   antes de tocar código (CLAUDE.md §9) — criterio: sección nueva en el
-  contrato, revisada por el usuario.
-- [ ] Ruta FastAPI (`app/routers/ventas.py`) — criterio: `pytest
+  contrato, revisada por el usuario. Verificado: `docs/api-contract.md`
+  §5 (Ventas) documenta `POST /ventas`, request/response completos y el
+  422 por `lineas` vacío o campos obligatorios faltantes.
+- [x] Ruta FastAPI (`app/routers/ventas.py`) — criterio: `pytest
   backend/tests/test_ventas.py` en verde, happy path + 1 error (CLAUDE.md
-  §6).
-- [ ] `RemoteVentaRepository` (Retrofit) en `data/remote/` — criterio:
+  §6). Verificado: 2 pruebas en verde contra el Postgres real de `docker
+  compose` (`alembic upgrade head` aplicó `0002_create_ventas` sin
+  drift — `alembic check` confirmó "No new upgrade operations detected"
+  tras corregir `alembic/env.py` para importar también `app.models.venta`,
+  que antes solo registraba `sucursal` en `Base.metadata`). Smoke test
+  manual contra el contenedor corriendo confirma el 422 con el shape de
+  Pydantic esperado.
+- [x] `RemoteVentaRepository` (Retrofit) en `data/remote/` — criterio:
   `./gradlew testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
-- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  Verificado: `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye
+  lint y `testDebugUnitTest`). `VentaApiService.createVenta` (POST
+  `/ventas`) + DTOs (`VentaDto`/`VentaCreateRequestDto`, montos como
+  String para no perder precisión decimal — igual convención que
+  `backend/tests/test_ventas.py`); `fecha: Long` (epoch millis, dominio)
+  se convierte a ISO 8601 con `java.time.Instant` (disponible nativo,
+  `minSdk 26`). Cableado en `NetworkModule.provideVentaApiService`. Aún
+  sin `@Binds` a `VentaRepository` en `RepositoryModule` — se agrega en
+  el sub-paso 4 (Wiring), mismo orden que siguió `Sucursal` en la Parte
+  6.
+- [x] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
   criterio: prueba unitaria simula timeout y verifica la llamada al
-  logger.
+  logger. Verificado: `RemoteVentaRepositoryTest`, 3 pruebas en verde
+  (happy path: mapea `Venta` al DTO y no loguea nada; `IOException` del
+  API se loguea como `LogType.ERROR` con `sucursalId`/`usuarioId` y se
+  repropaga sin capturarla silenciosamente; `HttpException` — ej. el 422
+  que el propio contrato documenta — también se loguea y repropaga, no
+  solo los fallos de conectividad). `code-reviewer` encontró y se
+  corrigió un hallazgo antes de cerrar este ítem: solo se capturaba
+  `IOException`, así que un error de servidor (422/500) se saltaba el
+  log de auditoría.
 
-**4. Wiring**
-- [ ] `ViewModel` conectado a los casos de uso reales según `BackendMode`
+**4. Wiring** (POS-23)
+- [x] `ViewModel` conectado a los casos de uso reales según `BackendMode`
   (Parte 6) — criterio: prueba de `ViewModel` con estados mockeados
   (CLAUDE.md §6) confirma que resuelve el repositorio correcto según el
-  modo.
-- [ ] Modo local-con-sincronización trata las ventas como eventos aditivos
+  modo. Verificado: `./gradlew build` en verde (incluye lint).
+  `ModeAwareVentaRepository` (mismo criterio que `ModeAwareSucursalRepository`
+  de la Parte 6: local y local-con-sincronización escriben en Room, remoto
+  llama al backend) cableado en `RepositoryModule` vía `@Binds`.
+  `VentaViewModel` ahora inyecta `VentaRepository` (interfaz, agnóstica del
+  modo) + `ConfiguracionPreferences` (sucursal seleccionada) +
+  `SessionManager` (usuario de sesión); `confirmarVenta()` arma el `Venta`
+  de dominio y llama `registrarVenta`. `ModeAwareVentaRepositoryTest` (1
+  prueba) confirma que cambiar `BackendMode` en DataStore cambia a cuál
+  repositorio llega la venta; `VentaViewModelTest` (3 pruebas: happy path,
+  falta sucursal/sesión, falla de red) confirma el wiring del ViewModel.
+  `code-reviewer` encontró y se corrigió un hallazgo antes de cerrar este
+  ítem: el catálogo estático de ejemplo (`CATALOGO_EJEMPLO`) usaba ids
+  `"art-1"`..`"art-5"` en vez de UUID — como esos ids ahora fluyen a
+  `VentaLinea.articuloId` y de ahí al backend, rompían toda venta en modo
+  REMOTO con 422 (`articulo_id` debe ser UUID). Corregido con UUIDs
+  válidos en el catálogo.
+- [x] Modo local-con-sincronización trata las ventas como eventos aditivos
   (política Parte 6) — criterio: prueba de integración que sincroniza dos
   ventas concurrentes desde dos dispositivos y verifica que ambas se
   aplican (no que una sobreescribe a la otra). Aquí se cierra la
   validación de la rama "eventos aditivos" del motor de sync, diferida
-  desde la Parte 6.
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos (local / remoto
-  / local-con-sync) — `needs-device`
+  desde la Parte 6. Verificado:
+  `VentaEventoAditivoIntegrationTest` — a diferencia de
+  `EventoAditivoCombinerTest` (Parte 6, que solo probaba
+  `EventoAditivoCombiner.combinar` con `BigDecimal` sintéticos), esta
+  prueba registra dos ventas de una unidad del mismo artículo vía
+  `LocalVentaRepository.registrarVenta` en dos `VentaDao` independientes
+  (simulando dos dispositivos), captura el `MovimientoEntity` real que
+  cada una genera, y confirma que `EventoAditivoCombiner.combinar`
+  aplica ambos decrementos (`base=2` con dos deltas de `-1` da `0`, no se
+  pierde ninguno).
+- [x] Verificado end-to-end en el Xiaomi en los tres modos (local / remoto
+  / local-con-sync) — `needs-device` Confirmado por el usuario el
+  2026-08-19: una venta de 1 "Refresco de cola" en cada uno de los tres
+  modos. Verificado por el agente inspeccionando el estado persistido
+  directamente (no solo el mensaje de éxito en pantalla): REMOTO —
+  `venta`+`venta_detalle` en el Postgres del backend (`docker compose exec
+  db psql`), folio `V-1787162993327`, `articulo_id` UUID correcto,
+  `$18.50`. LOCAL y LOCAL_CON_SINCRONIZACION — `venta`+`venta_detalle`+
+  `movimiento` (tipo `salida`, `referenciaTipo=venta`) en `pdv.db` del
+  dispositivo (`adb exec-out run-as com.pdv.pos cat databases/pdv.db`),
+  folios `V-1787163026803` y `V-1787163098575`, ambos con su movimiento de
+  salida asociado — confirma que la transacción atómica Room (Repositorio
+  local, sub-paso 2) funciona en el dispositivo real, no solo en tests.
 
 ### Decisiones abiertas
 

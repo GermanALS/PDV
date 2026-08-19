@@ -184,6 +184,11 @@ sub-paso de la Parte 7; se agrega si una Parte futura lo requiere.
 
 **POST** `/ventas`
 
+Los campos de monto/cantidad (`subtotal`, `descuento`, `impuestos`, `total`,
+`cantidad`, `precio_unitario`) viajan como **string JSON**, no como número
+crudo — evita perder precisión decimal en el viaje de ida y vuelta;
+`Decimal` de Pydantic los acepta igual que un número.
+
 Request body
 ```json
 {
@@ -192,19 +197,19 @@ Request body
   "usuario_id": "admin",
   "folio": "string",
   "fecha": "2026-08-19T12:00:00Z",
-  "subtotal": 100.00,
-  "descuento": 0.00,
-  "impuestos": 0.00,
-  "total": 100.00,
+  "subtotal": "100.00",
+  "descuento": "0.00",
+  "impuestos": "0.00",
+  "total": "100.00",
   "metodo_pago": "efectivo",
   "estado": "completada",
   "lineas": [
     {
       "local_id": "uuid o null",
       "articulo_id": "uuid",
-      "cantidad": 2,
-      "precio_unitario": 50.00,
-      "subtotal": 100.00
+      "cantidad": "2",
+      "precio_unitario": "50.00",
+      "subtotal": "100.00"
     }
   ]
 }
@@ -220,10 +225,10 @@ Response `201 Created`
   "usuario_id": "admin",
   "folio": "string",
   "fecha": "2026-08-19T12:00:00Z",
-  "subtotal": 100.00,
-  "descuento": 0.00,
-  "impuestos": 0.00,
-  "total": 100.00,
+  "subtotal": "100.00",
+  "descuento": "0.00",
+  "impuestos": "0.00",
+  "total": "100.00",
   "metodo_pago": "efectivo",
   "estado": "completada",
   "updated_at": "2026-08-19T12:00:00Z",
@@ -234,9 +239,9 @@ Response `201 Created`
       "id": "uuid",
       "local_id": "uuid o null",
       "articulo_id": "uuid",
-      "cantidad": 2,
-      "precio_unitario": 50.00,
-      "subtotal": 100.00
+      "cantidad": "2.000",
+      "precio_unitario": "50.00",
+      "subtotal": "100.00"
     }
   ]
 }
