@@ -586,26 +586,65 @@ mostrar sus datos principales alineados al esquema de la Parte 3.
 ### Checklist
 
 **1. UI**
-- [ ] Propuesta de pantalla (campos, tipo, layout) presentada y aprobada
+- [x] Propuesta de pantalla (campos, tipo, layout) presentada y aprobada
   por el usuario — criterio: aprobación explícita registrada antes de
-  escribir código.
-- [ ] Composable implementado con datos estáticos de ejemplo (mínimo 5
+  escribir código. Aprobado el 2026-08-19 (pantalla `VentaScreen`:
+  búsqueda/escaneo, tarjeta de artículo con 5 campos, carrito, totales,
+  método de pago; navegación manual desde `HelloScreen`, mismo patrón sin
+  Navigation Compose que Configuración).
+- [x] Composable implementado con datos estáticos de ejemplo (mínimo 5
   campos del producto) — criterio: `./gradlew build` pasa y la pantalla es
-  navegable desde el menú principal.
-- [ ] Instalado y verificado corriendo en el Xiaomi (o emulador fallback)
+  navegable desde el menú principal. Verificado: `./gradlew build` en
+  verde (`BUILD SUCCESSFUL`, incluye lint); catálogo estático de 5
+  artículos de ejemplo en `VentaViewModel`; botón "Venta" en `HelloScreen`
+  navega a `VentaScreen`. `code-reviewer` encontró y se corrigieron dos
+  hallazgos antes de cerrar este ítem: búsqueda vacía coincidía con el
+  primer artículo del catálogo (`"".contains("")` siempre `true` en
+  Kotlin) — corregido devolviendo `null` si el término está vacío; y una
+  carrera entre el bind asíncrono de `ProcessCameraProvider` y el
+  `onDispose` del diálogo de escaneo podía dejar la cámara abierta sin
+  liberar y el `ImageAnalysis` con el executor ya cerrado — corregido con
+  una bandera `disposed` que el listener de bind respeta, más cierre del
+  `BarcodeScanner` de ML Kit en `onDispose` (hallazgo adicional del mismo
+  reviewer, antes no se cerraba nunca).
+- [x] Instalado y verificado corriendo en el Xiaomi (o emulador fallback)
   — criterio: `./gradlew installDebug` + confirmación manual de que la
-  pantalla se ve con los datos de ejemplo. `needs-device`
+  pantalla se ve con los datos de ejemplo. `needs-device` Confirmado por
+  el usuario el 2026-08-19: pantalla de Venta instalada y verificada
+  (búsqueda, escaneo con permiso de cámara, tarjeta de artículo, carrito,
+  totales, método de pago).
 
 **2. Repositorio local**
-- [ ] `VentaRepository` (interfaz) en `domain/repository/` — criterio:
-  compila sin referencias a Room ni Retrofit.
-- [ ] `LocalVentaRepository` (Room) en `data/local/` — criterio:
+- [x] `VentaRepository` (interfaz) en `domain/repository/` — criterio:
+  compila sin referencias a Room ni Retrofit. Verificado: `VentaRepository`
+  expone solo `suspend fun registrarVenta(venta: Venta)` sobre el modelo de
+  dominio `Venta`/`VentaLinea` (`domain/model/Venta.kt`).
+- [x] `LocalVentaRepository` (Room) en `data/local/` — criterio:
   `./gradlew testDebugUnitTest` pasa para sus pruebas. `jvm-tests`
-- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  Verificado: `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye
+  testDebugUnitTest). `LocalVentaRepository.registrarVenta` inserta
+  `VentaEntity` + `VentaDetalleEntity` (una por línea) + `MovimientoEntity`
+  (tipo `"salida"`, `referenciaTipo="venta"`) en una sola transacción Room
+  (`VentaDao.insertVentaCompleta`, patrón `@Transaction` sobre método
+  default ya validado en `SucursalDao.insertIfEmpty`, Parte 6) — decisión
+  "venta como evento aditivo" de este mismo Parte. `Converters` nuevo
+  (`BigDecimal` ↔ `String` vía `toPlainString()`) para los campos
+  monetarios/de cantidad; `PdvDatabase` sube a versión 2 con
+  `fallbackToDestructiveMigration(dropAllTables = true)` (sin datos de
+  producción que preservar en esta etapa).
+- [x] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
   prueba unitaria verifica la invocación al logger con la categoría
-  correcta.
-- [ ] Pruebas unitarias (JUnit5 + MockK) del happy path + 1 caso de error
+  correcta. Verificado: `LocalVentaRepositoryTest` (MockK) confirma
+  `appLogger.log(LogType.DB_WRITE, ...)` tras un `registrarVenta` exitoso.
+- [x] Pruebas unitarias (JUnit5 + MockK) del happy path + 1 caso de error
   (CLAUDE.md §6) — criterio: `./gradlew testDebugUnitTest` en verde.
+  Verificado: `LocalVentaRepositoryTest`, 2 pruebas en verde (happy path:
+  inserta venta+detalle+movimiento y loguea `DB_WRITE`; error: una falla
+  del DAO se propaga sin loguear `DB_WRITE`). `code-reviewer` revisó los 11
+  archivos de este sub-paso sin hallazgos (confirmó explícitamente:
+  round-trip de `BigDecimal` sin pérdida de precisión, atomicidad real de
+  la transacción, y que el destructive migration es una pérdida de datos
+  local intencional y razonable en esta etapa, no un descuido).
 
 **3. Repositorio remoto**
 - [ ] `docs/api-contract.md` actualizado con los endpoints de `ventas`
@@ -636,11 +675,28 @@ mostrar sus datos principales alineados al esquema de la Parte 3.
 
 ### Decisiones abiertas
 
-- [ ] Librería de escaneo de barcode y manejo del permiso de cámara
+- [x] Librería de escaneo de barcode y manejo del permiso de cámara
   (`CLAUDE.md` §9: no introducir dependencias de terceros sin señalarlo).
-- [ ] Modelado de la venta como evento aditivo: si el evento incluye el
+  **Decidido**: CameraX + ML Kit Barcode Scanning con el modelo *bundled*
+  (`com.google.mlkit:barcode-scanning`, no la variante `-play-services`) —
+  corre 100% on-device, no depende de Google Play Services (indiferente si
+  el Xiaomi M2102J20SG los tiene). Permiso de cámara vía
+  `rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission())`
+  + `Manifest.permission.CAMERA`. Dependencias nuevas a declarar en
+  `android/app/build.gradle.kts` en el sub-paso 1 (UI): `androidx.camera:camera-*`
+  y `com.google.mlkit:barcode-scanning`.
+- [x] Modelado de la venta como evento aditivo: si el evento incluye el
   decremento de inventario, o si el inventario se deriva de la suma de
-  ventas. Depende de la decisión de cantidades de la Parte 6.
+  ventas. Depende de la decisión de cantidades de la Parte 6. **Decidido**:
+  al registrar una venta, `LocalVentaRepository` inserta `venta` +
+  `venta_detalle` y, en la misma transacción Room, un `movimiento` tipo
+  `"salida"` (`referencia_tipo="venta"`, `referencia_id=venta.localId`) por
+  cada línea — el delta negativo de `inventario.cantidad` que ese
+  movimiento representa es lo que se combina con
+  `EventoAditivoCombiner.combinar` en sync. La fila de `venta`/
+  `venta_detalle` en sí no compite con nada (fila nueva por venta) y
+  sincroniza con `LastWriteWinsSyncEngine`, igual que `Sucursal`. Separación
+  limpia entre los dos motores ya construidos en la Parte 6.
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.

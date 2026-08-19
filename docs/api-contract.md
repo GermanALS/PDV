@@ -164,7 +164,90 @@ Response `201 Created` → mismo shape que un ítem de 4.1.
 
 ---
 
-## 5. Convenciones generales
+## 5. Ventas
+
+Segundo recurso real del dominio (PLAN.md Parte 7, módulo Venta de
+mostrador). Registra una venta de mostrador junto con sus líneas
+(`venta_detalle`) en una sola llamada. El `movimiento` de salida que
+decrementa inventario (PLAN.md Parte 7, "Decisiones abiertas": venta como
+evento aditivo) se genera del lado del dispositivo, no aquí — este
+endpoint solo persiste la venta y sus líneas tal cual las manda el cliente.
+`id` es la PK del backend = `remote_id` del dispositivo una vez
+sincronizada; cada línea tiene su propio `id`/`local_id` con el mismo
+patrón de correlación que sucursales (sección 4). `usuario_id` es el
+identificador de sesión ficticio de la Parte 4 (`admin`/`user1`), no un
+UUID todavía — se endurece a FK real contra `usuarios` en la Parte 13. No
+hay endpoint de listado (`GET /ventas`) todavía: no lo necesita ningún
+sub-paso de la Parte 7; se agrega si una Parte futura lo requiere.
+
+### 5.1 Registrar venta
+
+**POST** `/ventas`
+
+Request body
+```json
+{
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "folio": "string",
+  "fecha": "2026-08-19T12:00:00Z",
+  "subtotal": 100.00,
+  "descuento": 0.00,
+  "impuestos": 0.00,
+  "total": 100.00,
+  "metodo_pago": "efectivo",
+  "estado": "completada",
+  "lineas": [
+    {
+      "local_id": "uuid o null",
+      "articulo_id": "uuid",
+      "cantidad": 2,
+      "precio_unitario": 50.00,
+      "subtotal": 100.00
+    }
+  ]
+}
+```
+`lineas` requiere al menos un elemento.
+
+Response `201 Created`
+```json
+{
+  "id": "uuid",
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "folio": "string",
+  "fecha": "2026-08-19T12:00:00Z",
+  "subtotal": 100.00,
+  "descuento": 0.00,
+  "impuestos": 0.00,
+  "total": 100.00,
+  "metodo_pago": "efectivo",
+  "estado": "completada",
+  "updated_at": "2026-08-19T12:00:00Z",
+  "is_synced": true,
+  "deleted_at": null,
+  "lineas": [
+    {
+      "id": "uuid",
+      "local_id": "uuid o null",
+      "articulo_id": "uuid",
+      "cantidad": 2,
+      "precio_unitario": 50.00,
+      "subtotal": 100.00
+    }
+  ]
+}
+```
+
+Response `422 Unprocessable Entity` — `lineas` vacío, o falta
+`sucursal_id`/`usuario_id`/`folio`/`metodo_pago`.
+
+---
+
+## 6. Convenciones generales
 
 - Todas las fechas en ISO 8601 UTC (`created_at`, `updated_at`).
 - IDs como UUID v4 (string), nunca enteros autoincrementales expuestos en la API pública.
@@ -190,16 +273,17 @@ Response `201 Created` → mismo shape que un ítem de 4.1.
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
-## 6. Pendiente de definir
+## 7. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
 este contrato, sino prerequisitos pendientes):
 
-- [ ] Rutas reales de `articulos`, `inventario`, `ventas`, `cortes_caja`,
-  `devoluciones`, `movimientos`, `usuarios` (PLAN.md Partes 7-12, una por
-  módulo) — `sucursales` (sección 4) ya está implementada; el placeholder
-  de la sección 3 se reemplaza módulo por módulo a medida que cada Parte
-  llega a su sub-paso de repositorio remoto.
+- [ ] Rutas reales de `articulos`, `inventario`, `cortes_caja`,
+  `devoluciones`, `movimientos`, `usuarios` (PLAN.md Partes 8-12, una por
+  módulo) — `sucursales` (sección 4) y `ventas` (sección 5) ya están
+  implementadas; el placeholder de la sección 3 se reemplaza módulo por
+  módulo a medida que cada Parte llega a su sub-paso de repositorio
+  remoto.
 - [ ] Rutas de autenticación real y gestión de usuarios/roles (PLAN.md
   Partes 4 y 13, sin implementar).
 - [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,
