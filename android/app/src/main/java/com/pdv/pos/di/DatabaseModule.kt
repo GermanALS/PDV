@@ -2,6 +2,7 @@ package com.pdv.pos.di
 
 import android.content.Context
 import androidx.room.Room
+import com.pdv.pos.data.local.EntradaDao
 import com.pdv.pos.data.local.PdvDatabase
 import com.pdv.pos.data.local.SucursalDao
 import com.pdv.pos.data.local.SyncConflictDao
@@ -35,4 +36,7 @@ object DatabaseModule {
 
     @Provides
     fun provideVentaDao(database: PdvDatabase): VentaDao = database.ventaDao()
+
+    @Provides
+    fun provideEntradaDao(database: PdvDatabase): EntradaDao = database.entradaDao()
 }
