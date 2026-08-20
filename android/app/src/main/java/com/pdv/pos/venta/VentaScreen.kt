@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -19,14 +20,17 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.domain.model.Articulo
+import java.io.File
 import java.math.BigDecimal
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,11 +40,41 @@ fun VentaScreen(
     viewModel: VentaViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
     if (uiState.mostrarEscaner) {
         BarcodeScannerDialog(
             onBarcodeScanned = viewModel::onBarcodeEscaneado,
             onDismiss = viewModel::onEscanerDismiss,
+        )
+    }
+
+    if (uiState.mostrarDialogoEfectivo) {
+        EfectivoRecibidoDialog(
+            total = uiState.total,
+            efectivoIngresado = uiState.efectivoIngresado,
+            error = uiState.errorEfectivo,
+            onEfectivoIngresadoChange = viewModel::onEfectivoIngresadoChange,
+            onConfirmar = viewModel::confirmarEfectivo,
+            onCancelar = viewModel::cancelarDialogoEfectivo,
+        )
+    }
+
+    if (uiState.mostrarDialogoReimpresion) {
+        val folio = uiState.ticketPdf?.folioDeTicket().orEmpty()
+        AlertDialog(
+            onDismissRequest = viewModel::onReimpresionDescartada,
+            confirmButton = {
+                TextButton(onClick = {
+                    uiState.ticketPdf?.let { context.imprimirTicket(it, folio, onImpresionEnviada = {}) }
+                    viewModel.onReimpresionDescartada()
+                }) { Text("Sí, reimprimir") }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::onReimpresionDescartada) { Text("No") }
+            },
+            title = { Text("Reimpresión") },
+            text = { Text("¿Reimprimir una copia del ticket para el cliente?") },
         )
     }
 
@@ -95,8 +129,96 @@ fun VentaScreen(
             uiState.mensajeConfirmacion?.let { mensaje ->
                 Text(mensaje, style = MaterialTheme.typography.bodyMedium)
             }
+            uiState.cambioEntregado?.let { cambio ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Cambio a entregar: $cambio",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+            }
+            if (uiState.mensajeConfirmacion != null) {
+                AccionesPostVentaSection(
+                    ticketDisponible = uiState.ticketPdf != null,
+                    onImprimir = {
+                        uiState.ticketPdf?.let { ticket ->
+                            context.imprimirTicket(ticket, ticket.folioDeTicket()) { viewModel.onTicketImpreso() }
+                        }
+                    },
+                    onCerrarVenta = viewModel::cerrarVenta,
+                )
+            }
         }
     }
+}
+
+private fun File.folioDeTicket(): String = nameWithoutExtension.removePrefix("ticket-")
+
+// Mismo diseño de "botón doble" que MetodoPagoSection (SegmentedButton en
+// SingleChoiceSegmentedButtonRow): aquí no representan una selección
+// persistida, cada uno dispara su propia acción una vez - por eso
+// `selected` queda siempre en false.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AccionesPostVentaSection(
+    ticketDisponible: Boolean,
+    onImprimir: () -> Unit,
+    onCerrarVenta: () -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        if (ticketDisponible) {
+            SegmentedButton(
+                selected = false,
+                onClick = onImprimir,
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+            ) { Text("Imprimir ticket") }
+            SegmentedButton(
+                selected = false,
+                onClick = onCerrarVenta,
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+            ) { Text("Cerrar venta") }
+        } else {
+            SegmentedButton(
+                selected = false,
+                onClick = onCerrarVenta,
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 1),
+            ) { Text("Cerrar venta") }
+        }
+    }
+}
+
+@Composable
+private fun EfectivoRecibidoDialog(
+    total: BigDecimal,
+    efectivoIngresado: String,
+    error: String?,
+    onEfectivoIngresadoChange: (String) -> Unit,
+    onConfirmar: () -> Unit,
+    onCancelar: () -> Unit,
+) {
+    val cambio = efectivoIngresado.trim().toBigDecimalOrNull()?.let { it - total }
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        confirmButton = { TextButton(onClick = onConfirmar) { Text("Confirmar") } },
+        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },
+        title = { Text("Pago en efectivo") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Total a cobrar: $total")
+                OutlinedTextField(
+                    value = efectivoIngresado,
+                    onValueChange = onEfectivoIngresadoChange,
+                    label = { Text("Efectivo recibido") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (cambio != null && cambio >= BigDecimal.ZERO) {
+                    Text("Cambio: $cambio", style = MaterialTheme.typography.titleMedium)
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+    )
 }
 
 @Composable

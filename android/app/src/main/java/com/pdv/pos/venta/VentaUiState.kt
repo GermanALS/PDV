@@ -1,6 +1,7 @@
 package com.pdv.pos.venta
 
 import com.pdv.pos.domain.model.Articulo
+import java.io.File
 import java.math.BigDecimal
 
 enum class MetodoPago {
@@ -23,6 +24,12 @@ data class VentaUiState(
     val metodoPago: MetodoPago = MetodoPago.EFECTIVO,
     val mostrarEscaner: Boolean = false,
     val mensajeConfirmacion: String? = null,
+    val mostrarDialogoEfectivo: Boolean = false,
+    val efectivoIngresado: String = "",
+    val errorEfectivo: String? = null,
+    val cambioEntregado: BigDecimal? = null,
+    val ticketPdf: File? = null,
+    val mostrarDialogoReimpresion: Boolean = false,
 ) {
     val subtotal: BigDecimal = carrito.fold(BigDecimal.ZERO) { acumulado, linea -> acumulado + linea.subtotal }
     val descuento: BigDecimal = BigDecimal.ZERO

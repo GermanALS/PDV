@@ -1499,6 +1499,143 @@ Backlog) no esté implementado.
 
 ---
 
+## Parte 17: Mejoras de venta de mostrador — pago en efectivo y ticket <!-- POS-34 -->
+
+Extiende el módulo de Venta de mostrador (Parte 7, ya cerrada) con 3 mejoras
+solicitadas sobre el flujo ya funcionando: cobro en efectivo con cálculo de
+cambio, generación en background de un ticket en PDF, e impresión con
+reimpresión opcional para el cliente. No toca `docs/api-contract.md` ni
+`backend/` — las 3 mejoras son enteramente locales al dispositivo.
+
+### Checklist
+
+**1. Pago en efectivo y cambio** (POS-35)
+- [x] Al confirmar una venta en efectivo, `VentaViewModel` pide el monto
+  recibido (diálogo `EfectivoRecibidoDialog`) antes de registrar la venta,
+  valida que sea un número `>= total`, y calcula el cambio — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado:
+  `VentaViewModelTest` (5 pruebas) — flujo de 2 pasos con cambio calculado
+  (`cambioEntregado = efectivoRecibido - total`), monto insuficiente
+  bloquea el registro y muestra `errorEfectivo`, venta con tarjeta sigue
+  registrando directo sin abrir el diálogo, y las 2 pruebas preexistentes
+  de precondición (sin sucursal/sesión, falla del repositorio) siguen en
+  verde adaptadas al nuevo flujo. `code-reviewer` encontró y se corrigió un
+  hallazgo antes de cerrar este ítem: `cambioEntregado`/`ticketPdf`/
+  `mensajeConfirmacion` de la venta anterior seguían visibles en pantalla
+  mientras se armaba el carrito de la siguiente venta (riesgo real de que
+  el encargado entregara el cambio o reimprimiera el ticket equivocado) —
+  corregido limpiando esos 3 campos en `agregarAlCarrito`.
+- [x] El cambio se muestra de forma prominente tras la venta (no solo
+  dentro del mensaje de confirmación) — criterio: `VentaScreen` renderiza
+  una `Card` propia con `cambioEntregado` cuando no es nulo. Verificado:
+  `./gradlew build` en verde (incluye lint).
+
+**2. Generación de ticket PDF** (POS-36)
+- [x] `TicketFormatter` (objeto puro, sin dependencias de Android) arma las
+  líneas del ticket (encabezado de sucursal, folio, fecha, artículos,
+  totales, método de pago, y efectivo/cambio si aplica) — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado:
+  `TicketFormatterTest` (2 pruebas: venta en efectivo con cambio, venta con
+  tarjeta sin esas líneas).
+- [x] `TicketPdfWriter` dibuja esas líneas en un `android.graphics.pdf.PdfDocument`
+  (ancho fijo tipo recibo térmico, sin librería nueva) y `TicketManager` lo
+  persiste en background (`Dispatchers.IO`) dentro de una carpeta nombrada
+  por la fecha de creación de la venta — criterio: `./gradlew build` en
+  verde. Verificado: `TicketManager.generarTicket` escribe en
+  `context.filesDir/tickets/<yyyy-MM-dd>/ticket-<folio>.pdf`; directorio
+  persistente (no `cacheDir`), mismo criterio que `logs/` de `AppLogger`
+  (Parte 5). Sin test unitario de `TicketPdfWriter`/`TicketManager` — mismo
+  criterio que `BarcodeScannerDialog`/`InventarioExportManager`: se testea
+  el contenido puro (`TicketFormatter`), no el trazo en `Canvas` ni el I/O
+  de archivos.
+- [x] `VentaViewModel` resuelve nombre/dirección de la sucursal actual
+  (`SucursalRepository`) y dispara la generación del ticket justo después
+  de registrar la venta exitosamente, guardando el `File` resultante en
+  `VentaUiState.ticketPdf` — criterio: `./gradlew testDebugUnitTest` en
+  verde con `TicketManager` mockeado. `jvm-tests` Verificado: cubierto por
+  `VentaViewModelTest` (mock de `TicketManager.generarTicket`).
+  `code-reviewer` encontró y se corrigió un hallazgo antes de cerrar este
+  ítem: el registro de la venta y la generación del ticket compartían un
+  único `try/catch`, así que un fallo de I/O solo en la escritura del PDF
+  (venta ya persistida) se reportaba como "no se pudo registrar la venta"
+  sin vaciar el carrito — el encargado podía reintentar y duplicar la venta
+  ya guardada. Corregido separando ambos pasos: el carrito se vacía y la
+  venta se confirma en pantalla apenas `ventaRepository.registrarVenta`
+  tiene éxito; la generación del ticket corre después en su propio
+  `try/catch` (`generarTicketSeguro`), y si falla solo deja `ticketPdf` en
+  `null` (sin botón de impresión), sin afectar el resultado de la venta.
+  Hallazgo adicional del mismo reviewer (simplificación, no bug): el nuevo
+  parseo de `BigDecimal` desde texto duplicaba con otro nombre un helper ya
+  existente en `InventarioViewModel.kt`/`EntradaViewModel.kt` — unificado a
+  la misma firma (`String.toBigDecimalOrNull()`).
+
+**3. Impresión y reimpresión** (POS-37)
+- [x] Botón "Imprimir ticket" visible cuando hay un `ticketPdf` generado,
+  que imprime vía el Print Framework de Android (`PrintManager` +
+  `PrintDocumentAdapter`) — decisión de arquitectura confirmada por el
+  usuario, ver "Decisiones abiertas". Criterio: `./gradlew build` en verde.
+  Verificado: `Context.imprimirTicket` (`TicketPrinter.kt`) arma un
+  `PrintDocumentAdapter` mínimo que copia el PDF ya generado al destino que
+  entrega el sistema de impresión.
+- [x] Justo después de enviar la impresión, se pregunta si se quiere una
+  reimpresión para el cliente — criterio: `./gradlew build` en verde.
+  Verificado: `onWriteFinished` del adapter (única señal confiable que
+  expone el framework de que el documento ya se entregó al subsistema de
+  impresión — Android no expone un evento de "ya salió el papel") dispara
+  `VentaViewModel.onTicketImpreso()`, que muestra `ReimpresionDialog`; "Sí"
+  reimprime sin volver a encadenar el diálogo (evita el bucle), "No" solo
+  lo cierra.
+- [x] Al cerrarse el diálogo de reimpresión (con o sin reimpresión), la
+  pantalla vuelve a un estado igual al inicial — criterio: `./gradlew
+  testDebugUnitTest` en verde. Hallazgo del usuario probando en el Xiaomi
+  (`needs-device`, sub-paso 1 de esta Parte): tras imprimir y terminar la
+  venta, el folio y el botón "Imprimir ticket" de la venta ya cerrada
+  seguían visibles hasta que se agregaba el primer artículo de la
+  siguiente venta. Corregido: `onReimpresionDescartada` ahora limpia
+  también `mensajeConfirmacion`, `cambioEntregado` y `ticketPdf`, sin
+  esperar a que arranque el carrito siguiente.
+- [x] Botón "Cerrar venta" junto al de imprimir, para cuando no hace falta
+  o no es posible imprimir y solo se quiere limpiar la pantalla — criterio:
+  `./gradlew build` en verde. Pedido del usuario probando en el Xiaomi:
+  mismo diseño de "botón doble" que `MetodoPagoSection`
+  (`SingleChoiceSegmentedButtonRow` + `SegmentedButton`, con `selected`
+  siempre en `false` porque no representan una selección persistida — cada
+  uno dispara su propia acción una vez). `VentaViewModel.cerrarVenta()`
+  reusa el mismo `sinResultadoDeVenta()` que `onReimpresionDescartada`. Si
+  la generación del ticket falló (`ticketPdf == null`), el segmented row
+  muestra solo "Cerrar venta".
+
+**4. Verificación** (POS-38)
+- [ ] Instalado y verificado en el Xiaomi M2102J20SG: una venta en efectivo
+  con cambio visible en pantalla, ticket PDF generado en
+  `tickets/<fecha>/ticket-<folio>.pdf` (mismo truco `adb exec-out run-as
+  com.pdv.pos cat files/tickets/...` documentado en la Parte 7), botón de
+  impresión funcional, y diálogo de reimpresión tras imprimir — `needs-device`
+
+### Decisiones abiertas
+
+- [x] Mecanismo de impresión del ticket (`CLAUDE.md` §9: decisión de
+  arquitectura no cubierta, preguntar antes de asumir). **Decidido**: Print
+  Framework de Android (`android.print.PrintManager` +
+  `PrintDocumentAdapter`) en vez de ESC/POS directo por Bluetooth — no
+  agrega dependencias nuevas y no asume un modelo de impresora concreto;
+  funciona con cualquier impresora que tenga un servicio de impresión
+  instalado (térmicas con su app de servicio, WiFi, o "Guardar como PDF").
+- [x] Formato del archivo de ticket. **Decidido**: solo PDF, generado con
+  `android.graphics.pdf.PdfDocument` (API nativa, sin librería nueva) — es
+  el formato natural para imprimir vía Print Framework y para archivo
+  legible por humanos. Se descartó generar también XML por no tener un
+  consumidor claro todavía (ej. facturación electrónica no está en
+  alcance).
+- [x] Persistencia del cambio entregado. **Decidido**: el cambio
+  (`efectivoRecibido - total`) no se persiste en el modelo de dominio
+  `Venta` ni en el backend — es un dato operativo efímero que solo le
+  importa al encargado de turno en el momento de la venta, no un campo del
+  ledger. Si se necesita para auditoría de caja más adelante, es una Parte
+  nueva (toca `docs/api-contract.md` + Room + Alembic, `schema-parity`).
+
+---
+
 ## Backlog (trabajo futuro, fuera del alcance actual)
 
 - **RAG para el chat de IA**: indexar `docs/` del proyecto más una fuente de
