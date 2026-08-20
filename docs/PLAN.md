@@ -1171,51 +1171,165 @@ módulo.
 
 ---
 
-## Parte 10: Módulo Caja
+## Parte 10: Módulo Caja  <!-- POS-39 -->
 
-Realizar un corte de caja de lo vendido en un periodo especificado.
+Realizar cortes de caja de lo vendido en un periodo especificado: uno o
+varios cortes parciales durante el día y un corte final que consolida el
+día completo, con posibilidad de registrar retiros de efectivo que se
+descuentan del monto esperado.
 
 ### Checklist
 
-**1. UI**
-- [ ] Propuesta de pantalla (corte por periodo especificado) presentada
+**1. UI** (POS-40)
+- [x] Propuesta de pantalla (corte por periodo especificado) presentada
   y aprobada — criterio: aprobación explícita registrada antes de
-  implementar.
-- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
-  `./gradlew build` pasa y la pantalla es navegable.
-- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+  implementar. Aprobado el 2026-08-20, ampliado el mismo día con corte
+  parcial/final y retiros de efectivo (ver "Decisiones abiertas"):
+  selector "Tipo de corte" (parcial/final, `SegmentedButton`); periodo de
+  solo lectura y calculado automáticamente si es parcial, con date/time
+  pickers editables (default: primera venta de hoy a las 10:00 pm) si es
+  final; botón "Calcular corte" (desglose total ventas/efectivo/tarjeta/
+  retiros, monto esperado); campo "Monto contado" con diferencia
+  calculada; botón "Guardar corte"; sección independiente "Registrar
+  retiro de efectivo" (monto + motivo opcional); historial de cortes
+  anteriores con su tipo.
+- [x] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable. Reemplaza la versión
+  inicial (solo corte único) por el diseño de arriba. Verificado:
+  `CajaScreen`/`CajaViewModel`/`CajaUiState` (`caja/`) +
+  `CorteCaja`/`RetiroEfectivo` (`domain/model/`); `./gradlew build` en
+  verde (`BUILD SUCCESSFUL`).
+- [x] Instalado y verificado en el Xiaomi — `needs-device` Confirmado por
+  el usuario el 2026-08-20: pantalla de Caja instalada y verificada
+  (selector de tipo de corte, periodo automático/editable según tipo,
+  cálculo con retiros, diálogo de registro de retiro, guardado en
+  historial).
 
-**2. Repositorio local**
-- [ ] `CajaRepository` (interfaz) en `domain/repository/` — criterio:
-  compila sin Room ni Retrofit.
-- [ ] `LocalCajaRepository` (Room) en `data/local/` — criterio:
-  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
-- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
-  prueba unitaria verifica la invocación al logger.
-- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
-  criterio: `./gradlew testDebugUnitTest` en verde.
+**2. Repositorio local** (POS-41)
+- [x] `CajaRepository` (interfaz, `cortes_caja`) en `domain/repository/` —
+  criterio: compila sin Room ni Retrofit. Verificado:
+  `domain/repository/CajaRepository.kt` (`calcularTotales`,
+  `guardarCorte`), solo importa `domain/model/`.
+- [x] `LocalCajaRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado:
+  `LocalCajaRepository` + `CajaDao`/`CorteCajaEntity`
+  (`data/local/`); `LocalCajaRepositoryTest` (3 pruebas) en verde.
+- [x] `RetiroEfectivoRepository` (interfaz) en `domain/repository/` —
+  criterio: compila sin Room ni Retrofit. Verificado:
+  `domain/repository/RetiroEfectivoRepository.kt`.
+- [x] `LocalRetiroEfectivoRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado:
+  `LocalRetiroEfectivoRepository` + `RetiroDao`/`RetiroEfectivoEntity`
+  (`data/local/`); `LocalRetiroEfectivoRepositoryTest` (2 pruebas) en
+  verde.
+- [x] Cálculo de totales de un corte (ventas/retiros agregados por rango
+  de fecha, `monto_esperado = total_efectivo - total_retiros`) — criterio:
+  prueba unitaria con datos de ventas y retiros conocidos verifica cada
+  total. Verificado: `LocalCajaRepositoryTest."calcularTotales sums
+  ventas by metodo de pago and subtracts retiros from monto esperado"`.
+  La agregación lee las filas del periodo (`VentaDao.getVentasDelPeriodo`,
+  nuevo; `RetiroDao.getRetirosDelPeriodo`) y suma en Kotlin con
+  `BigDecimal`, no con `SUM()` de SQLite (evita la conversión a
+  double de SQLite en columnas `BigDecimal`, que Room persiste como
+  texto vía `Converters`).
+- [x] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger. Verificado en ambos
+  repositorios.
+- [x] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde. Verificado: 5 pruebas
+  en verde (`LocalCajaRepositoryTest` x3, `LocalRetiroEfectivoRepositoryTest`
+  x2); `./gradlew build` completo también en verde (`BUILD SUCCESSFUL`).
 
-**3. Repositorio remoto**
-- [ ] `docs/api-contract.md` actualizado con los endpoints de
-  `cortes_caja` (CLAUDE.md §9) — criterio: sección nueva, revisada.
-- [ ] Ruta FastAPI (`app/routers/caja.py`) — criterio: `pytest
-  backend/tests/test_caja.py` en verde.
-- [ ] `RemoteCajaRepository` (Retrofit) — criterio: `./gradlew
-  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
-- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
-  criterio: prueba unitaria simula timeout.
+**3. Repositorio remoto** (POS-42)
+- [x] `docs/api-contract.md` actualizado con los endpoints de
+  `cortes_caja` y `retiros_efectivo` (CLAUDE.md §9) — criterio: sección
+  nueva, revisada. Verificado: sección 8 (`POST /cortes-caja`, `POST
+  /retiros-efectivo`, `GET /cortes-caja/totales` — contraparte remota de
+  `LocalCajaRepository.calcularTotales`, necesaria para que `RemoteCajaRepository`
+  cumpla la interfaz `CajaRepository` completa); secciones renumeradas
+  (9 Convenciones, 10 Pendiente de definir).
+- [x] Ruta FastAPI (`app/routers/caja.py`) — criterio: `pytest
+  backend/tests/test_caja.py` en verde. Verificado: 6 pruebas en verde
+  (corte happy path, tipo inválido → 422, retiro happy path, monto
+  inválido → 422, totales happy path, totales sin sucursal_id → 422);
+  migración `0004_create_cortes_caja_retiros_efectivo` aplicada
+  (`alembic upgrade head`) contra el Postgres de `docker compose`;
+  backend reconstruido y probado con `curl` real contra el contenedor
+  (los 3 endpoints). Suite completa del backend: 25 pruebas en verde.
+- [x] `RemoteCajaRepository` y `RemoteRetiroEfectivoRepository` (Retrofit)
+  — criterio: `./gradlew testDebugUnitTest` pasa mockeando Retrofit.
+  `jvm-tests` Verificado: `CajaApiService`/`RetiroApiService` +
+  DTOs (`data/remote/`); `RemoteCajaRepositoryTest` (4 pruebas) +
+  `RemoteRetiroEfectivoRepositoryTest` (3 pruebas) en verde;
+  `./gradlew build` completo en verde.
+- [x] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout. Verificado en ambos
+  repositorios (`IOException`/`HttpException`, mismo criterio que
+  `RemoteInventarioRepository`: las lecturas sin `usuarioId`
+  —`calcularTotales`— propagan la falla sin loggear; solo las
+  escrituras, que sí traen `usuarioId`, loguean `ERROR`).
 
-**4. Wiring**
-- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+**4. Wiring** (POS-43)
+- [x] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
   prueba con estados mockeados confirma el repositorio correcto.
-- [ ] Los cortes de caja se tratan como eventos aditivos en modo
-  local-con-sincronización (política Parte 6) — criterio: prueba de
-  integración sincroniza dos cortes concurrentes desde dos dispositivos y
-  verifica que ambos se aplican.
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Verificado: `ModeAwareCajaRepository`/`ModeAwareRetiroEfectivoRepository`
+  (`data/`, bindeados en `RepositoryModule`) resuelven local/remota según
+  `ConfiguracionPreferences.deviceConfig.backendMode`, mismo patrón que
+  `ModeAwareVentaRepository`; `CajaViewModel` reescrito para usar
+  `CajaRepository`/`RetiroEfectivoRepository` reales (sucursal desde
+  `ConfiguracionPreferences`, usuario desde `SessionManager`) en vez de
+  los datos estáticos del sub-paso 1. `ModeAwareCajaRepositoryTest` (2
+  pruebas) + `ModeAwareRetiroEfectivoRepositoryTest` (1 prueba) +
+  `CajaViewModelTest` (6 pruebas) en verde. El default de periodo del
+  corte parcial/final ya no simula una "primera venta"; usa el fallback
+  decidido en la Parte 10 ("Decisiones abiertas": hoy 00:00 cuando no hay
+  corte previo ese día).
+- [x] Los cortes de caja y los retiros de efectivo se tratan como eventos
+  aditivos en modo local-con-sincronización (política Parte 6) —
+  criterio: prueba de integración sincroniza dos cortes y dos retiros
+  concurrentes desde dos dispositivos y verifica que todos se aplican.
+  Verificado: `CajaEventoAditivoIntegrationTest` (2 pruebas) — a
+  diferencia de `inventario.cantidad` (delta con signo vía
+  `EventoAditivoCombiner`), aquí "aditivo" es más simple: cada corte/
+  retiro es su propio registro con `local_id` por dispositivo, así que
+  "ambos se aplican" se reduce a que dos `INSERT` concurrentes nunca se
+  pisan entre sí — sin campo compartido que combinar.
+- [x] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Confirmado por el usuario el 2026-08-20, con una corrección en el
+  camino: el corte parcial no reflejaba un retiro registrado justo
+  después de calcular (el retiro sí quedaba guardado — confirmado vía
+  `DB_WRITE` en el log de la app — pero el `fechaFin` del periodo se
+  congelaba desde la última vez que se fijó, en vez de recalcularse a la
+  hora de solicitud en cada click de "Calcular corte"; el retiro caía
+  fuera del rango consultado hasta el ciclo de cálculo siguiente).
+  Corregido en `CajaViewModel.onCalcularClick`: para tipo parcial,
+  recalcula el periodo antes de consultar; el corte final no se toca (su
+  periodo sigue editable por el usuario). `CajaViewModelTest` +2 pruebas
+  de regresión (8 en total). Verificado en Local, Remoto y Local con
+  sincronización tras la corrección.
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
+
+### Decisiones abiertas
+
+- [x] Regla de consolidación del corte final: ¿suma los cortes parciales
+  ya guardados, o recalcula desde cero sobre su propio periodo?
+  **Decidido**: recalcula desde cero — cada corte (parcial o final)
+  agrega `ventas`/`retiros_efectivo` filtrando por su propio
+  `fecha_inicio`/`fecha_fin`. El corte final no depende de que los
+  parciales se hayan hecho ni sean correctos: como su rango cubre todo el
+  día, ya incluye lo mismo que ellos.
+- [x] Relación `retiros_efectivo`↔`cortes_caja`: ¿FK directa o agregación
+  por rango de fecha? **Decidido**: agregación por fecha, mismo patrón
+  que `ventas`↔`cortes_caja` (sin FK); ver `docs/schema-pos.json`.
+- [x] Horario del corte parcial: ¿editable como el final? **Decidido**:
+  no editable — inicio = fin del último corte del día (parcial o final),
+  o primera venta de hoy si no hay corte previo ese día; fin = hora de
+  solicitud (ahora).
+- [x] Caso sin ninguna venta registrada hoy todavía: ¿fallback de
+  `fecha_inicio`? **Decidido**: hoy 00:00, editable únicamente en el
+  corte final.
 
 ---
 

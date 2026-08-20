@@ -542,7 +542,139 @@ Response `200 OK`
 
 ---
 
-## 8. Convenciones generales
+## 8. Cortes de caja y retiros de efectivo
+
+Quinto recurso real del dominio (PLAN.md Parte 10, módulo Caja, ampliado
+2026-08-20 con cortes parciales/finales y retiros de efectivo). A
+diferencia de `POST /ventas` (sección 5), el backend **no recalcula**
+ningún total: el dispositivo ya agregó `ventas`/`retiros_efectivo` de su
+propio periodo (`LocalCajaRepository.calcularTotales`) y estas rutas solo
+persisten lo que llega, igual que `POST /sucursales` (sección 4). No hay
+FK real entre `retiros_efectivo` y `cortes_caja` — se relacionan por rango
+de fecha del lado del dispositivo, nunca por referencia (PLAN.md Parte 10,
+"Decisiones abiertas").
+
+### 8.1 Registrar corte de caja
+
+**POST** `/cortes-caja`
+
+Los montos viajan como **string JSON** (misma convención que Ventas,
+sección 5).
+
+Request body
+```json
+{
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "tipo": "parcial",
+  "fecha_inicio": "2026-08-20T08:00:00Z",
+  "fecha_fin": "2026-08-20T14:00:00Z",
+  "total_ventas": "1500.00",
+  "total_efectivo": "900.00",
+  "total_tarjeta": "600.00",
+  "total_retiros": "100.00",
+  "monto_esperado": "800.00",
+  "monto_contado": "795.00",
+  "diferencia": "-5.00"
+}
+```
+`tipo` es `"parcial"` o `"final"`. `monto_contado`/`diferencia` son `null`
+si el corte se guarda sin contar el efectivo físico todavía.
+
+Response `201 Created`
+```json
+{
+  "id": "uuid",
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "tipo": "parcial",
+  "fecha_inicio": "2026-08-20T08:00:00Z",
+  "fecha_fin": "2026-08-20T14:00:00Z",
+  "total_ventas": "1500.00",
+  "total_efectivo": "900.00",
+  "total_tarjeta": "600.00",
+  "total_retiros": "100.00",
+  "monto_esperado": "800.00",
+  "monto_contado": "795.00",
+  "diferencia": "-5.00",
+  "updated_at": "2026-08-20T14:00:00Z",
+  "is_synced": true,
+  "deleted_at": null
+}
+```
+
+Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
+`tipo`/`fecha_inicio`/`fecha_fin`/`total_ventas`/`total_efectivo`/
+`total_tarjeta`/`monto_esperado`, o `tipo` no es `"parcial"`/`"final"`.
+
+### 8.2 Registrar retiro de efectivo
+
+**POST** `/retiros-efectivo`
+
+Request body
+```json
+{
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "monto": "100.00",
+  "motivo": "string o null",
+  "fecha": "2026-08-20T11:00:00Z"
+}
+```
+
+Response `201 Created`
+```json
+{
+  "id": "uuid",
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "monto": "100.00",
+  "motivo": "string o null",
+  "fecha": "2026-08-20T11:00:00Z",
+  "updated_at": "2026-08-20T11:00:00Z",
+  "is_synced": true,
+  "deleted_at": null
+}
+```
+
+Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
+`monto`/`fecha`, o `monto` no es mayor que `0`.
+
+### 8.3 Totales de un periodo (para calcular un corte)
+
+Contraparte remota de `LocalCajaRepository.calcularTotales` (Android): la
+usa `RemoteCajaRepository` cuando `BackendMode` es remoto o
+local-con-sincronización, para poder mostrar los mismos totales que el
+modo local calcula desde Room. A diferencia de 8.1/8.2, aquí el backend sí
+agrega (`SUM` sobre `Numeric` de Postgres — sin la conversión a texto que
+tiene `BigDecimal` en Room, que por eso se evita agregar en SQL del lado
+del dispositivo).
+
+**GET** `/cortes-caja/totales?sucursal_id=uuid&fecha_inicio=2026-08-20T08:00:00Z&fecha_fin=2026-08-20T14:00:00Z`
+
+Response `200 OK`
+```json
+{
+  "total_ventas": "1500.00",
+  "total_efectivo": "900.00",
+  "total_tarjeta": "600.00",
+  "total_retiros": "100.00",
+  "monto_esperado": "800.00"
+}
+```
+`monto_esperado = total_efectivo - total_retiros`. Si no hay ventas ni
+retiros en el periodo, todos los campos son `"0"`.
+
+Response `422 Unprocessable Entity` — falta `sucursal_id`/`fecha_inicio`/
+`fecha_fin`.
+
+---
+
+## 9. Convenciones generales
 
 - Todas las fechas en ISO 8601 UTC (`created_at`, `updated_at`).
 - IDs como UUID v4 (string), nunca enteros autoincrementales expuestos en la API pública.
@@ -568,18 +700,18 @@ Response `200 OK`
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
-## 9. Pendiente de definir
+## 10. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
 este contrato, sino prerequisitos pendientes):
 
-- [ ] Rutas reales de `cortes_caja`, `devoluciones`, `usuarios` (PLAN.md
-  Partes 10-12, una por módulo) — `sucursales` (sección 4), `ventas`
-  (sección 5), la alta de `articulos`/`inventario`/`movimientos` vía `POST
-  /entradas` (sección 6) y la lectura/ajuste de `articulos`/`inventario`
-  (sección 7) ya están implementadas; el placeholder de la sección 3 se
-  reemplaza módulo por módulo a medida que cada Parte llega a su sub-paso
-  de repositorio remoto.
+- [ ] Rutas reales de `devoluciones`, `usuarios` (PLAN.md Partes 11-12,
+  una por módulo) — `sucursales` (sección 4), `ventas` (sección 5), la
+  alta de `articulos`/`inventario`/`movimientos` vía `POST /entradas`
+  (sección 6), la lectura/ajuste de `articulos`/`inventario` (sección 7),
+  y `cortes_caja`/`retiros_efectivo` (sección 8) ya están implementadas;
+  el placeholder de la sección 3 se reemplaza módulo por módulo a medida
+  que cada Parte llega a su sub-paso de repositorio remoto.
 - [ ] Rutas de autenticación real y gestión de usuarios/roles (PLAN.md
   Partes 4 y 13, sin implementar).
 - [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,

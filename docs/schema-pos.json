@@ -112,16 +112,32 @@
       "sucursal_scoped": true,
       "primary_key": "local_id",
       "foreign_keys": { "usuario_id": "usuarios" },
+      "notes": "PLAN.md Parte 10 (ampliada 2026-08-20): un dia puede tener varios cortes 'parcial' y un corte 'final'. Cada corte recalcula sus totales directamente desde ventas/retiros_efectivo filtrando por su propio fecha_inicio/fecha_fin - el final no suma los parciales, simplemente cubre un rango mas amplio que ya los incluye.",
       "fields": [
         { "name": "usuario_id", "type": "uuid", "nullable": false, "description": "quien realiza el corte" },
+        { "name": "tipo", "type": "string", "nullable": false, "description": "\"parcial\" / \"final\"" },
         { "name": "fecha_inicio", "type": "datetime", "nullable": false, "description": "inicio del periodo cortado" },
         { "name": "fecha_fin", "type": "datetime", "nullable": false, "description": "fin del periodo cortado" },
         { "name": "total_ventas", "type": "decimal", "nullable": false, "description": "suma de ventas del periodo" },
         { "name": "total_efectivo", "type": "decimal", "nullable": false },
         { "name": "total_tarjeta", "type": "decimal", "nullable": false },
-        { "name": "monto_esperado", "type": "decimal", "nullable": false, "description": "calculado" },
+        { "name": "total_retiros", "type": "decimal", "nullable": false, "default": 0, "description": "suma de retiros_efectivo del periodo" },
+        { "name": "monto_esperado", "type": "decimal", "nullable": false, "description": "calculado = total_efectivo - total_retiros" },
         { "name": "monto_contado", "type": "decimal", "nullable": true, "description": "ingresado manualmente al hacer el corte" },
         { "name": "diferencia", "type": "decimal", "nullable": true, "description": "monto_contado - monto_esperado" }
+      ]
+    },
+    "retiros_efectivo": {
+      "tracking_fields": true,
+      "sucursal_scoped": true,
+      "primary_key": "local_id",
+      "foreign_keys": { "usuario_id": "usuarios" },
+      "notes": "PLAN.md Parte 10 (ampliada 2026-08-20). Sin FK hacia cortes_caja: se agregan al periodo de un corte por rango de fecha, mismo patron que ventas.",
+      "fields": [
+        { "name": "usuario_id", "type": "uuid", "nullable": false, "description": "quien realiza el retiro" },
+        { "name": "monto", "type": "decimal", "nullable": false },
+        { "name": "motivo", "type": "string", "nullable": true },
+        { "name": "fecha", "type": "datetime", "nullable": false }
       ]
     },
     "devoluciones": {
