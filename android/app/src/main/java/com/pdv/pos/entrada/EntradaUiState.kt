@@ -28,5 +28,11 @@ data class EntradaUiState(
     val costo: String = "",
     val cantidad: String = "",
     val ubicacion: String = "",
+    // Opciones de EditableDropdownField (PLAN.md Parte 9, retroactivo a la
+    // Parte 8 por decision explicita del usuario) derivadas de datos
+    // estaticos de ejemplo mientras no exista InventarioRepository real.
+    val categoriasDisponibles: List<String> = emptyList(),
+    val unidadesMedidaDisponibles: List<String> = emptyList(),
+    val ubicacionesDisponibles: List<String> = emptyList(),
     val mensajeConfirmacion: String? = null,
 )

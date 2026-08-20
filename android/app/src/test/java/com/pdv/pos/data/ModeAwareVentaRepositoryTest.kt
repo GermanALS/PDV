@@ -53,7 +53,7 @@ class ModeAwareVentaRepositoryTest {
     @Test
     fun `switching BackendMode in DataStore switches which repository handles registrarVenta`(@TempDir tempDir: File) = runTest {
         val dao = mockk<VentaDao>()
-        coEvery { dao.insertVentaCompleta(any(), any(), any()) } returns Unit
+        coEvery { dao.insertVentaCompleta(any(), any(), any(), any()) } returns Unit
         val appLogger = mockk<AppLogger>()
         coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
         val local = LocalVentaRepository(dao, appLogger)
@@ -88,13 +88,13 @@ class ModeAwareVentaRepositoryTest {
         val repository = ModeAwareVentaRepository(local = local, remote = remote, preferences = preferences)
 
         repository.registrarVenta(ventaDeEjemplo())
-        coVerify(exactly = 1) { dao.insertVentaCompleta(any(), any(), any()) }
+        coVerify(exactly = 1) { dao.insertVentaCompleta(any(), any(), any(), any()) }
         coVerify(exactly = 0) { api.createVenta(any()) }
 
         preferences.setBackendMode(BackendMode.REMOTO)
         repository.registrarVenta(ventaDeEjemplo())
 
         coVerify(exactly = 1) { api.createVenta(any()) }
-        coVerify(exactly = 1) { dao.insertVentaCompleta(any(), any(), any()) }
+        coVerify(exactly = 1) { dao.insertVentaCompleta(any(), any(), any(), any()) }
     }
 }

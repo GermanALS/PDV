@@ -1,9 +1,11 @@
 package com.pdv.pos.di
 
 import com.pdv.pos.data.ModeAwareEntradaRepository
+import com.pdv.pos.data.ModeAwareInventarioRepository
 import com.pdv.pos.data.ModeAwareSucursalRepository
 import com.pdv.pos.data.ModeAwareVentaRepository
 import com.pdv.pos.domain.repository.EntradaRepository
+import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.SucursalRepository
 import com.pdv.pos.domain.repository.VentaRepository
 import dagger.Binds
@@ -26,4 +28,8 @@ abstract class RepositoryModule {
     // Resuelve local/remota segun BackendMode (PLAN.md Parte 8, sub-paso 4).
     @Binds
     abstract fun bindEntradaRepository(impl: ModeAwareEntradaRepository): EntradaRepository
+
+    // Resuelve local/remota segun BackendMode (PLAN.md Parte 9, sub-paso 4).
+    @Binds
+    abstract fun bindInventarioRepository(impl: ModeAwareInventarioRepository): InventarioRepository
 }

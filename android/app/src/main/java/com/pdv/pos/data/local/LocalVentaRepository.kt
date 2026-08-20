@@ -28,6 +28,7 @@ class LocalVentaRepository @Inject constructor(
             venta = venta.toEntity(now),
             detalles = venta.lineas.map { it.toEntity(ventaId = venta.id, now = now) },
             movimientos = venta.lineas.map { it.toMovimientoEntity(venta = venta, now = now) },
+            now = now,
         )
 
         appLogger.log(

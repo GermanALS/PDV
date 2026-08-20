@@ -29,6 +29,7 @@ private val CATALOGO_EJEMPLO = listOf(
         codigoBarras = "7501234567890",
         sku = "REF-001",
         nombre = "Refresco de cola 600ml",
+        categoria = "Bebidas",
         unidadMedida = "pieza",
         precioVenta = BigDecimal("18.50"),
     ),
@@ -37,6 +38,7 @@ private val CATALOGO_EJEMPLO = listOf(
         codigoBarras = "7501234567906",
         sku = "PAN-002",
         nombre = "Pan de caja integral",
+        categoria = "Panadería",
         unidadMedida = "pieza",
         precioVenta = BigDecimal("42.00"),
     ),
@@ -45,6 +47,7 @@ private val CATALOGO_EJEMPLO = listOf(
         codigoBarras = "7501234567913",
         sku = "LEC-003",
         nombre = "Leche entera 1L",
+        categoria = "Lácteos",
         unidadMedida = "pieza",
         precioVenta = BigDecimal("27.90"),
     ),
@@ -53,6 +56,7 @@ private val CATALOGO_EJEMPLO = listOf(
         codigoBarras = "7501234567920",
         sku = "HUE-004",
         nombre = "Huevo blanco 12 pzas",
+        categoria = "Lácteos",
         unidadMedida = "paquete",
         precioVenta = BigDecimal("55.00"),
     ),
@@ -61,10 +65,17 @@ private val CATALOGO_EJEMPLO = listOf(
         codigoBarras = "7501234567937",
         sku = "ARR-005",
         nombre = "Arroz 1kg",
+        categoria = "Abarrotes",
         unidadMedida = "kg",
         precioVenta = BigDecimal("31.75"),
     ),
 )
+
+// No hay historial de entradas en esta etapa estatica del que derivar
+// ubicaciones usadas - se toman las mismas de ejemplo que InventarioViewModel
+// (Parte 9), ya que ambas pantallas leeran la misma tabla `inventario` una
+// vez exista el repositorio real (sub-paso 2/3).
+private val UBICACIONES_EJEMPLO = listOf("Estante A1", "Estante B2", "Refrigerador 1", "Estante C1")
 
 @HiltViewModel
 class EntradaViewModel @Inject constructor(
@@ -73,7 +84,13 @@ class EntradaViewModel @Inject constructor(
     private val sessionManager: SessionManager,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(EntradaUiState())
+    private val _uiState = MutableStateFlow(
+        EntradaUiState(
+            categoriasDisponibles = CATALOGO_EJEMPLO.mapNotNull { it.categoria }.distinct().sorted(),
+            unidadesMedidaDisponibles = CATALOGO_EJEMPLO.map { it.unidadMedida }.distinct().sorted(),
+            ubicacionesDisponibles = UBICACIONES_EJEMPLO,
+        ),
+    )
     val uiState: StateFlow<EntradaUiState> = _uiState.asStateFlow()
 
     fun onTipoChange(tipo: TipoEntrada) {
@@ -183,6 +200,9 @@ class EntradaViewModel @Inject constructor(
                 entradaRepository.registrarEntrada(entrada)
                 _uiState.value = EntradaUiState(
                     tipo = _uiState.value.tipo,
+                    categoriasDisponibles = _uiState.value.categoriasDisponibles,
+                    unidadesMedidaDisponibles = _uiState.value.unidadesMedidaDisponibles,
+                    ubicacionesDisponibles = _uiState.value.ubicacionesDisponibles,
                     mensajeConfirmacion = "Entrada registrada: ${entrada.cantidad} unidades",
                 )
             } catch (e: IOException) {

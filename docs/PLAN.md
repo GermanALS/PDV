@@ -763,6 +763,16 @@ mostrar sus datos principales alineados al esquema de la Parte 3.
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
 
+**Gap corregido en la Parte 9 (2026-08-19)**: `LocalVentaRepository`/`VentaDao`
+y `POST /ventas` del backend solo escribían el `movimiento` tipo `"salida"`,
+nunca aplicaban el decremento a `inventario.cantidad` — a diferencia de
+`EntradaDao`/`POST /entradas` (Parte 8), que sí hacían el upsert real desde
+el principio. Sin esto, la existencia que consulta la Parte 9 (Módulo
+Inventario) no reflejaba ventas ya realizadas. Corregido con el mismo
+patrón de delta con signo vía `EventoAditivoCombiner` (Android) y resta
+directa con `db.flush()` previo para validar `articulo_id` (backend, nuevo
+404 documentado en `docs/api-contract.md` §5). Ver Parte 9, sub-paso 2.
+
 ---
 
 ## Parte 8: Módulo Entrada de mercancía  <!-- POS-24 -->
@@ -952,45 +962,209 @@ módulo.
 
 ---
 
-## Parte 9: Módulo Inventario
+## Parte 9: Módulo Inventario  <!-- POS-29 -->
 
 Consultar el inventario, la existencia de artículos específicos, y
 modificar los atributos de esos artículos consultados.
 
 ### Checklist
 
-**1. UI**
-- [ ] Propuesta de pantalla (consulta de existencias, edición de
+**1. UI** (POS-30)
+- [x] Propuesta de pantalla (consulta de existencias, edición de
   atributos) presentada y aprobada — criterio: aprobación explícita
-  registrada antes de implementar.
-- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
-  `./gradlew build` pasa y la pantalla es navegable.
-- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+  registrada antes de implementar. Aprobado el 2026-08-19 (pantalla
+  `InventarioScreen`: búsqueda/escaneo, lista paginada con selector de
+  registros por página, diálogo de edición de atributos + cantidad en
+  existencia; navegación manual desde `HelloScreen`, mismo patrón sin
+  Navigation Compose que el resto de módulos). Ampliación de paginación
+  (selector de tamaño de página) aprobada explícitamente por el usuario el
+  2026-08-19, antes de implementar.
+- [x] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable. Verificado:
+  `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye lint); catálogo
+  estático de 12 artículos con existencia/ubicación en `InventarioViewModel`;
+  botón "Inventario" en `HelloScreen` navega a `InventarioScreen`.
+- [x] Campos `categoria`/`unidad_medida`/`ubicacion` como lista editable con
+  sugerencias (valores ya usados) en vez de texto libre puro, retroactivo
+  también a `EntradaScreen` (Parte 8) — criterio: `./gradlew build` pasa;
+  escribir un valor fuera de la lista lo acepta igual como valor nuevo.
+  Ampliación aprobada explícitamente por el usuario el 2026-08-19 (mismo
+  comentario diferido desde la Parte 8, "se evaluará convertirlos en listas
+  cuando se implemente el módulo de Inventario"). Verificado:
+  `EditableDropdownField` (nuevo, `com.pdv.pos.ui`, patrón "editable exposed
+  dropdown" de Material3) usado en `InventarioScreen` (categoría, unidad de
+  medida, ubicación) y en `EntradaScreen` (categoría/unidad de medida del
+  artículo nuevo, estante de la entrada); `./gradlew build` en verde.
+- [x] Exportar el inventario consultado (respetando la búsqueda activa) a
+  CSV y a Excel (XLSX) — criterio: `./gradlew build` pasa; el archivo
+  generado abre correctamente en una hoja de cálculo. Ampliación aprobada
+  explícitamente por el usuario el 2026-08-19, antes de pasar al sub-paso 2.
+  Sin librerías de terceros nuevas (CLAUDE.md §9): CSV es texto plano; XLSX
+  se genera a mano (ZIP + XML mínimo vía `java.util.zip.ZipOutputStream` del
+  JDK, sin fórmulas ni estilos) para evitar Apache POI (pesado, con
+  problemas conocidos de compatibilidad en Android). Exportación vía
+  `Intent.ACTION_SEND` + `FileProvider` (share sheet estándar de Android).
+- [x] Instalado y verificado en el Xiaomi — `needs-device` Confirmado por el
+  usuario el 2026-08-19: pantalla de Inventario instalada y verificada
+  (búsqueda, escaneo, paginación, edición con campos de lista editable,
+  retrofit de `EntradaScreen`, exportación a CSV y a Excel compartida desde
+  el share sheet de Android).
 
-**2. Repositorio local**
-- [ ] `InventarioRepository` (interfaz) en `domain/repository/` —
-  criterio: compila sin Room ni Retrofit.
-- [ ] `LocalInventarioRepository` (Room) en `data/local/` — criterio:
-  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
-- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
-  prueba unitaria verifica la invocación al logger.
-- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
-  criterio: `./gradlew testDebugUnitTest` en verde.
+**2. Repositorio local** (POS-31)
+- [x] `InventarioRepository` (interfaz) en `domain/repository/` —
+  criterio: compila sin Room ni Retrofit. Verificado: la interfaz expone
+  `observarInventario(sucursalId, busqueda, pagina, tamanioPagina)`,
+  `observarCategorias()`/`observarUnidadesMedida()`/`observarUbicaciones(sucursalId)`
+  y `suspend fun actualizarArticulo(edicion: EdicionArticulo)`, sobre los
+  modelos de dominio `PaginaInventario`/`EdicionArticulo` nuevos; sin
+  imports de Room ni Retrofit.
+- [x] `LocalInventarioRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado:
+  `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye lint y
+  `testDebugUnitTest`). `InventarioDao` nuevo: `observarPagina`/
+  `observarTotal` (join `inventario`+`articulos` con `LIMIT`/`OFFSET` real
+  y filtro `LIKE` sobre nombre/sku/código de barras, reemplazando el
+  recorte en memoria del sub-paso 1), `observarCategorias`/
+  `observarUnidadesMedida` (`SELECT DISTINCT` sobre `articulos`) y
+  `observarUbicaciones` (`SELECT DISTINCT` sobre `inventario` por
+  sucursal) — mismos datos que alimentaban los `EditableDropdownField`
+  estáticos del sub-paso 1, ahora reales. `actualizarArticuloCompleto`
+  (`@Transaction`): `UPDATE` directo de atributos de catálogo
+  (last-write-wins) + ajuste de cantidad en existencia vía delta con signo
+  (`EventoAditivoCombiner`, nunca `UPDATE cantidad = X` directo, cierra la
+  decisión de la Parte 6 sobre el ajuste manual de la Parte 9) + inserción
+  de `movimiento` tipo `"ajuste"` — mismo patrón que
+  `EntradaDao.insertEntradaCompleta`. Si la cantidad no cambió (delta = 0)
+  no se toca `inventario` ni se inserta movimiento, solo el artículo.
+- [x] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger. Verificado:
+  `LocalInventarioRepositoryTest` confirma `appLogger.log(LogType.DB_WRITE,
+  ...)` tras un `actualizarArticulo` exitoso.
+- [x] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde. Verificado:
+  `LocalInventarioRepositoryTest`, 2 pruebas en verde (happy path: actualiza
+  atributos + cantidad y loguea `DB_WRITE`; error: una falla del DAO se
+  propaga sin loguear `DB_WRITE`).
 
-**3. Repositorio remoto**
-- [ ] `docs/api-contract.md` actualizado con los endpoints de
+**Gap de la Parte 7 corregido en este sub-paso (aprobado explícitamente por
+el usuario, ver nota al final de la Parte 7)**: `VentaDao`/
+`LocalVentaRepository` ahora aplican el decremento real de
+`inventario.cantidad` (delta negativo vía `EventoAditivoCombiner`) al
+registrar una venta, no solo el `movimiento` tipo `"salida"`. Backend
+(`POST /ventas`) recibe el mismo tratamiento — ver sub-paso siguiente para
+el detalle del lado remoto; contrato actualizado en
+`docs/api-contract.md` §5 (incluye el nuevo `404` por `articulo_id`
+inexistente en alguna línea). Verificado: `LocalVentaRepositoryTest`/
+`ModeAwareVentaRepositoryTest`/`VentaEventoAditivoIntegrationTest`
+actualizados y en verde; `pytest backend/tests/test_ventas.py` (4 pruebas,
+incluye `test_create_venta_decrements_inventario_and_creates_movimiento` y
+el nuevo caso 404) en verde contra el Postgres real de `docker compose`;
+smoke test manual con `curl` + `docker compose exec db psql` confirmó
+`10 → 6` tras una venta de 4 unidades, con su `movimiento` tipo `salida`
+asociado.
+
+**3. Repositorio remoto** (POS-32)
+- [x] `docs/api-contract.md` actualizado con los endpoints de
   `inventario` (CLAUDE.md §9) — criterio: sección nueva, revisada.
-- [ ] Ruta FastAPI (`app/routers/inventario.py`) — criterio: `pytest
-  backend/tests/test_inventario.py` en verde.
-- [ ] `RemoteInventarioRepository` (Retrofit) — criterio: `./gradlew
-  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
-- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
-  criterio: prueba unitaria simula timeout.
+  Verificado: `docs/api-contract.md` §7 (Inventario) documenta `GET
+  /inventario` (listar con `q`/`page`/`page_size`), `PATCH
+  /inventario/{articulo_id}` (atributos de catálogo + ajuste de cantidad
+  con delta con signo, `movimiento` `null` si el delta es `0`, 404 por
+  artículo inexistente) y las tres rutas de solo lectura `GET
+  /articulos/categorias`, `GET /articulos/unidades-medida`, `GET
+  /inventario/ubicaciones` que alimentan `EditableDropdownField`; reordena
+  Convenciones generales → 8 y Pendiente de definir → 9 (mismo criterio que
+  la Parte 8 con la sección 6).
+- [x] Ruta FastAPI (`app/routers/inventario.py`) — criterio: `pytest
+  backend/tests/test_inventario.py` en verde. Verificado: 7 pruebas en
+  verde contra el Postgres real de `docker compose` (listar con y sin `q`,
+  página inválida → 422, ajuste con cambio de cantidad y sin cambio de
+  cantidad — sin `movimiento` en este último caso —, 404 por artículo
+  inexistente, valores de categoría/unidad de medida/ubicación). Sin
+  migración de Alembic nueva: las tres tablas (`articulos`, `inventario`,
+  `movimientos`) ya existían desde la Parte 8, esta Parte solo agrega
+  rutas de lectura/ajuste sobre ellas. Backend reconstruido en Docker y
+  probado con `curl` real contra el contenedor: `GET /inventario`,
+  `PATCH /inventario/{id}` (`10 → 7` con `movimiento` tipo `ajuste`,
+  `cantidad=-3`) y `GET /articulos/categorias` contra datos reales.
+- [x] `RemoteInventarioRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests` Verificado:
+  `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye lint y
+  `testDebugUnitTest`). `InventarioApiService` + DTOs
+  (`InventarioItemDto`/`InventarioListResponseDto`/
+  `ArticuloEdicionRequestDto`/`AjusteInventarioDto`/`ValoresDto`, montos
+  como String); cableado en `NetworkModule.provideInventarioApiService`.
+  Los métodos de lectura (`observarInventario`/`observarCategorias`/
+  `observarUnidadesMedida`/`observarUbicaciones`) propagan fallas por el
+  `Flow` sin capturarlas, mismo criterio que `RemoteSucursalRepository`
+  (Parte 6) — no llevan `usuarioId` en la firma del dominio, así que no
+  pueden loguear (`AppLogger.log` exige `sucursalId` + `usuario`). Aún sin
+  `@Binds` a `InventarioRepository` en `RepositoryModule` — se agrega en
+  el sub-paso 4 (Wiring), mismo orden que Sucursal/Venta/Entrada.
+- [x] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout. Verificado:
+  `RemoteInventarioRepositoryTest`, 5 pruebas en verde (dos happy path de
+  lectura sin loguear nada, un happy path de `actualizarArticulo` sin
+  loguear nada, y `IOException`/`HttpException` de `actualizarArticulo` —
+  la única operación de escritura, la única con `usuarioId` disponible —
+  logueadas como `LogType.ERROR` con `sucursalId`/`usuario` y repropagadas
+  sin capturarlas silenciosamente).
 
-**4. Wiring**
-- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+**4. Wiring** (POS-33)
+- [x] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
   prueba con estados mockeados confirma el repositorio correcto.
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Verificado: `./gradlew build` en verde (incluye lint).
+  `ModeAwareInventarioRepository` (combina el criterio reactivo de
+  `ModeAwareSucursalRepository` para las lecturas `Flow` con el criterio de
+  snapshot suspend de `ModeAwareEntradaRepository` para `actualizarArticulo`,
+  porque `InventarioRepository` tiene ambos tipos de método) cableado en
+  `RepositoryModule` vía `@Binds`. `InventarioViewModel` reescrito para
+  inyectar `InventarioRepository` + `ConfiguracionPreferences` +
+  `SessionManager` + `InventarioExportManager`; el catálogo estático del
+  sub-paso 1 queda reemplazado por un pipeline reactivo
+  (`combine(sucursalId, parametros).flatMapLatest { ... observarInventario
+  }`) que se re-suscribe solo cuando cambian sucursal/búsqueda/página/tamaño
+  de página. La exportación CSV/Excel recorre todas las páginas que
+  coinciden con la búsqueda activa (no solo la página visible) contra el
+  repositorio real. `ModeAwareInventarioRepositoryTest` (1 prueba) confirma
+  que cambiar `BackendMode` en DataStore cambia a cuál repositorio llega el
+  ajuste; `InventarioViewModelTest` (4 pruebas: happy path, falta
+  sucursal/sesión, error de validación de cantidad, falla de red) confirma
+  el wiring del ViewModel.
+
+  **Hallazgo corregido antes de cerrar este ítem**: `RemoteInventarioRepository.observarInventario`
+  no es reactivo de verdad (una sola llamada Retrofit por suscripción, a
+  diferencia del `Flow` de Room que se refresca solo) — sin ajuste, un
+  `actualizarArticulo` exitoso en modo REMOTO no habría refrescado la lista
+  visible. Corregido con un contador `version` en los parámetros de consulta
+  del `ViewModel` que se incrementa tras cada `actualizarArticulo` exitoso,
+  forzando al `flatMapLatest` a re-suscribirse (no-op inofensivo en modo
+  local, donde Room ya se refresca solo).
+- [x] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Confirmado por el usuario el 2026-08-19/20: instalado y probado
+  exitosamente en los tres modos (Local, Remoto, Local con sincronización) —
+  búsqueda/escaneo, paginación, edición de atributos + cantidad con listas
+  editables, exportación CSV/Excel. Verificado por el agente inspeccionando
+  el estado persistido directamente (mismo criterio que las Partes 7 y 8):
+  LOCAL/LOCAL_CON_SINCRONIZACION — `pdv.db` del dispositivo (`adb exec-out
+  run-as com.pdv.pos cat databases/pdv.db{,-wal,-shm}`) muestra movimientos
+  tipo `ajuste` (`referenciaTipo=ajuste_manual`) con el delta correcto y
+  `inventario.cantidad` ya actualizado (ej. "Sabritas" 10 → 15, delta +5).
+  REMOTO — Postgres del backend (`docker compose exec db psql`) muestra
+  "Galletas" (existencia original de 2 en la Parte 8) en 9.000, con su
+  `movimiento` tipo `ajuste` (`cantidad=7.000`, `usuario_id=admin`).
+
+  **Hallazgo corregido antes de cerrar este ítem**: en modo local y
+  local-con-sincronización, las cantidades en existencia se mostraban con la
+  escala cruda que trae el `BigDecimal` de Room (ej. "10" en vez de "10.00"),
+  inconsistente con el backend (columnas `Numeric(14, 3)`, siempre 3
+  decimales) — relevante para unidades como kg/litros donde el usuario
+  necesita ver los decimales. Corregido con `BigDecimal.formatoCantidad()`
+  (nuevo, `com.pdv.pos.inventario`, 2 decimales fijos vía
+  `setScale(2, RoundingMode.HALF_UP)`), aplicado solo en los puntos de
+  presentación/prellenado (lista, diálogo de edición, exportación CSV/Excel)
+  — nunca en los cálculos de delta. Pruebas de `InventarioCsvExporterTest`/
+  `InventarioExcelExporterTest` actualizadas; `./gradlew build` en verde.
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.

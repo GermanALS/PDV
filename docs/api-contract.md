@@ -168,17 +168,27 @@ Response `201 Created` → mismo shape que un ítem de 4.1.
 
 Segundo recurso real del dominio (PLAN.md Parte 7, módulo Venta de
 mostrador). Registra una venta de mostrador junto con sus líneas
-(`venta_detalle`) en una sola llamada. El `movimiento` de salida que
-decrementa inventario (PLAN.md Parte 7, "Decisiones abiertas": venta como
-evento aditivo) se genera del lado del dispositivo, no aquí — este
-endpoint solo persiste la venta y sus líneas tal cual las manda el cliente.
-`id` es la PK del backend = `remote_id` del dispositivo una vez
-sincronizada; cada línea tiene su propio `id`/`local_id` con el mismo
-patrón de correlación que sucursales (sección 4). `usuario_id` es el
-identificador de sesión ficticio de la Parte 4 (`admin`/`user1`), no un
-UUID todavía — se endurece a FK real contra `usuarios` en la Parte 13. No
-hay endpoint de listado (`GET /ventas`) todavía: no lo necesita ningún
-sub-paso de la Parte 7; se agrega si una Parte futura lo requiere.
+(`venta_detalle`) en una sola llamada. `id` es la PK del backend =
+`remote_id` del dispositivo una vez sincronizada; cada línea tiene su
+propio `id`/`local_id` con el mismo patrón de correlación que sucursales
+(sección 4). `usuario_id` es el identificador de sesión ficticio de la
+Parte 4 (`admin`/`user1`), no un UUID todavía — se endurece a FK real
+contra `usuarios` en la Parte 13. No hay endpoint de listado (`GET
+/ventas`) todavía: no lo necesita ningún sub-paso de la Parte 7; se agrega
+si una Parte futura lo requiere.
+
+El `movimiento` de salida que decrementa inventario se genera también aquí
+(no solo del lado del dispositivo como se documentó originalmente en la
+Parte 7): esta ruta hacía únicamente la venta+líneas hasta que la Parte 9
+("Módulo Inventario", sub-paso 2) corrigió el hueco — sin este decremento,
+la existencia consultada por esa Parte nunca reflejaba ventas ya
+realizadas. Cada línea aplica su decremento con delta con signo
+(`cantidad_actual - cantidad_vendida`), nunca un `UPDATE cantidad = X`
+directo, mismo principio que `POST /entradas` (sección 6). Por eso cada
+`articulo_id` de las líneas debe existir en `articulos` — a diferencia de
+`venta_detalle`, que no tiene FK real (PLAN.md Parte 8, hallazgo de
+verificación), `inventario.articulo_id`/`movimientos.articulo_id` sí la
+tienen.
 
 ### 5.1 Registrar venta
 
@@ -249,6 +259,9 @@ Response `201 Created`
 
 Response `422 Unprocessable Entity` — `lineas` vacío, o falta
 `sucursal_id`/`usuario_id`/`folio`/`metodo_pago`.
+
+Response `404 Not Found` — algún `articulo_id` de `lineas` no corresponde a
+ningún artículo existente.
 
 ---
 
@@ -373,7 +386,163 @@ existente.
 
 ---
 
-## 7. Convenciones generales
+## 7. Inventario
+
+Cuarto recurso real del dominio (PLAN.md Parte 9, módulo Inventario).
+Consulta el inventario de una sucursal (artículo + existencia juntos, mismo
+join que hace `InventarioDao` del lado Android) y permite ajustar los
+atributos de catálogo de un artículo junto con su cantidad en existencia,
+en una sola llamada atómica — análogo a como `POST /entradas` persiste el
+artículo, el inventario y el movimiento juntos (sección 6).
+
+### 7.1 Listar inventario
+
+**GET** `/inventario?sucursal_id=uuid&page=1&page_size=20&q=texto`
+
+`q` (opcional): filtra por nombre, SKU o código de barras (coincidencia
+parcial, sin distinguir mayúsculas/minúsculas) — mismo criterio de
+búsqueda que `InventarioDao.observarPagina` del lado Android.
+
+Response `200 OK`
+```json
+{
+  "items": [
+    {
+      "articulo_id": "uuid",
+      "codigo_barras": "string o null",
+      "sku": "string",
+      "nombre": "string",
+      "descripcion": "string o null",
+      "categoria": "string o null",
+      "unidad_medida": "string",
+      "precio_venta": "18.50",
+      "costo": "12.00 o null",
+      "cantidad": "24.000",
+      "ubicacion": "string o null"
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 12
+}
+```
+
+### 7.2 Ajustar artículo (atributos de catálogo + cantidad en existencia)
+
+**PATCH** `/inventario/{articulo_id}`
+
+`cantidad` es el **nuevo valor** de existencia, no un delta — el servidor
+calcula `delta = cantidad - cantidad_actual` y lo aplica sumando (nunca un
+`UPDATE cantidad = X` directo), igual que
+`LocalInventarioRepository.actualizarArticuloCompleto` del lado Android
+(PLAN.md Parte 6, "Decisiones abiertas"). Si el delta resulta `0`, se
+actualiza el artículo (y la ubicación, si cambió) pero no se inserta
+`movimiento`.
+
+Request body
+```json
+{
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "nombre": "string, 1-160 caracteres",
+  "descripcion": "string o null",
+  "categoria": "string o null",
+  "unidad_medida": "string, 1-30 caracteres",
+  "precio_venta": "19.00",
+  "costo": "12.00 o null",
+  "cantidad": "30",
+  "ubicacion": "string o null"
+}
+```
+
+Response `200 OK`
+```json
+{
+  "articulo": {
+    "id": "uuid",
+    "local_id": "uuid o null",
+    "codigo_barras": "string o null",
+    "sku": "string",
+    "nombre": "string",
+    "descripcion": "string o null",
+    "categoria": "string o null",
+    "unidad_medida": "string",
+    "precio_venta": "19.00",
+    "costo": "12.00",
+    "activo": true,
+    "updated_at": "2026-08-19T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  },
+  "inventario": {
+    "id": "uuid",
+    "local_id": "uuid o null",
+    "sucursal_id": "uuid",
+    "articulo_id": "uuid",
+    "cantidad": "30.000",
+    "ubicacion": "string o null",
+    "updated_at": "2026-08-19T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  },
+  "movimiento": {
+    "id": "uuid",
+    "local_id": "uuid o null",
+    "sucursal_id": "uuid",
+    "articulo_id": "uuid",
+    "usuario_id": "admin",
+    "tipo": "ajuste",
+    "cantidad": "5.000",
+    "ubicacion": "string o null",
+    "referencia_tipo": "ajuste_manual",
+    "referencia_id": null,
+    "fecha": "2026-08-19T12:00:00Z",
+    "updated_at": "2026-08-19T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  }
+}
+```
+`movimiento.cantidad` es el delta con signo aplicado (puede ser negativo);
+`movimiento` es `null` cuando el delta fue `0`.
+
+Response `404 Not Found` — `articulo_id` no corresponde a ningún artículo
+existente.
+
+Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
+`nombre`/`unidad_medida`/`precio_venta`/`cantidad`.
+
+### 7.3 Valores usados de categoría, unidad de medida y ubicación
+
+Alimentan el campo de lista editable del cliente (`EditableDropdownField`,
+PLAN.md Parte 9) — de solo lectura, derivados de los valores ya usados en
+`articulos`/`inventario`, sin tabla de catálogo propia (PLAN.md Parte 9,
+"Enfoque: lista derivada de valores ya usados").
+
+**GET** `/articulos/categorias`
+
+Response `200 OK`
+```json
+{ "valores": ["Abarrotes", "Bebidas"] }
+```
+
+**GET** `/articulos/unidades-medida`
+
+Response `200 OK`
+```json
+{ "valores": ["kg", "pieza"] }
+```
+
+**GET** `/inventario/ubicaciones?sucursal_id=uuid`
+
+Response `200 OK`
+```json
+{ "valores": ["Estante A1", "Estante B2"] }
+```
+
+---
+
+## 8. Convenciones generales
 
 - Todas las fechas en ISO 8601 UTC (`created_at`, `updated_at`).
 - IDs como UUID v4 (string), nunca enteros autoincrementales expuestos en la API pública.
@@ -399,19 +568,18 @@ existente.
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
-## 8. Pendiente de definir
+## 9. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
 este contrato, sino prerequisitos pendientes):
 
-- [ ] Rutas de lectura/consulta de `articulos`/`inventario` (listar,
-  ajustar atributos — PLAN.md Parte 9) y rutas reales de `cortes_caja`,
-  `devoluciones`, `usuarios` (PLAN.md Partes 10-12, una por módulo) —
-  `sucursales` (sección 4), `ventas` (sección 5) y la alta de
-  `articulos`/`inventario`/`movimientos` vía `POST /entradas` (sección 6)
-  ya están implementadas; el placeholder de la sección 3 se reemplaza
-  módulo por módulo a medida que cada Parte llega a su sub-paso de
-  repositorio remoto.
+- [ ] Rutas reales de `cortes_caja`, `devoluciones`, `usuarios` (PLAN.md
+  Partes 10-12, una por módulo) — `sucursales` (sección 4), `ventas`
+  (sección 5), la alta de `articulos`/`inventario`/`movimientos` vía `POST
+  /entradas` (sección 6) y la lectura/ajuste de `articulos`/`inventario`
+  (sección 7) ya están implementadas; el placeholder de la sección 3 se
+  reemplaza módulo por módulo a medida que cada Parte llega a su sub-paso
+  de repositorio remoto.
 - [ ] Rutas de autenticación real y gestión de usuarios/roles (PLAN.md
   Partes 4 y 13, sin implementar).
 - [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,
