@@ -1606,11 +1606,15 @@ reimpresión opcional para el cliente. No toca `docs/api-contract.md` ni
   muestra solo "Cerrar venta".
 
 **4. Verificación** (POS-38)
-- [ ] Instalado y verificado en el Xiaomi M2102J20SG: una venta en efectivo
+- [x] Instalado y verificado en el Xiaomi M2102J20SG: una venta en efectivo
   con cambio visible en pantalla, ticket PDF generado en
   `tickets/<fecha>/ticket-<folio>.pdf` (mismo truco `adb exec-out run-as
   com.pdv.pos cat files/tickets/...` documentado en la Parte 7), botón de
-  impresión funcional, y diálogo de reimpresión tras imprimir — `needs-device`
+  impresión funcional, y diálogo de reimpresión tras imprimir —
+  `needs-device` Confirmado por el usuario el 2026-08-20, tras varias
+  rondas de prueba directa en el dispositivo durante el desarrollo (folio y
+  botón de imprimir que quedaban visibles tras cerrar la venta, y falta del
+  botón "Cerrar venta", ambos corregidos antes de este cierre).
 
 ### Decisiones abiertas
 
