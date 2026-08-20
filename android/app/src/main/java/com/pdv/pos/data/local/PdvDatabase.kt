@@ -23,4 +23,5 @@ abstract class PdvDatabase : RoomDatabase() {
     abstract fun syncConflictDao(): SyncConflictDao
     abstract fun ventaDao(): VentaDao
     abstract fun entradaDao(): EntradaDao
+    abstract fun inventarioDao(): InventarioDao
 }

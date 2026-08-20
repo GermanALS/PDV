@@ -40,7 +40,7 @@ class LocalVentaRepositoryTest {
     fun `registrarVenta inserts venta, detalle and movimiento in one transaction and logs DB_WRITE`() = runTest {
         val dao = mockk<VentaDao>()
         val appLogger = mockk<AppLogger>()
-        coEvery { dao.insertVentaCompleta(any(), any(), any()) } returns Unit
+        coEvery { dao.insertVentaCompleta(any(), any(), any(), any()) } returns Unit
         coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
         val repository = LocalVentaRepository(dao, appLogger)
         val venta = ventaDeEjemplo()
@@ -58,6 +58,7 @@ class LocalVentaRepositoryTest {
                         it.single().referenciaId == "venta-1" &&
                         it.single().cantidad == BigDecimal("2")
                 },
+                now = any(),
             )
         }
         coVerify { appLogger.log(LogType.DB_WRITE, sucursalId = "suc-1", usuario = "german", mensaje = any()) }
@@ -67,7 +68,7 @@ class LocalVentaRepositoryTest {
     fun `registrarVenta propagates a DAO failure without logging DB_WRITE`() = runTest {
         val dao = mockk<VentaDao>()
         val appLogger = mockk<AppLogger>()
-        coEvery { dao.insertVentaCompleta(any(), any(), any()) } throws IllegalStateException("localId duplicado")
+        coEvery { dao.insertVentaCompleta(any(), any(), any(), any()) } throws IllegalStateException("localId duplicado")
         val repository = LocalVentaRepository(dao, appLogger)
 
         assertFailsWith<IllegalStateException> { repository.registrarVenta(ventaDeEjemplo()) }

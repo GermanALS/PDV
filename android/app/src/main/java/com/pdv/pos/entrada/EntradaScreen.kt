@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.domain.model.Articulo
+import com.pdv.pos.ui.EditableDropdownField
 import com.pdv.pos.venta.BarcodeScannerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,6 +80,7 @@ fun EntradaScreen(
             DatosEntradaSection(
                 cantidad = uiState.cantidad,
                 ubicacion = uiState.ubicacion,
+                ubicacionesDisponibles = uiState.ubicacionesDisponibles,
                 onCantidadChange = viewModel::onCantidadChange,
                 onUbicacionChange = viewModel::onUbicacionChange,
             )
@@ -186,16 +188,18 @@ private fun ArticuloNuevoSection(uiState: EntradaUiState, viewModel: EntradaView
             label = { Text("Descripción (opcional)") },
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(
+        EditableDropdownField(
+            label = "Categoría (opcional)",
             value = uiState.categoria,
+            opciones = uiState.categoriasDisponibles,
             onValueChange = viewModel::onCategoriaChange,
-            label = { Text("Categoría (opcional)") },
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(
+        EditableDropdownField(
+            label = "Unidad de medida",
             value = uiState.unidadMedida,
+            opciones = uiState.unidadesMedidaDisponibles,
             onValueChange = viewModel::onUnidadMedidaChange,
-            label = { Text("Unidad de medida") },
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
@@ -217,6 +221,7 @@ private fun ArticuloNuevoSection(uiState: EntradaUiState, viewModel: EntradaView
 private fun DatosEntradaSection(
     cantidad: String,
     ubicacion: String,
+    ubicacionesDisponibles: List<String>,
     onCantidadChange: (String) -> Unit,
     onUbicacionChange: (String) -> Unit,
 ) {
@@ -229,10 +234,11 @@ private fun DatosEntradaSection(
                 label = { Text("Cantidad") },
                 modifier = Modifier.weight(1f),
             )
-            OutlinedTextField(
+            EditableDropdownField(
+                label = "Estante / ubicación (opcional)",
                 value = ubicacion,
+                opciones = ubicacionesDisponibles,
                 onValueChange = onUbicacionChange,
-                label = { Text("Estante / ubicación (opcional)") },
                 modifier = Modifier.weight(1f),
             )
         }

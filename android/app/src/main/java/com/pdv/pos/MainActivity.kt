@@ -12,13 +12,14 @@ import com.pdv.pos.auth.LoginScreen
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionScreen
 import com.pdv.pos.entrada.EntradaScreen
+import com.pdv.pos.inventario.InventarioScreen
 import com.pdv.pos.ui.HelloScreen
 import com.pdv.pos.ui.theme.PdvTheme
 import com.pdv.pos.venta.VentaScreen
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
-private enum class Pantalla { HELLO, CONFIGURACION, VENTA, ENTRADA }
+private enum class Pantalla { HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO }
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -40,10 +41,12 @@ class MainActivity : ComponentActivity() {
                             onNavigateToConfiguracion = { pantalla = Pantalla.CONFIGURACION },
                             onNavigateToVenta = { pantalla = Pantalla.VENTA },
                             onNavigateToEntrada = { pantalla = Pantalla.ENTRADA },
+                            onNavigateToInventario = { pantalla = Pantalla.INVENTARIO },
                         )
                         Pantalla.CONFIGURACION -> ConfiguracionScreen(onBack = { pantalla = Pantalla.HELLO })
                         Pantalla.VENTA -> VentaScreen(onBack = { pantalla = Pantalla.HELLO })
                         Pantalla.ENTRADA -> EntradaScreen(onBack = { pantalla = Pantalla.HELLO })
+                        Pantalla.INVENTARIO -> InventarioScreen(onBack = { pantalla = Pantalla.HELLO })
                     }
                 }
             }

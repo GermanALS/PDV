@@ -48,7 +48,7 @@ class VentaEventoAditivoIntegrationTest {
     private suspend fun registrarVentaYCapturarDeltaDeInventario(usuarioId: String, ventaId: String): BigDecimal {
         val dao = mockk<VentaDao>()
         val movimientos = slot<List<MovimientoEntity>>()
-        coEvery { dao.insertVentaCompleta(any(), any(), capture(movimientos)) } returns Unit
+        coEvery { dao.insertVentaCompleta(any(), any(), capture(movimientos), any()) } returns Unit
         val appLogger = mockk<AppLogger>()
         coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
 
