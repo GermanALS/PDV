@@ -24,6 +24,14 @@ interface VentaDao {
     @Query("SELECT * FROM inventario WHERE sucursalId = :sucursalId AND articuloId = :articuloId LIMIT 1")
     suspend fun getInventario(sucursalId: String, articuloId: String): InventarioEntity?
 
+    // Usado por LocalCajaRepository (PLAN.md Parte 10) para agregar totales
+    // de un periodo; VentaDao es dueno de la tabla `ventas`.
+    @Query(
+        "SELECT * FROM ventas WHERE sucursalId = :sucursalId AND estado = 'completada' AND deletedAt IS NULL " +
+            "AND fecha BETWEEN :fechaInicio AND :fechaFin",
+    )
+    suspend fun getVentasDelPeriodo(sucursalId: String, fechaInicio: Long, fechaFin: Long): List<VentaEntity>
+
     @Insert
     suspend fun insertInventario(entity: InventarioEntity)
 

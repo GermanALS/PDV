@@ -2,9 +2,11 @@ package com.pdv.pos.di
 
 import android.content.Context
 import androidx.room.Room
+import com.pdv.pos.data.local.CajaDao
 import com.pdv.pos.data.local.EntradaDao
 import com.pdv.pos.data.local.InventarioDao
 import com.pdv.pos.data.local.PdvDatabase
+import com.pdv.pos.data.local.RetiroDao
 import com.pdv.pos.data.local.SucursalDao
 import com.pdv.pos.data.local.SyncConflictDao
 import com.pdv.pos.data.local.VentaDao
@@ -43,4 +45,10 @@ object DatabaseModule {
 
     @Provides
     fun provideInventarioDao(database: PdvDatabase): InventarioDao = database.inventarioDao()
+
+    @Provides
+    fun provideCajaDao(database: PdvDatabase): CajaDao = database.cajaDao()
+
+    @Provides
+    fun provideRetiroDao(database: PdvDatabase): RetiroDao = database.retiroDao()
 }

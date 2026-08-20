@@ -1,9 +1,11 @@
 package com.pdv.pos.di
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.pdv.pos.data.remote.CajaApiService
 import com.pdv.pos.data.remote.EntradaApiService
 import com.pdv.pos.data.remote.HealthApiService
 import com.pdv.pos.data.remote.InventarioApiService
+import com.pdv.pos.data.remote.RetiroApiService
 import com.pdv.pos.data.remote.SucursalApiService
 import com.pdv.pos.data.remote.VentaApiService
 import dagger.Module
@@ -69,4 +71,14 @@ object NetworkModule {
     @Singleton
     fun provideInventarioApiService(retrofit: Retrofit): InventarioApiService =
         retrofit.create(InventarioApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideCajaApiService(retrofit: Retrofit): CajaApiService =
+        retrofit.create(CajaApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideRetiroApiService(retrofit: Retrofit): RetiroApiService =
+        retrofit.create(RetiroApiService::class.java)
 }
