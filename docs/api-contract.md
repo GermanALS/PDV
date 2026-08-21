@@ -674,7 +674,94 @@ Response `422 Unprocessable Entity` — falta `sucursal_id`/`fecha_inicio`/
 
 ---
 
-## 9. Convenciones generales
+## 9. Devoluciones
+
+Sexto recurso real del dominio (PLAN.md Parte 11, módulo Devoluciones).
+Registra la devolución de un cliente junto con sus líneas
+(`devolucion_detalle`) en una sola llamada, mismo patrón que `POST /ventas`
+(sección 5). A diferencia de Ventas/Entradas, **esta ruta no toca
+`inventario` ni escribe `movimiento`** — el propósito de esta Parte es
+"gestionar la devolución con el proveedor", no un restock inmediato del
+catálogo vendible; si una Parte futura necesita ese efecto, se documenta
+ahí, no aquí. `venta_id` es opcional (`"venta original, si se conoce"`,
+`docs/schema-pos.json`); si se envía, debe corresponder a una venta
+existente. A diferencia de `venta_detalle` (sección 5, sin FK real a
+`articulos`), `devolucion_detalle.articulo_id` sí tiene FK real — mismo
+criterio que `inventario`/`movimientos` (`docs/schema-pos.json`).
+
+`cantidad` viaja como **string JSON** (misma convención que Ventas/Entradas)
+para no perder precisión decimal.
+
+### 9.1 Registrar devolución
+
+**POST** `/devoluciones`
+
+Request body
+```json
+{
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "venta_id": "uuid o null",
+  "folio": "string",
+  "fecha": "2026-08-20T12:00:00Z",
+  "estado": "registrada",
+  "lineas": [
+    {
+      "local_id": "uuid o null",
+      "articulo_id": "uuid",
+      "cantidad": "1",
+      "motivo": "string o null",
+      "condicion": "defectuoso"
+    }
+  ]
+}
+```
+`lineas` requiere al menos un elemento. `estado` es opcional, por defecto
+`"registrada"` (`docs/schema-pos.json`: `"registrada"` /
+`"en_gestion_proveedor"` / `"cerrada"`, sin validación server-side de la
+transición todavía — esta Parte solo crea devoluciones en `"registrada"`,
+las transiciones de estado no están en su checklist). `condicion` es libre
+(ej. `"defectuoso"` / `"no_defectuoso"`, `docs/schema-pos.json` lo describe
+como ejemplo, no como enum cerrado).
+
+Response `201 Created`
+```json
+{
+  "id": "uuid",
+  "local_id": "uuid o null",
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "venta_id": "uuid o null",
+  "folio": "string",
+  "fecha": "2026-08-20T12:00:00Z",
+  "estado": "registrada",
+  "updated_at": "2026-08-20T12:00:00Z",
+  "is_synced": true,
+  "deleted_at": null,
+  "lineas": [
+    {
+      "id": "uuid",
+      "local_id": "uuid o null",
+      "articulo_id": "uuid",
+      "cantidad": "1.000",
+      "motivo": "string o null",
+      "condicion": "defectuoso"
+    }
+  ]
+}
+```
+
+Response `422 Unprocessable Entity` — `lineas` vacío, o falta
+`sucursal_id`/`usuario_id`/`folio`/`fecha`.
+
+Response `404 Not Found` — `venta_id` no corresponde a ninguna venta
+existente, o algún `articulo_id` de `lineas` no corresponde a ningún
+artículo existente.
+
+---
+
+## 10. Convenciones generales
 
 - Todas las fechas en ISO 8601 UTC (`created_at`, `updated_at`).
 - IDs como UUID v4 (string), nunca enteros autoincrementales expuestos en la API pública.
@@ -700,18 +787,19 @@ Response `422 Unprocessable Entity` — falta `sucursal_id`/`fecha_inicio`/
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
-## 10. Pendiente de definir
+## 11. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
 este contrato, sino prerequisitos pendientes):
 
-- [ ] Rutas reales de `devoluciones`, `usuarios` (PLAN.md Partes 11-12,
-  una por módulo) — `sucursales` (sección 4), `ventas` (sección 5), la
-  alta de `articulos`/`inventario`/`movimientos` vía `POST /entradas`
-  (sección 6), la lectura/ajuste de `articulos`/`inventario` (sección 7),
-  y `cortes_caja`/`retiros_efectivo` (sección 8) ya están implementadas;
-  el placeholder de la sección 3 se reemplaza módulo por módulo a medida
-  que cada Parte llega a su sub-paso de repositorio remoto.
+- [ ] Rutas reales de `usuarios` (PLAN.md Parte 12) — `sucursales`
+  (sección 4), `ventas` (sección 5), la alta de
+  `articulos`/`inventario`/`movimientos` vía `POST /entradas` (sección 6),
+  la lectura/ajuste de `articulos`/`inventario` (sección 7),
+  `cortes_caja`/`retiros_efectivo` (sección 8) y `devoluciones` (sección 9)
+  ya están implementadas; el placeholder de la sección 3 se reemplaza
+  módulo por módulo a medida que cada Parte llega a su sub-paso de
+  repositorio remoto.
 - [ ] Rutas de autenticación real y gestión de usuarios/roles (PLAN.md
   Partes 4 y 13, sin implementar).
 - [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,

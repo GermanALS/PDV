@@ -15,8 +15,10 @@ import androidx.room.TypeConverters
         InventarioEntity::class,
         CorteCajaEntity::class,
         RetiroEfectivoEntity::class,
+        DevolucionEntity::class,
+        DevolucionDetalleEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -28,4 +30,5 @@ abstract class PdvDatabase : RoomDatabase() {
     abstract fun inventarioDao(): InventarioDao
     abstract fun cajaDao(): CajaDao
     abstract fun retiroDao(): RetiroDao
+    abstract fun devolucionDao(): DevolucionDao
 }
