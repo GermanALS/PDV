@@ -6,6 +6,7 @@ import com.pdv.pos.data.ModeAwareEntradaRepository
 import com.pdv.pos.data.ModeAwareInventarioRepository
 import com.pdv.pos.data.ModeAwareRetiroEfectivoRepository
 import com.pdv.pos.data.ModeAwareSucursalRepository
+import com.pdv.pos.data.ModeAwareUsuarioRepository
 import com.pdv.pos.data.ModeAwareVentaRepository
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.DevolucionRepository
@@ -13,6 +14,7 @@ import com.pdv.pos.domain.repository.EntradaRepository
 import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import com.pdv.pos.domain.repository.SucursalRepository
+import com.pdv.pos.domain.repository.UsuarioRepository
 import com.pdv.pos.domain.repository.VentaRepository
 import dagger.Binds
 import dagger.Module
@@ -50,4 +52,8 @@ abstract class RepositoryModule {
     // Resuelve local/remota segun BackendMode (PLAN.md Parte 11, sub-paso 4).
     @Binds
     abstract fun bindDevolucionRepository(impl: ModeAwareDevolucionRepository): DevolucionRepository
+
+    // Resuelve local/remota segun BackendMode (PLAN.md Parte 12, sub-paso 4).
+    @Binds
+    abstract fun bindUsuarioRepository(impl: ModeAwareUsuarioRepository): UsuarioRepository
 }

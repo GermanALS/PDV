@@ -8,6 +8,7 @@ import com.pdv.pos.data.remote.HealthApiService
 import com.pdv.pos.data.remote.InventarioApiService
 import com.pdv.pos.data.remote.RetiroApiService
 import com.pdv.pos.data.remote.SucursalApiService
+import com.pdv.pos.data.remote.UsuarioApiService
 import com.pdv.pos.data.remote.VentaApiService
 import dagger.Module
 import dagger.Provides
@@ -87,4 +88,9 @@ object NetworkModule {
     @Singleton
     fun provideDevolucionApiService(retrofit: Retrofit): DevolucionApiService =
         retrofit.create(DevolucionApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideUsuarioApiService(retrofit: Retrofit): UsuarioApiService =
+        retrofit.create(UsuarioApiService::class.java)
 }

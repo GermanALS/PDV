@@ -26,6 +26,7 @@ fun HelloScreen(
     onNavigateToInventario: () -> Unit,
     onNavigateToCaja: () -> Unit,
     onNavigateToDevoluciones: () -> Unit,
+    onNavigateToUsuarios: () -> Unit,
     viewModel: HelloViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -62,6 +63,9 @@ fun HelloScreen(
             }
             Button(onClick = onNavigateToDevoluciones, modifier = Modifier.fillMaxWidth()) {
                 Text("Devoluciones")
+            }
+            Button(onClick = onNavigateToUsuarios, modifier = Modifier.fillMaxWidth()) {
+                Text("Usuarios")
             }
             Button(onClick = onNavigateToConfiguracion, modifier = Modifier.fillMaxWidth()) {
                 Text("Configuración")

@@ -1493,7 +1493,7 @@ hallazgos; instalado y confirmado por el usuario en el Xiaomi.
 
 ---
 
-## Parte 12: Módulo Administración de usuarios (demo)
+## Parte 12: Módulo Administración de usuarios (demo)  <!-- POS-50 -->
 
 CRUD de administrador y encargados de turno, y asignación de turnos. Este
 CRUD persiste usuarios y turnos de verdad (repositorio local/remoto, como
@@ -1502,41 +1502,108 @@ de permisos por rol sobre los demás módulos.
 
 ### Checklist
 
-**1. UI**
-- [ ] Propuesta de pantalla (CRUD de administrador/encargados de turno,
+**1. UI** (POS-51)
+- [x] Propuesta de pantalla (CRUD de administrador/encargados de turno,
   asignación de turnos) presentada y aprobada — criterio: aprobación
-  explícita registrada antes de implementar.
-- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
-  `./gradlew build` pasa y la pantalla es navegable.
-- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+  explícita registrada antes de implementar. Aprobado el 2026-08-20:
+  "asignación de turnos" se interpreta como el campo `rol`
+  (administrador/encargado_turno) del propio CRUD de `Usuario` — no hay
+  tabla `turnos` separada (no está en el esquema aprobado ni en el
+  checklist de Repositorio local de esta Parte); pantalla `UsuarioScreen`
+  con lista de usuarios y formulario alta/edición (usuario, nombre
+  completo, selector de rol, toggle activo), sin campo de contraseña
+  (llega en Parte 13); navegación manual desde `HelloScreen`.
+- [x] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable. Verificado: `./gradlew
+  build` en verde (`BUILD SUCCESSFUL`, incluye tests y lint); catálogo
+  estático de 2 usuarios de ejemplo (`admin`/administrador,
+  `user1`/encargado_turno) en `UsuarioViewModel`; alta, edición,
+  activar/desactivar y eliminación en memoria; botón "Usuarios" en
+  `HelloScreen` navega a `UsuarioScreen`.
+- [x] Instalado y verificado en el Xiaomi — `needs-device` Confirmado por
+  el usuario el 2026-08-20: pantalla de Usuarios instalada y verificada.
 
-**2. Repositorio local**
-- [ ] `UsuarioRepository` (interfaz) en `domain/repository/` — criterio:
-  compila sin Room ni Retrofit.
-- [ ] `LocalUsuarioRepository` (Room) en `data/local/` — criterio:
-  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
-- [ ] Esquema de `Usuario` reserva el campo de contraseña hasheada que la
+**2. Repositorio local** (POS-52)
+- [x] `UsuarioRepository` (interfaz) en `domain/repository/` — criterio:
+  compila sin Room ni Retrofit. Verificado: solo importa `domain.model.Usuario`
+  y `kotlinx.coroutines.flow.Flow`; `crearUsuario`/`actualizarUsuario`/
+  `eliminarUsuario` reciben `sucursalId`/`actorUsuario` aparte (atribución
+  del log `DB_WRITE`) porque `usuarios` no es `sucursal_scoped`.
+- [x] `LocalUsuarioRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado: `BUILD
+  SUCCESSFUL`, 5 tests en `LocalUsuarioRepositoryTest` en verde.
+  `UsuarioEntity`/`UsuarioDao` agregados a `PdvDatabase` (versión 6,
+  `fallbackToDestructiveMigration`, sin migración formal — mismo criterio
+  que el resto del proyecto).
+- [x] Esquema de `Usuario` reserva el campo de contraseña hasheada que la
   Parte 13 va a usar (aunque todavía no se valida contra él) — criterio:
   campo presente en la entidad Room, sin lógica de login real todavía.
-- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
-  prueba unitaria verifica la invocación al logger.
-- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
-  criterio: `./gradlew testDebugUnitTest` en verde.
+  Verificado: `UsuarioEntity.passwordHash: String?`, siempre `null` al
+  crear (sin login real hasta la Parte 13).
+- [x] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger. Verificado: las 3
+  escrituras (`crearUsuario`/`actualizarUsuario`/`eliminarUsuario`
+  soft-delete vía `deletedAt`) logean `DB_WRITE`, cubierto en
+  `LocalUsuarioRepositoryTest`.
+- [x] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde. Verificado: 5 tests
+  (happy path de crear/actualizar/eliminar + 2 casos de error: fallo del
+  DAO al crear, usuario inexistente al actualizar).
 
-**3. Repositorio remoto**
-- [ ] `docs/api-contract.md` actualizado con los endpoints de `usuarios`
-  (CLAUDE.md §9) — criterio: sección nueva, revisada.
-- [ ] Ruta FastAPI (`app/routers/usuarios.py`) — criterio: `pytest
-  backend/tests/test_usuarios.py` en verde.
-- [ ] `RemoteUsuarioRepository` (Retrofit) — criterio: `./gradlew
-  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
-- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
-  criterio: prueba unitaria simula timeout.
+**3. Repositorio remoto** (POS-53)
+- [x] `docs/api-contract.md` actualizado con los endpoints de `usuarios`
+  (CLAUDE.md §9) — criterio: sección nueva, revisada. Verificado: sección
+  10 "Usuarios" agregada (CRUD completo: listar/crear/editar/eliminar),
+  secciones 11-12 renumeradas; sin `sucursal_id` (no es `sucursal_scoped`);
+  `password_hash` nunca se expone; ítem correspondiente quitado de la
+  sección "Pendiente de definir".
+- [x] Ruta FastAPI (`app/routers/usuarios.py`) — criterio: `pytest
+  backend/tests/test_usuarios.py` en verde. Verificado: 8 tests en verde
+  (`pytest tests/test_usuarios.py`, y la suite completa de 38 tests sigue
+  en verde); migración Alembic `0006_create_usuarios` agregada
+  (mismo patrón que las Partes anteriores); `rol` restringido a
+  `administrador`/`encargado_turno` (`Literal`, 422 si no cumple);
+  `username` único (409 en duplicado, alta o edición); `DELETE` hace
+  soft-delete (`deleted_at`), no borra la fila.
+- [x] `RemoteUsuarioRepository` (Retrofit) — criterio: `./gradlew
+  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests` Verificado:
+  `BUILD SUCCESSFUL`, 4 tests en `RemoteUsuarioRepositoryTest` en verde.
+- [x] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout. Verificado:
+  `crearUsuario logs ERROR and rethrows on a timeout` simula
+  `SocketTimeoutException`; `eliminarUsuario` cubre `IOException`.
 
-**4. Wiring**
-- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
-  prueba con estados mockeados confirma el repositorio correcto.
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+**4. Wiring** (POS-54)
+- [x] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+  prueba con estados mockeados confirma el repositorio correcto. Verificado:
+  `ModeAwareUsuarioRepository` (mismo criterio que
+  `ModeAwareSucursalRepository`/`ModeAwareDevolucionRepository`) resuelve
+  local/remota según `BackendMode` en DataStore, cubierto por
+  `ModeAwareUsuarioRepositoryTest` (2 tests: lectura reactiva y escritura);
+  `UsuarioViewModel` conectado a `UsuarioRepository` real (ya no el
+  catálogo estático del sub-paso 1), cubierto por `UsuarioViewModelTest`
+  (4 tests: crear/editar/eliminar vía repositorio, falta sucursal/sesión).
+  `./gradlew build` en verde. Migración `0006_create_usuarios` aplicada
+  contra el Postgres de `docker compose` (`alembic stamp head` — la tabla
+  ya existía por `Base.metadata.create_all` de la suite de pytest corrida
+  antes en la misma base; `alembic check` confirmó "No new upgrade
+  operations detected"); imagen del backend reconstruida
+  (`scripts/start-windows.ps1`) para incluir la ruta `usuarios` en modo
+  REMOTO.
+- [x] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+  Confirmado por el usuario el 2026-08-21: instalado y probado exitosamente
+  en los tres modos (Local, Remoto, Local con sincronización). Primer
+  intento en REMOTO falló: el túnel `adb reverse tcp:8000 tcp:8000` no
+  estaba activo (se pierde al reconectar el cable/reiniciar adb, no es
+  persistente entre sesiones) — diagnosticado inspeccionando logs del
+  contenedor backend (cero requests a `/usuarios`) y el log de la app en
+  el dispositivo (sin entradas `ERROR` de red para Usuarios, solo
+  `DB_WRITE` de una prueba local anterior). Corregido rehaciendo el túnel;
+  reintento confirmó los tres modos funcionando en todos los módulos.
+  A raíz de esto se agregaron `scripts/install-apk-tuneling.ps1` (
+  `installDebug` + `adb reverse`) y `scripts/stop-apk-services.ps1` (quita
+  el túnel), documentados en `CLAUDE.md` sec. 3 como tooling de depuración
+  ajeno al alcance de esta Parte.
 
 Realiza pruebas de integración exhaustivas.
 
