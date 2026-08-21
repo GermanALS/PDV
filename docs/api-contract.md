@@ -761,7 +761,97 @@ artículo existente.
 
 ---
 
-## 10. Convenciones generales
+## 10. Usuarios
+
+Séptimo recurso real del dominio (PLAN.md Parte 12, módulo Administración de
+usuarios — demo). CRUD completo de `usuarios`; a diferencia de las demás
+entidades transaccionales, **no lleva `sucursal_id`** (`usuarios` no es
+`sucursal_scoped` en `docs/schema-pos.json` — un usuario puede operar en
+cualquier sucursal). `rol` acepta únicamente `"administrador"` /
+`"encargado_turno"` en esta Parte (catálogo de roles personalizados llega en
+la Parte 13, `docs/schema-pos.json` §usuarios). La respuesta **nunca**
+incluye `password_hash` — ese campo existe en el esquema para reservar el
+lugar que la Parte 13 va a usar (login real), pero no se expone por esta
+ruta ni se acepta en el request body todavía.
+
+### 10.1 Listar usuarios
+
+**GET** `/usuarios?page=1&page_size=20`
+
+Response `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "local_id": "uuid o null",
+      "username": "admin",
+      "nombre_completo": "string",
+      "rol": "administrador",
+      "activo": true,
+      "updated_at": "2026-08-21T12:00:00Z",
+      "is_synced": true,
+      "deleted_at": null
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+### 10.2 Crear usuario
+
+**POST** `/usuarios`
+
+Request body
+```json
+{
+  "local_id": "uuid o null",
+  "username": "string, 1-60 caracteres, unico",
+  "nombre_completo": "string, 1-120 caracteres",
+  "rol": "administrador",
+  "activo": true
+}
+```
+
+Response `201 Created` → mismo shape que un ítem de 10.1.
+
+Response `409 Conflict` — ya existe un usuario con ese `username`.
+
+### 10.3 Editar usuario
+
+**PATCH** `/usuarios/{id}`
+
+Request body
+```json
+{
+  "username": "string, 1-60 caracteres, unico",
+  "nombre_completo": "string, 1-120 caracteres",
+  "rol": "administrador",
+  "activo": true
+}
+```
+
+Response `200 OK` → mismo shape que un ítem de 10.1.
+
+Response `404 Not Found` — no existe un usuario con ese `id`.
+
+Response `409 Conflict` — el `username` nuevo ya lo usa otro usuario.
+
+### 10.4 Eliminar usuario
+
+**DELETE** `/usuarios/{id}`
+
+Soft-delete: fija `deleted_at`, no borra la fila (PLAN.md Parte 3).
+
+Response `204 No Content`
+
+Response `404 Not Found` — no existe un usuario con ese `id`.
+
+---
+
+## 11. Convenciones generales
 
 - Todas las fechas en ISO 8601 UTC (`created_at`, `updated_at`).
 - IDs como UUID v4 (string), nunca enteros autoincrementales expuestos en la API pública.
@@ -787,21 +877,22 @@ artículo existente.
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
-## 11. Pendiente de definir
+## 12. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
 este contrato, sino prerequisitos pendientes):
 
-- [ ] Rutas reales de `usuarios` (PLAN.md Parte 12) — `sucursales`
-  (sección 4), `ventas` (sección 5), la alta de
+- [ ] `sucursales` (sección 4), `ventas` (sección 5), la alta de
   `articulos`/`inventario`/`movimientos` vía `POST /entradas` (sección 6),
   la lectura/ajuste de `articulos`/`inventario` (sección 7),
-  `cortes_caja`/`retiros_efectivo` (sección 8) y `devoluciones` (sección 9)
-  ya están implementadas; el placeholder de la sección 3 se reemplaza
-  módulo por módulo a medida que cada Parte llega a su sub-paso de
-  repositorio remoto.
-- [ ] Rutas de autenticación real y gestión de usuarios/roles (PLAN.md
-  Partes 4 y 13, sin implementar).
+  `cortes_caja`/`retiros_efectivo` (sección 8), `devoluciones` (sección 9)
+  y `usuarios` (sección 10) ya están implementadas; el placeholder de la
+  sección 3 se reemplaza módulo por módulo a medida que cada Parte llega a
+  su sub-paso de repositorio remoto.
+- [ ] Rutas de autenticación real y roles/permisos personalizados (PLAN.md
+  Partes 4 y 13, sin implementar) — reemplaza el login ficticio y agrega
+  `POST /auth/login`, catálogo de roles, y permisos por módulo sobre los
+  `usuarios` que esta sección (10) ya persiste.
 - [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,
   validación de permisos (PLAN.md Partes 14-16), sin diseñar a nivel de
   contrato.

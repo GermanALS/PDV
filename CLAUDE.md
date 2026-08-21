@@ -131,6 +131,19 @@ cd android
 ./gradlew installDebug          # instala el APK en el dispositivo/emulador conectado
 ```
 
+**Instalación + tunneling USB para modo REMOTO (Windows)**: el modo REMOTO
+en el dispositivo físico necesita `adb reverse tcp:8000 tcp:8000` además de
+`installDebug` — sin eso, `localhost:8000` en el dispositivo no llega al
+backend de la PC. Este túnel no persiste entre reconexiones de cable,
+reinicios del dispositivo/PC, ni `adb kill-server`, así que hay que
+rehacerlo cada sesión de prueba. Esto no es parte del código de ningún
+módulo — es tooling de depuración para que probar en el Xiaomi sea más
+rápido y no dependa de recordar el comando `adb reverse` a mano:
+```powershell
+scripts\install-apk-tuneling.ps1   # installDebug + adb reverse tcp:8000 tcp:8000
+scripts\stop-apk-services.ps1      # quita el túnel al terminar la sesión de prueba
+```
+
 **Definición de hecho**: un cambio en `android/` no se considera terminado
 solo por compilar o pasar revisión textual. Debe quedar instalado y
 verificado corriendo en el dispositivo físico Xiaomi M2102J20SG (objetivo

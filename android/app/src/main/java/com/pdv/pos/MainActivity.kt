@@ -17,11 +17,12 @@ import com.pdv.pos.entrada.EntradaScreen
 import com.pdv.pos.inventario.InventarioScreen
 import com.pdv.pos.ui.HelloScreen
 import com.pdv.pos.ui.theme.PdvTheme
+import com.pdv.pos.usuario.UsuarioScreen
 import com.pdv.pos.venta.VentaScreen
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
-private enum class Pantalla { HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO, CAJA, DEVOLUCIONES }
+private enum class Pantalla { HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO, CAJA, DEVOLUCIONES, USUARIOS }
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
                             onNavigateToInventario = { pantalla = Pantalla.INVENTARIO },
                             onNavigateToCaja = { pantalla = Pantalla.CAJA },
                             onNavigateToDevoluciones = { pantalla = Pantalla.DEVOLUCIONES },
+                            onNavigateToUsuarios = { pantalla = Pantalla.USUARIOS },
                         )
                         Pantalla.CONFIGURACION -> ConfiguracionScreen(onBack = { pantalla = Pantalla.HELLO })
                         Pantalla.VENTA -> VentaScreen(onBack = { pantalla = Pantalla.HELLO })
@@ -53,6 +55,7 @@ class MainActivity : ComponentActivity() {
                         Pantalla.INVENTARIO -> InventarioScreen(onBack = { pantalla = Pantalla.HELLO })
                         Pantalla.CAJA -> CajaScreen(onBack = { pantalla = Pantalla.HELLO })
                         Pantalla.DEVOLUCIONES -> DevolucionScreen(onBack = { pantalla = Pantalla.HELLO })
+                        Pantalla.USUARIOS -> UsuarioScreen(onBack = { pantalla = Pantalla.HELLO })
                     }
                 }
             }

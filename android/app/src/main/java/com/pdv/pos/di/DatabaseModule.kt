@@ -10,6 +10,7 @@ import com.pdv.pos.data.local.PdvDatabase
 import com.pdv.pos.data.local.RetiroDao
 import com.pdv.pos.data.local.SucursalDao
 import com.pdv.pos.data.local.SyncConflictDao
+import com.pdv.pos.data.local.UsuarioDao
 import com.pdv.pos.data.local.VentaDao
 import dagger.Module
 import dagger.Provides
@@ -55,4 +56,7 @@ object DatabaseModule {
 
     @Provides
     fun provideDevolucionDao(database: PdvDatabase): DevolucionDao = database.devolucionDao()
+
+    @Provides
+    fun provideUsuarioDao(database: PdvDatabase): UsuarioDao = database.usuarioDao()
 }
