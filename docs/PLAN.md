@@ -1333,48 +1333,163 @@ módulo.
 
 ---
 
-## Parte 11: Módulo Devoluciones
+## Parte 11: Módulo Devoluciones  <!-- POS-44 -->
 
 Registrar devoluciones de clientes y consultar la lista de productos en
 esta condición para gestionar la devolución con el proveedor.
 
 ### Checklist
 
-**1. UI**
-- [ ] Propuesta de pantalla (registrar devolución, consultar lista para
+**1. UI** (POS-45)
+- [x] Propuesta de pantalla (registrar devolución, consultar lista para
   gestión con proveedor) presentada y aprobada — criterio: aprobación
-  explícita registrada antes de implementar.
-- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
-  `./gradlew build` pasa y la pantalla es navegable.
-- [ ] Instalado y verificado en el Xiaomi — `needs-device`
+  explícita registrada antes de implementar. Aprobado el 2026-08-20
+  (pantalla `DevolucionScreen`: búsqueda de artículo del catálogo estático,
+  formulario cantidad/motivo/condición, líneas de la devolución, folio de
+  venta original opcional, botón "Registrar devolución", historial de la
+  sesión actual para gestión con proveedor — sin `GET` de listado
+  persistente, mismo criterio que Ventas Parte 7; navegación manual desde
+  `HelloScreen`).
+- [x] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` pasa y la pantalla es navegable. Verificado: `./gradlew
+  build` en verde (`BUILD SUCCESSFUL`, incluye lint); catálogo estático de
+  3 artículos de ejemplo en `DevolucionViewModel`; botón "Devoluciones" en
+  `HelloScreen` navega a `DevolucionScreen`. `code-reviewer` encontró y se
+  corrigió un hallazgo antes de cerrar este ítem: `quitarLinea` filtraba
+  por `articulo.id`, así que si el mismo artículo se agregaba dos veces con
+  distinta condición/motivo (caso válido en Devoluciones, a diferencia del
+  carrito de Venta que garantiza una sola línea por artículo), "Quitar" en
+  una fila borraba todas las líneas de ese artículo — corregido con un `id`
+  propio por `LineaDevolucion`.
+- [x] Instalado y verificado en el Xiaomi — `needs-device` Confirmado por
+  el usuario el 2026-08-20: pantalla de Devoluciones instalada y verificada
+  (búsqueda de artículo, formulario cantidad/motivo/condición, líneas,
+  quitar una línea individual, folio de venta original opcional, botón
+  "Registrar devolución" y el historial de la sesión).
 
-**2. Repositorio local**
-- [ ] `DevolucionRepository` (interfaz) en `domain/repository/` —
-  criterio: compila sin Room ni Retrofit.
-- [ ] `LocalDevolucionRepository` (Room) en `data/local/` — criterio:
-  `./gradlew testDebugUnitTest` en verde. `jvm-tests`
-- [ ] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
-  prueba unitaria verifica la invocación al logger.
-- [ ] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
-  criterio: `./gradlew testDebugUnitTest` en verde.
+**2. Repositorio local** (POS-46)
+- [x] `DevolucionRepository` (interfaz) en `domain/repository/` —
+  criterio: compila sin Room ni Retrofit. Verificado: expone solo `suspend
+  fun registrarDevolucion(devolucion: Devolucion)` sobre el modelo de
+  dominio `Devolucion`/`DevolucionLinea` (`domain/model/Devolucion.kt`).
+- [x] `LocalDevolucionRepository` (Room) en `data/local/` — criterio:
+  `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado:
+  `./gradlew build` en verde (`BUILD SUCCESSFUL`, incluye lint y
+  `testDebugUnitTest`/`testReleaseUnitTest`). `LocalDevolucionRepository.
+  registrarDevolucion` inserta `DevolucionEntity` + `DevolucionDetalleEntity`
+  (una por línea) en una sola transacción Room (`DevolucionDao.
+  insertDevolucionCompleta`, mismo patrón `@Transaction` que `VentaDao.
+  insertVentaCompleta`) — a diferencia de Venta/Entrada, **no** genera
+  `movimiento` ni toca `inventario` (decisión de alcance de esta Parte, no
+  un descuido). `PdvDatabase` sube a versión 5 (agrega `DevolucionEntity`/
+  `DevolucionDetalleEntity`); `DatabaseModule` provee `DevolucionDao`.
+- [x] Cada escritura registra `DB_WRITE` en el log (Parte 5) — criterio:
+  prueba unitaria verifica la invocación al logger. Verificado:
+  `LocalDevolucionRepositoryTest` (MockK) confirma `appLogger.log(LogType.
+  DB_WRITE, ...)` tras un `registrarDevolucion` exitoso.
+- [x] Pruebas unitarias del happy path + 1 caso de error (CLAUDE.md §6) —
+  criterio: `./gradlew testDebugUnitTest` en verde. Verificado:
+  `LocalDevolucionRepositoryTest`, 2 pruebas en verde (happy path: inserta
+  devolución+detalle y loguea `DB_WRITE`; error: una falla del DAO se
+  propaga sin loguear `DB_WRITE`). `code-reviewer` revisó los 7 archivos de
+  este sub-paso (más el wiring de `PdvDatabase`/`DatabaseModule`) sin
+  hallazgos — confirmó explícitamente atomicidad de la transacción,
+  nulabilidad consistente con `docs/schema-pos.json`, y paridad campo por
+  campo entre el esquema aprobado y las entidades Room.
 
-**3. Repositorio remoto**
-- [ ] `docs/api-contract.md` actualizado con los endpoints de
+**3. Repositorio remoto** (POS-47)
+- [x] `docs/api-contract.md` actualizado con los endpoints de
   `devoluciones` (CLAUDE.md §9) — criterio: sección nueva, revisada.
-- [ ] Ruta FastAPI (`app/routers/devoluciones.py`) — criterio: `pytest
-  backend/tests/test_devoluciones.py` en verde.
-- [ ] `RemoteDevolucionRepository` (Retrofit) — criterio: `./gradlew
-  testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
-- [ ] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
-  criterio: prueba unitaria simula timeout.
+  Verificado: `docs/api-contract.md` §9 (Devoluciones) documenta
+  `POST /devoluciones`, request/response completos, el 422 por `lineas`
+  vacío o campos obligatorios faltantes, y el 404 por `venta_id`/
+  `articulo_id` inexistente.
+- [x] Ruta FastAPI (`app/routers/devoluciones.py`) — criterio: `pytest
+  backend/tests/test_devoluciones.py` en verde. Verificado: 5 pruebas en
+  verde contra el Postgres real de `docker compose` (happy path con y sin
+  `venta_id`, 422 por `lineas` vacío, 404 por `articulo_id` inexistente,
+  404 por `venta_id` inexistente); `alembic upgrade head` aplicó
+  `0005_create_devoluciones` y `alembic check` confirmó "No new upgrade
+  operations detected" — de paso corrigió un gap preexistente de la Parte
+  10 (`alembic/env.py` nunca importaba `app.models.caja`, así que
+  `cortes_caja`/`retiros_efectivo` no estaban en `Base.metadata` y
+  `alembic check` los reportaba como tablas a eliminar). Suite completa del
+  backend: 30/30 en verde. Smoke test manual contra el contenedor
+  reconstruido confirma el 422 y el 404 con el shape de Pydantic esperado.
+- [x] `RemoteDevolucionRepository` (Retrofit) en `data/remote/` —
+  criterio: `./gradlew testDebugUnitTest` pasa mockeando Retrofit.
+  `jvm-tests` Verificado: `./gradlew build` en verde (`BUILD SUCCESSFUL`,
+  incluye lint y ambas suites de tests unitarios). `DevolucionApiService.
+  createDevolucion` (POST `/devoluciones`) + DTOs (`DevolucionDto`/
+  `DevolucionCreateRequestDto`, cantidad como String); `fecha: Long` se
+  convierte a ISO 8601 con `java.time.Instant`. Cableado en
+  `NetworkModule.provideDevolucionApiService`. Aún sin `@Binds` a
+  `DevolucionRepository` en `RepositoryModule` — se agrega en el sub-paso 4
+  (Wiring), mismo orden que Venta/Caja.
+- [x] Fallas de red registran `ERROR`/`WARN` en el log (Parte 5) —
+  criterio: prueba unitaria simula timeout. Verificado:
+  `RemoteDevolucionRepositoryTest`, 3 pruebas en verde (happy path: mapea
+  `Devolucion` al DTO y no loguea nada; `IOException` se loguea como
+  `LogType.ERROR` y se repropaga; `HttpException` — 422 — también se
+  loguea y repropaga). `code-reviewer` revisó los 9 archivos de este
+  sub-paso (backend + Android) sin hallazgos.
 
-**4. Wiring**
-- [ ] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
-  prueba con estados mockeados confirma el repositorio correcto.
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`
+**4. Wiring** (POS-48)
+- [x] `ViewModel` conectado según `BackendMode` (Parte 6) — criterio:
+  prueba con estados mockeados confirma el repositorio correcto. Verificado:
+  `./gradlew build` en verde (incluye lint). `ModeAwareDevolucionRepository`
+  (mismo criterio que `ModeAwareVentaRepository`: local y
+  local-con-sincronización escriben en Room, remoto llama al backend)
+  cableado en `RepositoryModule` vía `@Binds`. `DevolucionViewModel` ahora
+  inyecta `DevolucionRepository` (interfaz, agnóstica del modo) +
+  `ConfiguracionPreferences` (sucursal seleccionada) + `SessionManager`
+  (usuario de sesión); `registrarDevolucion()` arma el `Devolucion` de
+  dominio (folio `"D-<timestamp>"`, mismo patrón que `"V-<timestamp>"` de
+  Venta; `ventaOriginal` vacío se mapea a `ventaId = null`) y llama
+  `registrarDevolucion`. `ModeAwareDevolucionRepositoryTest` (1 prueba)
+  confirma que cambiar `BackendMode` en DataStore cambia a cuál repositorio
+  llega la devolución; `DevolucionViewModelTest` (3 pruebas: happy path,
+  falta sucursal/sesión, falla de red) confirma el wiring del ViewModel.
+  `code-reviewer` revisó los 5 archivos de este sub-paso sin hallazgos.
+- [x] Verificado end-to-end en el Xiaomi en los tres modos (local / local
+  con sincronización / remoto) — `needs-device` Confirmado por el usuario
+  el 2026-08-20. En el camino aparecieron y se corrigieron dos problemas
+  de entorno, ninguno de código nuevo de esta Parte: (1) el modo remoto
+  crasheaba la app con `ConnectException` no capturado — causa raíz:
+  `adb reverse tcp:8000 tcp:8000` no estaba configurado en la sesión del
+  dispositivo, así que `RemoteSucursalRepository.observeSucursales()`
+  (Parte 6) no podía alcanzar el backend y la excepción sin capturar
+  tumbaba la app (gap de robustez preexistente en Configuración, fuera del
+  alcance de esta Parte — documentado aquí, no corregido en código); (2)
+  una vez con red, el registro remoto devolvía 404 porque los artículos del
+  catálogo estático de `DevolucionScreen` (mismos UUID que el catálogo de
+  ejemplo de Venta) nunca existían como fila real en `articulos` del
+  backend — se sembró manualmente vía SQL (`INSERT INTO articulos ...` con
+  el UUID `11111111-1111-4111-8111-111111111111`, "Refresco de cola
+  600ml"), sin cambios de código. Verificado por el agente inspeccionando
+  el estado persistido directamente: LOCAL y LOCAL_CON_SINCRONIZACION — 4
+  filas en `devoluciones`/`devolucion_detalle` de `pdv.db` del dispositivo
+  (`adb exec-out run-as com.pdv.pos cat databases/pdv.db{,-wal,-shm}` —
+  hubo que extraer también el WAL sin checkpoint, un `cat` directo del
+  `.db` solo mostraba las tablas vacías), `isSynced=0` en las cuatro.
+  REMOTO — 1 devolución (folio `D-1787271456769`) con 2 líneas en el
+  Postgres del backend (`docker compose exec db psql`), `articulo_id`
+  válido contra la fila sembrada.
 
 Realiza pruebas de integración exhaustivas antes de pasar al siguiente
 módulo.
+
+**Adición post-cierre (2026-08-20)** (POS-49): escaneo de código de barras con
+cámara en la búsqueda de artículo de `DevolucionScreen`, pedida por el
+usuario fuera del checklist original — no era parte de la propuesta de
+pantalla aprobada en el sub-paso 1. Reutiliza `BarcodeScannerDialog`
+(`android/.../venta/BarcodeScannerDialog.kt`, CameraX + ML Kit) tal cual,
+mismo patrón cross-módulo que ya usan Entrada e Inventario; no se
+introdujo ninguna dependencia nueva ni lógica duplicada.
+`DevolucionViewModel.onEscanearClick`/`onEscanerDismiss`/
+`onBarcodeEscaneado` son réplica exacta de sus contrapartes en
+`VentaViewModel` (Parte 7). `code-reviewer` revisó el cambio sin
+hallazgos; instalado y confirmado por el usuario en el Xiaomi.
 
 ---
 
