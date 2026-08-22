@@ -18,8 +18,9 @@ import androidx.room.TypeConverters
         DevolucionEntity::class,
         DevolucionDetalleEntity::class,
         UsuarioEntity::class,
+        RolEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -33,4 +34,5 @@ abstract class PdvDatabase : RoomDatabase() {
     abstract fun retiroDao(): RetiroDao
     abstract fun devolucionDao(): DevolucionDao
     abstract fun usuarioDao(): UsuarioDao
+    abstract fun rolDao(): RolDao
 }

@@ -1,6 +1,7 @@
 package com.pdv.pos.devolucion
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.repository.DevolucionRepository
@@ -66,7 +67,7 @@ class DevolucionViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val devolucionRepository = mockk<DevolucionRepository>()
         coEvery { devolucionRepository.registrarDevolucion(any()) } returns Unit
         val viewModel = viewModelConUnaLinea(devolucionRepository, preferences, sessionManager)
@@ -105,7 +106,7 @@ class DevolucionViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val devolucionRepository = mockk<DevolucionRepository>()
         coEvery { devolucionRepository.registrarDevolucion(any()) } throws IOException("sin conexion")
         val viewModel = viewModelConUnaLinea(devolucionRepository, preferences, sessionManager)

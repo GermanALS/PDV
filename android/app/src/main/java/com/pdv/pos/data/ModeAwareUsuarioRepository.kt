@@ -37,18 +37,19 @@ class ModeAwareUsuarioRepository @Inject constructor(
                 }
             }
 
-    override suspend fun crearUsuario(usuario: Usuario, sucursalId: String, actorUsuario: String) {
+    override suspend fun crearUsuario(usuario: Usuario, passwordHash: String?, sucursalId: String, actorUsuario: String) {
         when (preferences.deviceConfig.first().backendMode) {
-            BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION -> local.crearUsuario(usuario, sucursalId, actorUsuario)
-            BackendMode.REMOTO -> remote.crearUsuario(usuario, sucursalId, actorUsuario)
+            BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION ->
+                local.crearUsuario(usuario, passwordHash, sucursalId, actorUsuario)
+            BackendMode.REMOTO -> remote.crearUsuario(usuario, passwordHash, sucursalId, actorUsuario)
         }
     }
 
-    override suspend fun actualizarUsuario(usuario: Usuario, sucursalId: String, actorUsuario: String) {
+    override suspend fun actualizarUsuario(usuario: Usuario, passwordHash: String?, sucursalId: String, actorUsuario: String) {
         when (preferences.deviceConfig.first().backendMode) {
             BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION ->
-                local.actualizarUsuario(usuario, sucursalId, actorUsuario)
-            BackendMode.REMOTO -> remote.actualizarUsuario(usuario, sucursalId, actorUsuario)
+                local.actualizarUsuario(usuario, passwordHash, sucursalId, actorUsuario)
+            BackendMode.REMOTO -> remote.actualizarUsuario(usuario, passwordHash, sucursalId, actorUsuario)
         }
     }
 

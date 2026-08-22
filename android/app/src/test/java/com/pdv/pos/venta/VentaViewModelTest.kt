@@ -1,6 +1,7 @@
 package com.pdv.pos.venta
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.model.Sucursal
@@ -90,7 +91,7 @@ class VentaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val ventaRepository = mockk<VentaRepository>()
         coEvery { ventaRepository.registrarVenta(any()) } returns Unit
         val viewModel = viewModelConUnArticuloEnElCarrito(ventaRepository, preferences, sessionManager)
@@ -118,7 +119,7 @@ class VentaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val ventaRepository = mockk<VentaRepository>()
         val viewModel = viewModelConUnArticuloEnElCarrito(ventaRepository, preferences, sessionManager)
 
@@ -137,7 +138,7 @@ class VentaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val ventaRepository = mockk<VentaRepository>()
         coEvery { ventaRepository.registrarVenta(any()) } returns Unit
         val viewModel = viewModelConUnArticuloEnElCarrito(ventaRepository, preferences, sessionManager)
@@ -174,7 +175,7 @@ class VentaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val ventaRepository = mockk<VentaRepository>()
         coEvery { ventaRepository.registrarVenta(any()) } throws IOException("sin conexion")
         val viewModel = viewModelConUnArticuloEnElCarrito(ventaRepository, preferences, sessionManager)

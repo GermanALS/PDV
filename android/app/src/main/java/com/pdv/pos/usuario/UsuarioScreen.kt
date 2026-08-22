@@ -25,14 +25,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pdv.pos.domain.model.Rol
 import com.pdv.pos.domain.model.Usuario
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UsuarioScreen(
     onBack: () -> Unit,
+    onNavigateToRoles: () -> Unit,
     viewModel: UsuarioViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -42,6 +45,7 @@ fun UsuarioScreen(
             TopAppBar(
                 title = { Text("Administración de usuarios") },
                 navigationIcon = { Button(onClick = onBack) { Text("Atrás") } },
+                actions = { OutlinedButton(onClick = onNavigateToRoles) { Text("Roles") } },
             )
         },
     ) { innerPadding ->
@@ -59,6 +63,7 @@ fun UsuarioScreen(
                 onNombreCompletoChange = viewModel::onNombreCompletoChange,
                 onRolSelected = viewModel::onRolSelected,
                 onActivoChange = viewModel::onActivoChange,
+                onPasswordChange = viewModel::onPasswordChange,
                 onGuardar = viewModel::onGuardarClick,
                 onCancelar = viewModel::onCancelarEdicionClick,
             )
@@ -67,6 +72,7 @@ fun UsuarioScreen(
             }
             ListaUsuarios(
                 usuarios = uiState.usuarios,
+                roles = uiState.roles,
                 onEditar = viewModel::onEditarClick,
                 onEliminar = viewModel::onEliminarClick,
             )
@@ -80,8 +86,9 @@ private fun FormularioUsuario(
     uiState: UsuarioUiState,
     onUsernameChange: (String) -> Unit,
     onNombreCompletoChange: (String) -> Unit,
-    onRolSelected: (RolUsuario) -> Unit,
+    onRolSelected: (String) -> Unit,
     onActivoChange: (Boolean) -> Unit,
+    onPasswordChange: (String) -> Unit,
     onGuardar: () -> Unit,
     onCancelar: () -> Unit,
 ) {
@@ -104,14 +111,18 @@ private fun FormularioUsuario(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text("Rol", style = MaterialTheme.typography.bodyMedium)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                RolUsuario.entries.forEachIndexed { index, opcion ->
-                    SegmentedButton(
-                        selected = uiState.rolSeleccionado == opcion,
-                        onClick = { onRolSelected(opcion) },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = RolUsuario.entries.size),
-                    ) {
-                        Text(opcion.etiqueta())
+            if (uiState.roles.isEmpty()) {
+                Text("Sin roles disponibles", style = MaterialTheme.typography.bodySmall)
+            } else {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    uiState.roles.forEachIndexed { index, rol ->
+                        SegmentedButton(
+                            selected = uiState.rolIdSeleccionado == rol.id,
+                            onClick = { onRolSelected(rol.id) },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = uiState.roles.size),
+                        ) {
+                            Text(rol.nombre)
+                        }
                     }
                 }
             }
@@ -122,6 +133,13 @@ private fun FormularioUsuario(
                 Text("Activo", style = MaterialTheme.typography.bodyMedium)
                 Switch(checked = uiState.activo, onCheckedChange = onActivoChange)
             }
+            OutlinedTextField(
+                value = uiState.password,
+                onValueChange = onPasswordChange,
+                label = { Text(if (uiState.editando) "Nueva contraseña (dejar en blanco para no cambiar)" else "Contraseña") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
             uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onGuardar, modifier = Modifier.weight(1f)) {
@@ -140,6 +158,7 @@ private fun FormularioUsuario(
 @Composable
 private fun ListaUsuarios(
     usuarios: List<Usuario>,
+    roles: List<Rol>,
     onEditar: (Usuario) -> Unit,
     onEliminar: (String) -> Unit,
 ) {
@@ -149,7 +168,7 @@ private fun ListaUsuarios(
             Text("Sin usuarios registrados", style = MaterialTheme.typography.bodyMedium)
         }
         usuarios.forEach { usuario ->
-            UsuarioRow(usuario = usuario, onEditar = onEditar, onEliminar = onEliminar)
+            UsuarioRow(usuario = usuario, roles = roles, onEditar = onEditar, onEliminar = onEliminar)
         }
     }
 }
@@ -157,6 +176,7 @@ private fun ListaUsuarios(
 @Composable
 private fun UsuarioRow(
     usuario: Usuario,
+    roles: List<Rol>,
     onEditar: (Usuario) -> Unit,
     onEliminar: (String) -> Unit,
 ) {
@@ -167,7 +187,7 @@ private fun UsuarioRow(
         Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
             Text(usuario.nombreCompleto, style = MaterialTheme.typography.bodyLarge)
             Text(
-                "@${usuario.username} · ${usuario.rol.aRolUsuario().etiqueta()}${if (!usuario.activo) " · inactivo" else ""}",
+                "@${usuario.username} · ${roles.nombreDe(usuario.rolId)}${if (!usuario.activo) " · inactivo" else ""}",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

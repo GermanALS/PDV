@@ -50,16 +50,28 @@
         { "name": "activo", "type": "bool", "nullable": false, "default": true, "description": "baja logica de catalogo, distinta de deleted_at (baja de sync)" }
       ]
     },
-    "usuarios": {
+    "roles": {
       "tracking_fields": true,
       "sucursal_scoped": false,
       "primary_key": "local_id",
       "foreign_keys": {},
+      "notes": "PLAN.md Parte 13. modulos_permitidos activa/desactiva pantallas completas, no acciones dentro de un modulo. es_sistema=true protege a Administrador/Encargado de turno (seed) de edicion/eliminacion; los roles personalizados (es_sistema=false) si son editables.",
+      "fields": [
+        { "name": "nombre", "type": "string", "nullable": false, "unique": true },
+        { "name": "modulos_permitidos", "type": "array<string>", "nullable": false, "description": "claves de modulo: venta, entrada, inventario, caja, devoluciones, usuarios, configuracion" },
+        { "name": "es_sistema", "type": "bool", "nullable": false, "default": false }
+      ]
+    },
+    "usuarios": {
+      "tracking_fields": true,
+      "sucursal_scoped": false,
+      "primary_key": "local_id",
+      "foreign_keys": { "rol_id": "roles" },
       "fields": [
         { "name": "username", "type": "string", "nullable": false, "unique": true },
         { "name": "nombre_completo", "type": "string", "nullable": false },
-        { "name": "password_hash", "type": "string", "nullable": true, "description": "reservado para la Parte 13; nulo mientras el login sea ficticio (Parte 4)" },
-        { "name": "rol", "type": "string", "nullable": false, "description": "ej. \"administrador\", \"encargado_turno\"; catalogo real de roles llega en la Parte 13" },
+        { "name": "password_hash", "type": "string", "nullable": true, "description": "hash bcrypt (cost 12), calculado siempre en el dispositivo Android que recibe el texto plano en el formulario de usuarios (Parte 13, Decision 2); nulo hasta que se le asigna una contrasena" },
+        { "name": "rol_id", "type": "uuid", "nullable": false, "description": "FK a roles; reemplaza el string literal que usaba esta tabla hasta la Parte 13" },
         { "name": "activo", "type": "bool", "nullable": false, "default": true }
       ]
     },

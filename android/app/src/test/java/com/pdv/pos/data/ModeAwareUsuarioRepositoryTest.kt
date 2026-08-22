@@ -30,6 +30,8 @@ class ModeAwareUsuarioRepositoryTest {
         private val entities = seed.toMutableList()
         override fun observeAll(): Flow<List<UsuarioEntity>> = MutableStateFlow(entities.toList())
         override suspend fun getUsuario(usuarioId: String): UsuarioEntity? = entities.find { it.localId == usuarioId }
+        override suspend fun getByUsername(username: String): UsuarioEntity? = entities.find { it.username == username }
+        override suspend fun count(): Int = entities.size
         override suspend fun insert(entity: UsuarioEntity) {
             entities.add(entity)
         }
@@ -50,7 +52,7 @@ class ModeAwareUsuarioRepositoryTest {
         username = "usuario_local",
         nombreCompleto = "Usuario Local",
         passwordHash = null,
-        rol = "encargado_turno",
+        rolId = "rol-encargado-turno",
         activo = true,
         updatedAt = 0,
         isSynced = false,
@@ -68,7 +70,7 @@ class ModeAwareUsuarioRepositoryTest {
                     id = "remote-1",
                     username = "usuario_remoto",
                     nombreCompleto = "Usuario Remoto",
-                    rol = "administrador",
+                    rolId = "rol-administrador",
                     activo = true,
                     updatedAt = "2026-08-21T12:00:00Z",
                 ),
@@ -105,7 +107,7 @@ class ModeAwareUsuarioRepositoryTest {
             id = "remote-1",
             username = "encargado1",
             nombreCompleto = "Encargado de Turno",
-            rol = "encargado_turno",
+            rolId = "rol-encargado-turno",
             activo = true,
             updatedAt = "2026-08-21T12:00:00Z",
         )
@@ -117,16 +119,16 @@ class ModeAwareUsuarioRepositoryTest {
             id = "usuario-1",
             username = "encargado1",
             nombreCompleto = "Encargado de Turno",
-            rol = "encargado_turno",
+            rolId = "rol-encargado-turno",
             activo = true,
         )
 
-        repository.crearUsuario(usuario, sucursalId = "suc-1", actorUsuario = "admin")
+        repository.crearUsuario(usuario, passwordHash = null, sucursalId = "suc-1", actorUsuario = "admin")
         coVerify(exactly = 1) { dao.insert(any()) }
         coVerify(exactly = 0) { api.createUsuario(any()) }
 
         preferences.setBackendMode(BackendMode.REMOTO)
-        repository.crearUsuario(usuario, sucursalId = "suc-1", actorUsuario = "admin")
+        repository.crearUsuario(usuario, passwordHash = null, sucursalId = "suc-1", actorUsuario = "admin")
 
         coVerify(exactly = 1) { api.createUsuario(any()) }
         coVerify(exactly = 1) { dao.insert(any()) }

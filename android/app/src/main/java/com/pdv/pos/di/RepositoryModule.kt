@@ -1,18 +1,22 @@
 package com.pdv.pos.di
 
+import com.pdv.pos.data.ModeAwareAuthRepository
 import com.pdv.pos.data.ModeAwareCajaRepository
 import com.pdv.pos.data.ModeAwareDevolucionRepository
 import com.pdv.pos.data.ModeAwareEntradaRepository
 import com.pdv.pos.data.ModeAwareInventarioRepository
 import com.pdv.pos.data.ModeAwareRetiroEfectivoRepository
+import com.pdv.pos.data.ModeAwareRolRepository
 import com.pdv.pos.data.ModeAwareSucursalRepository
 import com.pdv.pos.data.ModeAwareUsuarioRepository
 import com.pdv.pos.data.ModeAwareVentaRepository
+import com.pdv.pos.domain.repository.AuthRepository
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.DevolucionRepository
 import com.pdv.pos.domain.repository.EntradaRepository
 import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
+import com.pdv.pos.domain.repository.RolRepository
 import com.pdv.pos.domain.repository.SucursalRepository
 import com.pdv.pos.domain.repository.UsuarioRepository
 import com.pdv.pos.domain.repository.VentaRepository
@@ -56,4 +60,12 @@ abstract class RepositoryModule {
     // Resuelve local/remota segun BackendMode (PLAN.md Parte 12, sub-paso 4).
     @Binds
     abstract fun bindUsuarioRepository(impl: ModeAwareUsuarioRepository): UsuarioRepository
+
+    // Resuelve local/remota segun BackendMode (PLAN.md Parte 13, sub-paso 1).
+    @Binds
+    abstract fun bindRolRepository(impl: ModeAwareRolRepository): RolRepository
+
+    // Resuelve local/remota segun BackendMode (PLAN.md Parte 13, sub-paso 2).
+    @Binds
+    abstract fun bindAuthRepository(impl: ModeAwareAuthRepository): AuthRepository
 }

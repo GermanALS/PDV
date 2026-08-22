@@ -1,6 +1,7 @@
 package com.pdv.pos.entrada
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.repository.EntradaRepository
@@ -60,7 +61,7 @@ class EntradaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val entradaRepository = mockk<EntradaRepository>()
         coEvery { entradaRepository.registrarEntrada(any()) } returns Unit
         val viewModel = viewModel(entradaRepository, preferences, sessionManager)
@@ -89,7 +90,7 @@ class EntradaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val entradaRepository = mockk<EntradaRepository>()
         coEvery { entradaRepository.registrarEntrada(any()) } returns Unit
         val viewModel = viewModel(entradaRepository, preferences, sessionManager)
@@ -138,7 +139,7 @@ class EntradaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val entradaRepository = mockk<EntradaRepository>()
         val viewModel = viewModel(entradaRepository, preferences, sessionManager)
         viewModel.onBusquedaChange("REF-001")
@@ -155,7 +156,7 @@ class EntradaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val entradaRepository = mockk<EntradaRepository>()
         coEvery { entradaRepository.registrarEntrada(any()) } throws IOException("sin conexion")
         val viewModel = viewModel(entradaRepository, preferences, sessionManager)

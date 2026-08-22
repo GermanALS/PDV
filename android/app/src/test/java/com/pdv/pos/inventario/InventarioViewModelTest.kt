@@ -1,6 +1,7 @@
 package com.pdv.pos.inventario
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.model.Articulo
@@ -91,7 +92,7 @@ class InventarioViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val inventarioRepository = inventarioRepositoryConDatosVacios()
         coEvery { inventarioRepository.actualizarArticulo(any()) } returns Unit
         val viewModel = viewModel(inventarioRepository, preferences, sessionManager)
@@ -139,7 +140,7 @@ class InventarioViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val inventarioRepository = inventarioRepositoryConDatosVacios()
         val viewModel = viewModel(inventarioRepository, preferences, sessionManager)
 
@@ -156,7 +157,7 @@ class InventarioViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val inventarioRepository = inventarioRepositoryConDatosVacios()
         coEvery { inventarioRepository.actualizarArticulo(any()) } throws IOException("sin conexion")
         val viewModel = viewModel(inventarioRepository, preferences, sessionManager)

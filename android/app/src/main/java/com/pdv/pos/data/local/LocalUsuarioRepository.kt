@@ -18,23 +18,24 @@ class LocalUsuarioRepository @Inject constructor(
     override fun observeUsuarios(): Flow<List<Usuario>> =
         dao.observeAll().map { entities -> entities.map { it.toDomain() } }
 
-    override suspend fun crearUsuario(usuario: Usuario, sucursalId: String, actorUsuario: String) {
-        dao.insert(usuario.toEntity(now = System.currentTimeMillis()))
+    override suspend fun crearUsuario(usuario: Usuario, passwordHash: String?, sucursalId: String, actorUsuario: String) {
+        dao.insert(usuario.toEntity(now = System.currentTimeMillis(), passwordHash = passwordHash))
         appLogger.log(
             LogType.DB_WRITE,
             sucursalId = sucursalId,
             usuario = actorUsuario,
-            mensaje = "Usuario creado: username=${usuario.username}, rol=${usuario.rol}",
+            mensaje = "Usuario creado: username=${usuario.username}, rolId=${usuario.rolId}",
         )
     }
 
-    override suspend fun actualizarUsuario(usuario: Usuario, sucursalId: String, actorUsuario: String) {
+    override suspend fun actualizarUsuario(usuario: Usuario, passwordHash: String?, sucursalId: String, actorUsuario: String) {
         val existente = dao.getUsuario(usuario.id) ?: error("Usuario no encontrado: ${usuario.id}")
         dao.update(
             existente.copy(
                 username = usuario.username,
                 nombreCompleto = usuario.nombreCompleto,
-                rol = usuario.rol,
+                passwordHash = passwordHash ?: existente.passwordHash,
+                rolId = usuario.rolId,
                 activo = usuario.activo,
                 updatedAt = System.currentTimeMillis(),
                 isSynced = false,
@@ -44,7 +45,7 @@ class LocalUsuarioRepository @Inject constructor(
             LogType.DB_WRITE,
             sucursalId = sucursalId,
             usuario = actorUsuario,
-            mensaje = "Usuario actualizado: username=${usuario.username}, rol=${usuario.rol}",
+            mensaje = "Usuario actualizado: username=${usuario.username}, rolId=${usuario.rolId}",
         )
     }
 
@@ -65,17 +66,17 @@ private fun UsuarioEntity.toDomain() = Usuario(
     id = localId,
     username = username,
     nombreCompleto = nombreCompleto,
-    rol = rol,
+    rolId = rolId,
     activo = activo,
 )
 
-private fun Usuario.toEntity(now: Long) = UsuarioEntity(
+private fun Usuario.toEntity(now: Long, passwordHash: String?) = UsuarioEntity(
     localId = id,
     remoteId = null,
     username = username,
     nombreCompleto = nombreCompleto,
-    passwordHash = null,
-    rol = rol,
+    passwordHash = passwordHash,
+    rolId = rolId,
     activo = activo,
     updatedAt = now,
     isSynced = false,

@@ -4,6 +4,6 @@ data class Usuario(
     val id: String,
     val username: String,
     val nombreCompleto: String,
-    val rol: String,
+    val rolId: String,
     val activo: Boolean = true,
 )

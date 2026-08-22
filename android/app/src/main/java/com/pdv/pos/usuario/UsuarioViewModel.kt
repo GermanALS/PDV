@@ -2,14 +2,17 @@ package com.pdv.pos.usuario
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pdv.pos.auth.PasswordHasher
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.model.Usuario
+import com.pdv.pos.domain.repository.RolRepository
 import com.pdv.pos.domain.repository.UsuarioRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
@@ -23,8 +26,10 @@ import javax.inject.Inject
 @HiltViewModel
 class UsuarioViewModel @Inject constructor(
     private val usuarioRepository: UsuarioRepository,
+    private val rolRepository: RolRepository,
     private val preferences: ConfiguracionPreferences,
     private val sessionManager: SessionManager,
+    private val passwordHasher: PasswordHasher,
 ) : ViewModel() {
 
     // Se incrementa tras cada escritura exitosa para forzar un refetch en
@@ -38,8 +43,19 @@ class UsuarioViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            version.flatMapLatest { usuarioRepository.observeUsuarios() }
-                .collect { usuarios -> _uiState.update { it.copy(usuarios = usuarios) } }
+            combine(
+                version.flatMapLatest { usuarioRepository.observeUsuarios() },
+                rolRepository.observeRoles(),
+            ) { usuarios, roles -> usuarios to roles }
+                .collect { (usuarios, roles) ->
+                    _uiState.update {
+                        it.copy(
+                            usuarios = usuarios,
+                            roles = roles,
+                            rolIdSeleccionado = it.rolIdSeleccionado ?: roles.firstOrNull()?.id,
+                        )
+                    }
+                }
         }
     }
 
@@ -51,12 +67,16 @@ class UsuarioViewModel @Inject constructor(
         _uiState.update { it.copy(nombreCompleto = valor, error = null) }
     }
 
-    fun onRolSelected(rol: RolUsuario) {
-        _uiState.update { it.copy(rolSeleccionado = rol) }
+    fun onRolSelected(rolId: String) {
+        _uiState.update { it.copy(rolIdSeleccionado = rolId) }
     }
 
     fun onActivoChange(valor: Boolean) {
         _uiState.update { it.copy(activo = valor) }
+    }
+
+    fun onPasswordChange(valor: String) {
+        _uiState.update { it.copy(password = valor, error = null) }
     }
 
     fun onEditarClick(usuario: Usuario) {
@@ -65,8 +85,9 @@ class UsuarioViewModel @Inject constructor(
                 usuarioEnEdicionId = usuario.id,
                 username = usuario.username,
                 nombreCompleto = usuario.nombreCompleto,
-                rolSeleccionado = usuario.rol.aRolUsuario(),
+                rolIdSeleccionado = usuario.rolId,
                 activo = usuario.activo,
+                password = "",
                 error = null,
             )
         }
@@ -80,8 +101,16 @@ class UsuarioViewModel @Inject constructor(
         val estado = _uiState.value
         val username = estado.username.trim()
         val nombreCompleto = estado.nombreCompleto.trim()
-        if (username.isEmpty() || nombreCompleto.isEmpty()) {
-            _uiState.update { it.copy(error = "Completa usuario y nombre completo") }
+        val rolId = estado.rolIdSeleccionado
+        if (username.isEmpty() || nombreCompleto.isEmpty() || rolId == null) {
+            _uiState.update { it.copy(error = "Completa usuario, nombre completo y rol") }
+            return
+        }
+        // Solo al crear: al editar, vacio significa "no cambiar la
+        // contrasena existente" (observacion del usuario tras la
+        // verificacion en dispositivo, PLAN.md Parte 13 sub-paso 4).
+        if (!estado.editando && estado.password.isBlank()) {
+            _uiState.update { it.copy(error = "La contraseña es obligatoria al crear un usuario") }
             return
         }
         val duplicado = estado.usuarios.any {
@@ -96,10 +125,9 @@ class UsuarioViewModel @Inject constructor(
             id = estado.usuarioEnEdicionId ?: UUID.randomUUID().toString(),
             username = username,
             nombreCompleto = nombreCompleto,
-            rol = estado.rolSeleccionado.aTextoDominio(),
+            rolId = rolId,
             activo = estado.activo,
         )
-
         viewModelScope.launch {
             val credenciales = obtenerSucursalYActor()
             if (credenciales == null) {
@@ -107,11 +135,14 @@ class UsuarioViewModel @Inject constructor(
                 return@launch
             }
             val (sucursalId, actor) = credenciales
+            // Vacio = no cambiar la contrasena existente al editar (semantica
+            // PATCH); al crear, vacio deja al usuario sin contrasena asignada.
+            val passwordHash = estado.password.takeIf { it.isNotBlank() }?.let { passwordHasher.hash(it) }
             try {
                 if (estado.editando) {
-                    usuarioRepository.actualizarUsuario(usuario, sucursalId, actor)
+                    usuarioRepository.actualizarUsuario(usuario, passwordHash, sucursalId, actor)
                 } else {
-                    usuarioRepository.crearUsuario(usuario, sucursalId, actor)
+                    usuarioRepository.crearUsuario(usuario, passwordHash, sucursalId, actor)
                 }
             } catch (e: IOException) {
                 _uiState.update { it.copy(mensajeConfirmacion = "No se pudo guardar el usuario: ${e.message}") }
@@ -165,8 +196,9 @@ class UsuarioViewModel @Inject constructor(
         usuarioEnEdicionId = null,
         username = "",
         nombreCompleto = "",
-        rolSeleccionado = RolUsuario.ENCARGADO_TURNO,
+        rolIdSeleccionado = estado.roles.firstOrNull()?.id,
         activo = true,
+        password = "",
         error = null,
     )
 }

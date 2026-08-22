@@ -27,20 +27,64 @@ No requiere autenticación.
 
 ## 2. Autenticación
 
-**Estado**: sin implementar. El modelo real no es login/registro por email
-— cambia en dos fases y debe documentarse aquí recién al llegar a cada una,
-no antes:
+**Fase real implementada (PLAN.md Parte 13)**: reemplaza por completo el
+login ficticio de la fase demo (Parte 4) — las credenciales
+`admin`/`password` y `user1`/`password` ya no se aceptan. Valida contra los
+`usuarios`/`roles` que las secciones 10-11 persisten y usa bcrypt (cost
+factor 12, mismo algoritmo y parámetros en backend y Android — PLAN.md
+Parte 13, Decisión 2) para el hash de contraseña; el hash se calcula del
+lado que recibe el texto plano (Android, siempre — ver sección 11.2/11.3),
+nunca en esta ruta. El `access_token` es un JWT (`PyJWT`, `HS256`, 24
+horas de expiración, firmado con `JWT_SECRET_KEY`) — **enforcement** del
+header `Authorization: Bearer <access_token>` sobre el resto de las rutas
+todavía no está implementado (no es parte del checklist de esta Parte); el
+token se emite pero ningún otro endpoint lo valida todavía.
 
-- **Fase demo (PLAN.md Parte 4)**: login con credenciales ficticias fijas
-  (`admin`/`password`, `user1`/`password`), sin endpoint de registro. Solo
-  habilita/deshabilita el acceso a la UI de demostración.
-- **Fase real (PLAN.md Parte 13)**: gestión completa de usuarios con roles
-  (Administrador, encargado de turno, roles personalizados) y permisos por
-  módulo. Reemplaza por completo cualquier login de la fase demo.
+**Usuario de bootstrap**: el backend recién levantado no tiene forma de
+autenticarse sin al menos un usuario existente. La migración
+`0009_seed_admin_usuario` crea `admin` / `admin123` (rol Administrador) —
+contraseña de desarrollo, se espera cambiarla desde la pantalla de Usuarios
+tras el primer login. En modo LOCAL (Android sin backend), el mismo
+usuario se siembra de forma perezosa en Room la primera vez que se abre el
+login, con la misma contraseña, por el mismo motivo.
 
-Todas las rutas fuera de `/auth/*` y `/health` requerirán el header
-`Authorization: Bearer <access_token>` una vez exista autenticación real;
-no aplica todavía.
+### 2.1 Login
+
+**POST** `/auth/login`
+
+Request body
+```json
+{
+  "username": "string",
+  "password": "string"
+}
+```
+
+Response `200 OK`
+```json
+{
+  "access_token": "string (JWT)",
+  "token_type": "bearer",
+  "usuario": {
+    "id": "uuid",
+    "local_id": "uuid o null",
+    "username": "admin",
+    "nombre_completo": "string",
+    "rol_id": "uuid",
+    "activo": true,
+    "updated_at": "2026-08-21T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  }
+}
+```
+
+Response `401 Unauthorized` — credenciales inválidas. Un único detalle
+genérico (`{"detail": "credenciales invalidas"}`) sin distinguir causa
+(usuario inexistente, inactivo, sin contraseña asignada, o contraseña
+incorrecta) — evita que la respuesta permita enumerar usernames válidos.
+
+Response `422 Unprocessable Entity` — falta `username`/`password`.
 
 ---
 
@@ -761,20 +805,121 @@ artículo existente.
 
 ---
 
-## 10. Usuarios
+## 10. Roles
+
+Octavo recurso real del dominio (PLAN.md Parte 13, gestión de usuarios
+real). Catálogo de roles personalizados: reemplaza el `Literal`
+`"administrador"`/`"encargado_turno"` que `usuarios.rol` usaba hasta esta
+Parte por una tabla propia — `usuarios.rol_id` (sección 11) ahora es FK a
+`roles.id`. No lleva `sucursal_id` (no es `sucursal_scoped`, mismo criterio
+que `usuarios`). `modulos_permitidos` es la lista de claves de módulo que
+ese rol puede ver/usar — activa o desactiva pantallas completas, no
+acciones dentro de un módulo (PLAN.md Parte 13, esquema aprobado). Claves
+de módulo válidas: `"venta"`, `"entrada"`, `"inventario"`, `"caja"`,
+`"devoluciones"`, `"usuarios"`, `"configuracion"`.
+
+Dos roles de sistema (`es_sistema: true`) vienen seedeados por la migración
+0007: `"administrador"` (los 7 módulos) y `"encargado_turno"` (todos menos
+`"usuarios"` y `"configuracion"`). Un rol de sistema no se puede editar ni
+eliminar (`400`) — solo los roles personalizados creados después
+(`es_sistema: false`) admiten `PATCH`/`DELETE`.
+
+### 10.1 Listar roles
+
+**GET** `/roles?page=1&page_size=20`
+
+Response `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "local_id": "uuid o null",
+      "nombre": "administrador",
+      "modulos_permitidos": ["venta", "entrada", "inventario", "caja", "devoluciones", "usuarios", "configuracion"],
+      "es_sistema": true,
+      "updated_at": "2026-08-21T12:00:00Z",
+      "is_synced": true,
+      "deleted_at": null
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 2
+}
+```
+
+### 10.2 Crear rol
+
+**POST** `/roles`
+
+Request body
+```json
+{
+  "local_id": "uuid o null",
+  "nombre": "string, 1-60 caracteres, unico",
+  "modulos_permitidos": ["venta", "caja"]
+}
+```
+`es_sistema` siempre es `false` en los roles creados por esta ruta — los
+roles de sistema solo existen por el seed de la migración 0007.
+
+Response `201 Created` → mismo shape que un ítem de 10.1.
+
+Response `409 Conflict` — ya existe un rol con ese `nombre`.
+
+Response `422 Unprocessable Entity` — falta `nombre`/`modulos_permitidos`,
+`modulos_permitidos` vacío, o contiene una clave de módulo no reconocida.
+
+### 10.3 Editar rol
+
+**PATCH** `/roles/{id}`
+
+Request body
+```json
+{
+  "nombre": "string, 1-60 caracteres, unico",
+  "modulos_permitidos": ["venta", "caja", "devoluciones"]
+}
+```
+
+Response `200 OK` → mismo shape que un ítem de 10.1.
+
+Response `400 Bad Request` — el rol es de sistema (`es_sistema: true`).
+
+Response `404 Not Found` — no existe un rol con ese `id`.
+
+Response `409 Conflict` — el `nombre` nuevo ya lo usa otro rol.
+
+### 10.4 Eliminar rol
+
+**DELETE** `/roles/{id}`
+
+Soft-delete: fija `deleted_at`, no borra la fila (PLAN.md Parte 3).
+
+Response `204 No Content`
+
+Response `400 Bad Request` — el rol es de sistema (`es_sistema: true`).
+
+Response `404 Not Found` — no existe un rol con ese `id`.
+
+---
+
+## 11. Usuarios
 
 Séptimo recurso real del dominio (PLAN.md Parte 12, módulo Administración de
-usuarios — demo). CRUD completo de `usuarios`; a diferencia de las demás
-entidades transaccionales, **no lleva `sucursal_id`** (`usuarios` no es
-`sucursal_scoped` en `docs/schema-pos.json` — un usuario puede operar en
-cualquier sucursal). `rol` acepta únicamente `"administrador"` /
-`"encargado_turno"` en esta Parte (catálogo de roles personalizados llega en
-la Parte 13, `docs/schema-pos.json` §usuarios). La respuesta **nunca**
-incluye `password_hash` — ese campo existe en el esquema para reservar el
-lugar que la Parte 13 va a usar (login real), pero no se expone por esta
-ruta ni se acepta en el request body todavía.
+usuarios — demo; endurecido en la Parte 13). CRUD completo de `usuarios`; a
+diferencia de las demás entidades transaccionales, **no lleva
+`sucursal_id`** (`usuarios` no es `sucursal_scoped` en
+`docs/schema-pos.json` — un usuario puede operar en cualquier sucursal).
+`rol_id` es FK a `roles.id` (sección 10) — reemplaza al `Literal` fijo que
+usaba esta sección antes de la Parte 13. La respuesta **nunca** incluye
+`password_hash` — esta ruta nunca recibe ni calcula un hash a partir de una
+contraseña en texto plano; el `password_hash` opcional que aceptan 11.2 y
+11.3 ya llega calculado del lado que tuvo el texto plano (Android, siempre
+— PLAN.md Parte 13, Decisión 2), nunca en este endpoint.
 
-### 10.1 Listar usuarios
+### 11.1 Listar usuarios
 
 **GET** `/usuarios?page=1&page_size=20`
 
@@ -787,7 +932,7 @@ Response `200 OK`
       "local_id": "uuid o null",
       "username": "admin",
       "nombre_completo": "string",
-      "rol": "administrador",
+      "rol_id": "uuid",
       "activo": true,
       "updated_at": "2026-08-21T12:00:00Z",
       "is_synced": true,
@@ -800,7 +945,7 @@ Response `200 OK`
 }
 ```
 
-### 10.2 Crear usuario
+### 11.2 Crear usuario
 
 **POST** `/usuarios`
 
@@ -810,16 +955,23 @@ Request body
   "local_id": "uuid o null",
   "username": "string, 1-60 caracteres, unico",
   "nombre_completo": "string, 1-120 caracteres",
-  "rol": "administrador",
-  "activo": true
+  "rol_id": "uuid",
+  "activo": true,
+  "password_hash": "string (bcrypt) o null"
 }
 ```
+`password_hash` es opcional; `null` (u omitido) crea el usuario sin
+contraseña asignada — no puede iniciar sesión hasta que se le asigne una
+(mismo estado que los usuarios creados en la Parte 12, antes de esta
+Parte).
 
-Response `201 Created` → mismo shape que un ítem de 10.1.
+Response `201 Created` → mismo shape que un ítem de 11.1.
+
+Response `404 Not Found` — `rol_id` no corresponde a ningún rol existente.
 
 Response `409 Conflict` — ya existe un usuario con ese `username`.
 
-### 10.3 Editar usuario
+### 11.3 Editar usuario
 
 **PATCH** `/usuarios/{id}`
 
@@ -828,18 +980,23 @@ Request body
 {
   "username": "string, 1-60 caracteres, unico",
   "nombre_completo": "string, 1-120 caracteres",
-  "rol": "administrador",
-  "activo": true
+  "rol_id": "uuid",
+  "activo": true,
+  "password_hash": "string (bcrypt) o null"
 }
 ```
+`password_hash` es opcional; `null` (u omitido) **no cambia** la contraseña
+existente (semántica PATCH) — para dejar a un usuario sin contraseña
+explícitamente no hay endpoint dedicado en esta Parte.
 
-Response `200 OK` → mismo shape que un ítem de 10.1.
+Response `200 OK` → mismo shape que un ítem de 11.1.
 
-Response `404 Not Found` — no existe un usuario con ese `id`.
+Response `404 Not Found` — no existe un usuario con ese `id`, o `rol_id` no
+corresponde a ningún rol existente.
 
 Response `409 Conflict` — el `username` nuevo ya lo usa otro usuario.
 
-### 10.4 Eliminar usuario
+### 11.4 Eliminar usuario
 
 **DELETE** `/usuarios/{id}`
 
@@ -851,7 +1008,7 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
 
 ---
 
-## 11. Convenciones generales
+## 12. Convenciones generales
 
 - Todas las fechas en ISO 8601 UTC (`created_at`, `updated_at`).
 - IDs como UUID v4 (string), nunca enteros autoincrementales expuestos en la API pública.
@@ -877,7 +1034,7 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
-## 12. Pendiente de definir
+## 13. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
 este contrato, sino prerequisitos pendientes):
@@ -885,14 +1042,16 @@ este contrato, sino prerequisitos pendientes):
 - [ ] `sucursales` (sección 4), `ventas` (sección 5), la alta de
   `articulos`/`inventario`/`movimientos` vía `POST /entradas` (sección 6),
   la lectura/ajuste de `articulos`/`inventario` (sección 7),
-  `cortes_caja`/`retiros_efectivo` (sección 8), `devoluciones` (sección 9)
-  y `usuarios` (sección 10) ya están implementadas; el placeholder de la
-  sección 3 se reemplaza módulo por módulo a medida que cada Parte llega a
-  su sub-paso de repositorio remoto.
-- [ ] Rutas de autenticación real y roles/permisos personalizados (PLAN.md
-  Partes 4 y 13, sin implementar) — reemplaza el login ficticio y agrega
-  `POST /auth/login`, catálogo de roles, y permisos por módulo sobre los
-  `usuarios` que esta sección (10) ya persiste.
+  `cortes_caja`/`retiros_efectivo` (sección 8), `devoluciones` (sección 9),
+  `roles` (sección 10), `usuarios` (sección 11) y `auth/login` (sección 2)
+  ya están implementadas; el placeholder de la sección 3 se reemplaza
+  módulo por módulo a medida que cada Parte llega a su sub-paso de
+  repositorio remoto.
+- [ ] Enforcement del header `Authorization: Bearer <access_token>` sobre
+  el resto de las rutas (fuera de `/auth/*` y `/health`) — el token ya se
+  emite (sección 2) pero ningún endpoint lo valida todavía; no es parte del
+  checklist de la Parte 13, queda abierto para cuando el proyecto lo
+  priorice.
 - [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,
   validación de permisos (PLAN.md Partes 14-16), sin diseñar a nivel de
   contrato.

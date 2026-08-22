@@ -8,6 +8,7 @@ import com.pdv.pos.data.local.EntradaDao
 import com.pdv.pos.data.local.InventarioDao
 import com.pdv.pos.data.local.PdvDatabase
 import com.pdv.pos.data.local.RetiroDao
+import com.pdv.pos.data.local.RolDao
 import com.pdv.pos.data.local.SucursalDao
 import com.pdv.pos.data.local.SyncConflictDao
 import com.pdv.pos.data.local.UsuarioDao
@@ -59,4 +60,7 @@ object DatabaseModule {
 
     @Provides
     fun provideUsuarioDao(database: PdvDatabase): UsuarioDao = database.usuarioDao()
+
+    @Provides
+    fun provideRolDao(database: PdvDatabase): RolDao = database.rolDao()
 }

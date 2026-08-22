@@ -16,7 +16,7 @@ class LocalUsuarioRepositoryTest {
         id = "usuario-1",
         username = "encargado1",
         nombreCompleto = "Encargado de Turno",
-        rol = "encargado_turno",
+        rolId = "rol-encargado-turno",
         activo = true,
     )
 
@@ -26,7 +26,7 @@ class LocalUsuarioRepositoryTest {
         username = "encargado1",
         nombreCompleto = "Encargado de Turno",
         passwordHash = null,
-        rol = "encargado_turno",
+        rolId = "rol-encargado-turno",
         activo = true,
         updatedAt = 1_700_000_000_000L,
         isSynced = true,
@@ -41,12 +41,25 @@ class LocalUsuarioRepositoryTest {
         coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
         val repository = LocalUsuarioRepository(dao, appLogger)
 
-        repository.crearUsuario(usuarioDeEjemplo(), sucursalId = "suc-1", actorUsuario = "admin")
+        repository.crearUsuario(usuarioDeEjemplo(), passwordHash = null, sucursalId = "suc-1", actorUsuario = "admin")
 
         coVerify {
             dao.insert(match { it.localId == "usuario-1" && it.username == "encargado1" && it.passwordHash == null })
         }
         coVerify { appLogger.log(LogType.DB_WRITE, sucursalId = "suc-1", usuario = "admin", mensaje = any()) }
+    }
+
+    @Test
+    fun `crearUsuario stores the given passwordHash`() = runTest {
+        val dao = mockk<UsuarioDao>()
+        val appLogger = mockk<AppLogger>()
+        coEvery { dao.insert(any()) } returns Unit
+        coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
+        val repository = LocalUsuarioRepository(dao, appLogger)
+
+        repository.crearUsuario(usuarioDeEjemplo(), passwordHash = "hash-bcrypt", sucursalId = "suc-1", actorUsuario = "admin")
+
+        coVerify { dao.insert(match { it.passwordHash == "hash-bcrypt" }) }
     }
 
     @Test
@@ -57,28 +70,47 @@ class LocalUsuarioRepositoryTest {
         val repository = LocalUsuarioRepository(dao, appLogger)
 
         assertFailsWith<IllegalStateException> {
-            repository.crearUsuario(usuarioDeEjemplo(), sucursalId = "suc-1", actorUsuario = "admin")
+            repository.crearUsuario(usuarioDeEjemplo(), passwordHash = null, sucursalId = "suc-1", actorUsuario = "admin")
         }
 
         coVerify(exactly = 0) { appLogger.log(any(), any(), any(), any()) }
     }
 
     @Test
-    fun `actualizarUsuario updates existing entity preserving passwordHash and logs DB_WRITE`() = runTest {
+    fun `actualizarUsuario preserves the existing passwordHash when none is given`() = runTest {
         val dao = mockk<UsuarioDao>()
         val appLogger = mockk<AppLogger>()
-        coEvery { dao.getUsuario("usuario-1") } returns entityDeEjemplo()
+        coEvery { dao.getUsuario("usuario-1") } returns entityDeEjemplo().copy(passwordHash = "hash-existente")
         coEvery { dao.update(any()) } returns Unit
         coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
         val repository = LocalUsuarioRepository(dao, appLogger)
         val editado = usuarioDeEjemplo().copy(nombreCompleto = "Encargado Editado", activo = false)
 
-        repository.actualizarUsuario(editado, sucursalId = "suc-1", actorUsuario = "admin")
+        repository.actualizarUsuario(editado, passwordHash = null, sucursalId = "suc-1", actorUsuario = "admin")
 
         coVerify {
-            dao.update(match { it.nombreCompleto == "Encargado Editado" && !it.activo && it.username == "encargado1" })
+            dao.update(
+                match {
+                    it.nombreCompleto == "Encargado Editado" && !it.activo && it.username == "encargado1" &&
+                        it.passwordHash == "hash-existente"
+                },
+            )
         }
         coVerify { appLogger.log(LogType.DB_WRITE, sucursalId = "suc-1", usuario = "admin", mensaje = any()) }
+    }
+
+    @Test
+    fun `actualizarUsuario overwrites the passwordHash when a new one is given`() = runTest {
+        val dao = mockk<UsuarioDao>()
+        val appLogger = mockk<AppLogger>()
+        coEvery { dao.getUsuario("usuario-1") } returns entityDeEjemplo().copy(passwordHash = "hash-viejo")
+        coEvery { dao.update(any()) } returns Unit
+        coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
+        val repository = LocalUsuarioRepository(dao, appLogger)
+
+        repository.actualizarUsuario(usuarioDeEjemplo(), passwordHash = "hash-nuevo", sucursalId = "suc-1", actorUsuario = "admin")
+
+        coVerify { dao.update(match { it.passwordHash == "hash-nuevo" }) }
     }
 
     @Test
@@ -89,7 +121,7 @@ class LocalUsuarioRepositoryTest {
         val repository = LocalUsuarioRepository(dao, appLogger)
 
         assertFailsWith<IllegalStateException> {
-            repository.actualizarUsuario(usuarioDeEjemplo(), sucursalId = "suc-1", actorUsuario = "admin")
+            repository.actualizarUsuario(usuarioDeEjemplo(), passwordHash = null, sucursalId = "suc-1", actorUsuario = "admin")
         }
 
         coVerify(exactly = 0) { appLogger.log(any(), any(), any(), any()) }

@@ -6,4 +6,5 @@ data class HelloUiState(
     val username: String,
     val localGreeting: String,
     val healthResult: ApiResult<String>? = null,
+    val modulosPermitidos: Set<String> = emptySet(),
 )

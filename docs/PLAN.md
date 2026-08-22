@@ -1609,7 +1609,7 @@ Realiza pruebas de integración exhaustivas.
 
 ---
 
-## Parte 13: Gestión de usuarios (real)
+## Parte 13: Gestión de usuarios (real)  <!-- POS-55 -->
 
 Agrega al proyecto la funcionalidad completa de multiusuarios: administración
 de usuarios, roles personalizados (Administrador, encargado de turno, y
@@ -1632,45 +1632,139 @@ Las acciones rechazadas por falta de permiso se registran en el log
 
 ### Checklist
 
-**1. Roles y permisos**
-- [ ] Roles personalizados (Administrador, encargado de turno, y
+**1. Roles y permisos** (POS-56)
+- [x] Roles personalizados (Administrador, encargado de turno, y
   adicionales configurables) implementados — criterio: CRUD de roles con
   `pytest backend/tests/test_roles.py` y prueba Android en verde.
-- [ ] Permisos por rol y activación/desactivación de módulos según esos
+  Verificado: tabla `roles` nueva (`nombre`, `modulos_permitidos`,
+  `es_sistema`) + migraciones `0007_create_roles` (crea tabla y seedea los
+  2 roles de sistema) y `0008_usuarios_rol_id` (agrega `usuarios.rol_id`
+  FK, backfill desde el `rol` literal, borra la columna vieja);
+  `pytest` 48/48 en verde. Lado Android: `RolRepository`/
+  `LocalRolRepository`/`RemoteRolRepository`/`ModeAwareRolRepository`
+  calcan el patrón ya usado 6 veces en el proyecto; pantalla `RolScreen`
+  (CRUD con checkboxes de módulo) navegable desde `UsuarioScreen`; roles de
+  sistema protegidos de edición/eliminación en ambos lados (400 en backend,
+  `IllegalStateException` en `LocalRolRepository`). `./gradlew build` en
+  verde (`BUILD SUCCESSFUL`, incluye tests y lint).
+- [x] Permisos por rol y activación/desactivación de módulos según esos
   permisos — criterio: prueba de integración confirma que un usuario sin
-  permiso no ve/usa el módulo restringido.
+  permiso no ve/usa el módulo restringido. Verificado:
+  `PermisosModuloIntegrationTest` confirma, con `LocalUsuarioRepository` y
+  `LocalRolRepository` reales, que un usuario con rol "encargado_turno" no
+  obtiene los módulos `usuarios`/`configuracion`. El wiring de UI
+  (`HelloScreen` filtrando botones contra la sesión real) se difiere al
+  sub-paso 2: hoy `SessionManager` sigue siendo el login ficticio de la
+  Parte 4 sin `Usuario` real garantizado, y forzar ese wiring ahora exigiría
+  un lookup username→Usuario frágil que se descartaría en cuanto el login
+  real (sub-paso 2) traiga el `Usuario`/rol directamente en la sesión — sin
+  riesgo de seguridad mientras tanto, porque hoy ningún punto de la UI
+  aplica el permiso todavía (deferral validado por `code-reviewer` en la
+  revisión de este sub-paso).
 
-**2. Reemplazo del login ficticio**
-- [ ] Campo de contraseña hasheada agregado al esquema de `Usuario` —
-  criterio: migración de Alembic aplicada, campo presente.
-- [ ] `POST /auth/login` real, documentado primero en
+**2. Reemplazo del login ficticio** (POS-57)
+- [x] Campo de contraseña hasheada agregado al esquema de `Usuario` —
+  criterio: migración de Alembic aplicada, campo presente. Verificado: ya
+  estaba (migración `0006_create_usuarios`, Parte 12); esta Parte lo usa
+  por primera vez.
+- [x] `POST /auth/login` real, documentado primero en
   `docs/api-contract.md` (CLAUDE.md §9) — criterio: `pytest
   backend/tests/test_auth.py` en verde, valida credenciales contra
-  `UsuarioRepository` y emite `access_token`.
-- [ ] Credenciales ficticias (`admin`/`password`, `user1`/`password`)
+  `UsuarioRepository` y emite `access_token`. Verificado: `docs/api-contract.md`
+  §2 reescrita antes de implementar; `backend/app/routers/auth.py` valida
+  usuario activo + `bcrypt.checkpw` (backend/app/security.py) y emite un
+  JWT (`PyJWT`, `HS256`, 24h) vía `create_access_token`; `pytest` 54/54 en
+  verde. Bootstrap: migración `0009_seed_admin_usuario` siembra
+  `admin`/`admin123` (documentado, contraseña de desarrollo) porque un
+  backend recién levantado no tendría ningún usuario con el que iniciar
+  sesión.
+- [x] Credenciales ficticias (`admin`/`password`, `user1`/`password`)
   dejan de aceptarse — criterio: prueba de integración confirma rechazo.
-- [ ] Cliente Android usa el login real en vez del hardcodeado de la
+  Verificado: `test_login_credenciales_ficticias_de_la_parte_4_returns_401`
+  en `backend/tests/test_auth.py`.
+- [x] Cliente Android usa el login real en vez del hardcodeado de la
   Parte 4 — criterio: prueba de `ViewModel` con estados mockeados.
+  Verificado: `AuthRepository` (interfaz única, patrón ModeAware — Decisión
+  1) con `LocalAuthRepository` (verifica bcrypt contra Room, con el mismo
+  bootstrap `admin`/`admin123` sembrado perezosamente para que un
+  dispositivo LOCAL nuevo tampoco quede sin punto de entrada) y
+  `RemoteAuthRepository` (POST `/auth/login`); hash bcrypt (cost 12)
+  calculado siempre en Android vía `PasswordHasher`, `suspend` sobre
+  `Dispatchers.Default` (hallazgo de `code-reviewer`: bcrypt es
+  deliberadamente lento, no debe bloquear el hilo principal — corregido).
+  `SessionManager` reemplazado por completo (ya no valida nada, solo
+  contiene la `Session` que arma `AuthRepository`); `LoginViewModel` y
+  `LoginViewModelTest` en verde. `UsuarioScreen` gana un campo de
+  contraseña (opcional; en blanco = no cambiar la existente al editar).
+  `./gradlew build`: `BUILD SUCCESSFUL`, todos los tests y lint en verde.
 
-**3. Logging**
-- [ ] Acciones rechazadas por falta de permiso se registran en el log
+**3. Logging** (POS-58)
+- [x] Acciones rechazadas por falta de permiso se registran en el log
   (Parte 5, categoría `AUTH`) — criterio: prueba unitaria verifica la
-  invocación al logger con la categoría correcta.
+  invocación al logger con la categoría correcta. Verificado:
+  `HelloViewModel.onIntentoNavegar(modulo)` es la segunda compuerta además
+  de ocultar el botón — mismo punto de verificación que usarán las Partes
+  14-16 antes de que la IA ejecute una acción en nombre del usuario, con o
+  sin botón visible. Un intento denegado registra `LogType.AUTH` con
+  `sucursalId`/`usuario`/`mensaje` (`sucursalId = "-"` si el dispositivo
+  todavía no tiene sucursal seleccionada — hallazgo de `code-reviewer`: sin
+  este fallback la denegación se perdía en silencio, ahora cubierto por
+  test). `HelloScreen` conecta cada botón de módulo a través de esta
+  compuerta. `./gradlew build`: `BUILD SUCCESSFUL`, todos los tests y lint
+  en verde.
 
-**4. Verificación**
-- [ ] Instalado y verificado end-to-end en el Xiaomi (login real,
-  permisos aplicados) — `needs-device`
+**4. Verificación** (POS-59)
+- [x] Instalado y verificado end-to-end en el Xiaomi (login real,
+  permisos aplicados) — `needs-device`. Confirmado por el usuario el
+  2026-08-22: login real, permisos por rol, CRUD de roles y contraseña al
+  editar/crear probados exitosamente. Primera pasada encontró un hueco de
+  UX (la contraseña quedaba opcional también al crear un usuario, no solo
+  al editar) — corregido (`UsuarioViewModel` exige contraseña no vacía al
+  crear; al editar, vacío sigue significando "no cambiar la existente") y
+  reverificado en el dispositivo, confirmado el 2026-08-22.
 
 ### Decisiones abiertas
 
-- [ ] Autenticación en modo local: no existe backend que emita
+- [x] Autenticación en modo local: no existe backend que emita
   `access_token`, así que el login debe validar contra Room usando la
   contraseña hasheada. Definir si es un segundo camino de autenticación
   explícito o una implementación local de la misma interfaz de sesión.
-- [ ] Librería de hashing de contraseñas y dónde se calcula el hash: solo
+  **Decidido** (evaluado por `code-architect`, elegido por el usuario):
+  interfaz única `AuthRepository`, mismo patrón ModeAware que el resto del
+  proyecto (`LocalAuthRepository`/`RemoteAuthRepository`/
+  `ModeAwareAuthRepository`).
+- [x] Librería de hashing de contraseñas y dónde se calcula el hash: solo
   backend, solo dispositivo, o ambos con el mismo algoritmo para que un
   usuario creado en modo local pueda sincronizarse al remoto sin
-  reescribir la credencial.
+  reescribir la credencial. **Decidido**: bcrypt (cost factor 12),
+  calculado siempre en el dispositivo Android (`at.favre.lib:bcrypt`) del
+  lado que recibe el texto plano; el backend (`bcrypt` de Python) solo
+  verifica en `POST /auth/login`, nunca genera hashes de usuarios reales.
+
+### Nota futura: recuperación de contraseña por correo (sin implementar)
+
+Idea planteada 2026-08-22, no forma parte del checklist de esta Parte: agregar
+`email` a `Usuario` para poder enviar una contraseña aleatoria al correo
+registrado cuando el usuario la olvida. Puntos identificados si se retoma:
+
+- Esquema: campo chico, mismo patrón que `rol_id` (migración, entidad Room,
+  DTOs, formulario) — no es lo costoso.
+- Requiere infraestructura de envío de correo que el proyecto no tiene hoy
+  (SMTP o proveedor tipo SendGrid/SES, credenciales nuevas) — **solo
+  funcionaría en modo REMOTO**; en modo LOCAL no hay forma segura de
+  disparar un correo desde el dispositivo.
+- El endpoint de recuperación tendría que generar y hashear la contraseña
+  en el backend para poder enviarla — es una excepción a la Decisión 2 de
+  esta Parte ("el hash se calcula siempre en Android"), habría que
+  documentarla explícitamente si se implementa.
+- Expone un hueco ya existente: hoy nadie puede cambiar su propia
+  contraseña sin el permiso de módulo `usuarios` (`UsuarioScreen` está
+  detrás de ese permiso) — recuperar la contraseña sin poder después
+  cambiarla manualmente requeriría una pantalla nueva de "cambiar mi
+  contraseña" fuera de ese permiso.
+- Vale considerar un límite básico de abuso en el endpoint (no es
+  "programar a la defensiva" sin sentido — un disparador de envío de
+  correo sin límite es un vector de spam/costo real).
 
 ---
 
