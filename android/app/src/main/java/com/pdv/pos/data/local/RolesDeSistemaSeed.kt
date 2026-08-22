@@ -3,17 +3,18 @@ package com.pdv.pos.data.local
 import java.util.UUID
 
 // Mismas claves de modulo y mismo reparto que el seed de la migracion
-// backend 0007_create_roles (PLAN.md Parte 13): los dos roles de sistema
-// deben quedar identicos en ambos lados para que un dispositivo LOCAL que
-// nunca sincronizo tenga el mismo catalogo que el backend. Compartido entre
-// LocalRolRepository (bootstrap al abrir Roles) y LocalAuthRepository
-// (bootstrap al intentar iniciar sesion) para no duplicar la lista.
+// backend 0007_create_roles + 0010_add_ia_modulo_roles (PLAN.md Parte 13 y
+// 14): los dos roles de sistema deben quedar identicos en ambos lados para
+// que un dispositivo LOCAL que nunca sincronizo tenga el mismo catalogo que
+// el backend. Compartido entre LocalRolRepository (bootstrap al abrir
+// Roles) y LocalAuthRepository (bootstrap al intentar iniciar sesion) para
+// no duplicar la lista.
 const val NOMBRE_ROL_ADMINISTRADOR = "administrador"
 const val NOMBRE_ROL_ENCARGADO_TURNO = "encargado_turno"
 
 private val MODULOS_ADMINISTRADOR =
-    listOf("venta", "entrada", "inventario", "caja", "devoluciones", "usuarios", "configuracion")
-private val MODULOS_ENCARGADO_TURNO = listOf("venta", "entrada", "inventario", "caja", "devoluciones")
+    listOf("venta", "entrada", "inventario", "caja", "devoluciones", "usuarios", "configuracion", "ia")
+private val MODULOS_ENCARGADO_TURNO = listOf("venta", "entrada", "inventario", "caja", "devoluciones", "ia")
 
 fun rolesDeSistema(now: Long): List<RolEntity> = listOf(
     RolEntity(

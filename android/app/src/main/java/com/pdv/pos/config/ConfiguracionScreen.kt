@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,6 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -26,10 +30,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Sucursal
+import com.pdv.pos.ia.LlmProvider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,7 +58,8 @@ fun ConfiguracionScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             ConexionSection(
@@ -70,6 +78,21 @@ fun ConfiguracionScreen(
             )
             ModoSection(modo = uiState.modo, onModoSelected = viewModel::onModoSelected)
             PermisosSection(permisos = uiState.permisosSimulados)
+            AsistenteIaSection(
+                activo = uiState.iaActivo,
+                proveedor = uiState.iaProveedor,
+                modelo = uiState.iaModelo,
+                tokenInput = uiState.iaTokenInput,
+                tieneTokenGuardado = uiState.iaTieneTokenGuardado,
+                probandoConexion = uiState.iaProbandoConexion,
+                resultadoPrueba = uiState.iaResultadoPrueba,
+                onActivoChange = viewModel::onIaActivoChange,
+                onProveedorSelected = viewModel::onIaProveedorSelected,
+                onModeloChange = viewModel::onIaModeloChange,
+                onTokenInputChange = viewModel::onIaTokenInputChange,
+                onGuardar = viewModel::onGuardarIa,
+                onProbarConexion = viewModel::onProbarConexionIa,
+            )
             Button(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
                 Text("Cerrar sesión")
             }
@@ -181,6 +204,122 @@ private fun PermisosSection(permisos: List<PermisoModulo>) {
         permisos.forEach { permiso ->
             val estado = if (permiso.habilitado) "habilitado" else "deshabilitado"
             Text("${permiso.nombreModulo}: $estado", style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AsistenteIaSection(
+    activo: Boolean,
+    proveedor: LlmProvider,
+    modelo: String,
+    tokenInput: String,
+    tieneTokenGuardado: Boolean,
+    probandoConexion: Boolean,
+    resultadoPrueba: ApiResult<String>?,
+    onActivoChange: (Boolean) -> Unit,
+    onProveedorSelected: (LlmProvider) -> Unit,
+    onModeloChange: (String) -> Unit,
+    onTokenInputChange: (String) -> Unit,
+    onGuardar: () -> Unit,
+    onProbarConexion: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Asistente de IA", style = MaterialTheme.typography.titleMedium)
+            Switch(checked = activo, onCheckedChange = onActivoChange)
+        }
+        if (activo) {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                LlmProvider.entries.forEachIndexed { index, opcion ->
+                    SegmentedButton(
+                        selected = proveedor == opcion,
+                        onClick = { onProveedorSelected(opcion) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = LlmProvider.entries.size),
+                    ) {
+                        Text(opcion.etiqueta())
+                    }
+                }
+            }
+            ModeloIaField(proveedor = proveedor, modelo = modelo, onModeloChange = onModeloChange)
+            OutlinedTextField(
+                value = tokenInput,
+                onValueChange = onTokenInputChange,
+                label = { Text("Token") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (tieneTokenGuardado) {
+                Text("Token configurado", style = MaterialTheme.typography.bodySmall)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onGuardar) { Text("Guardar") }
+                Button(onClick = onProbarConexion, enabled = !probandoConexion) {
+                    Text(if (probandoConexion) "Probando..." else "Probar conexión")
+                }
+            }
+            when (resultadoPrueba) {
+                is ApiResult.Success -> Text(
+                    "Conexión exitosa (respuesta: ${resultadoPrueba.data})",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                is ApiResult.Error -> Text(
+                    resultadoPrueba.message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                null -> Unit
+            }
+        }
+    }
+}
+
+private fun LlmProvider.etiqueta(): String = when (this) {
+    LlmProvider.DEEP_SEEK -> "DeepSeek"
+    LlmProvider.OPEN_AI -> "OpenAI"
+    LlmProvider.OPEN_ROUTER -> "OpenRouter"
+}
+
+// Combo editable: permite elegir uno de los modelosSugeridos del proveedor
+// (el modelo actual/default queda primero en esa lista) o escribir
+// cualquier otro modelo a mano, para economizar tokens o mejorar el
+// razonamiento segun el caso de uso (PLAN.md Parte 14, sub-paso 2).
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModeloIaField(
+    proveedor: LlmProvider,
+    modelo: String,
+    onModeloChange: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val sugerencias = proveedor.modelosSugeridos.filter { it.contains(modelo, ignoreCase = true) }
+    ExposedDropdownMenuBox(expanded = expanded && sugerencias.isNotEmpty(), onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = modelo,
+            onValueChange = {
+                onModeloChange(it)
+                expanded = true
+            },
+            label = { Text("Modelo") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
+        )
+        ExposedDropdownMenu(expanded = expanded && sugerencias.isNotEmpty(), onDismissRequest = { expanded = false }) {
+            sugerencias.forEach { sugerencia ->
+                DropdownMenuItem(
+                    text = { Text(sugerencia) },
+                    onClick = {
+                        onModeloChange(sugerencia)
+                        expanded = false
+                    },
+                )
+            }
         }
     }
 }

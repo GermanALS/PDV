@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Modulo = Literal["venta", "entrada", "inventario", "caja", "devoluciones", "usuarios", "configuracion"]
+Modulo = Literal["venta", "entrada", "inventario", "caja", "devoluciones", "usuarios", "configuracion", "ia"]
 
 
 class RolCreateSchema(BaseModel):

@@ -816,13 +816,15 @@ que `usuarios`). `modulos_permitidos` es la lista de claves de módulo que
 ese rol puede ver/usar — activa o desactiva pantallas completas, no
 acciones dentro de un módulo (PLAN.md Parte 13, esquema aprobado). Claves
 de módulo válidas: `"venta"`, `"entrada"`, `"inventario"`, `"caja"`,
-`"devoluciones"`, `"usuarios"`, `"configuracion"`.
+`"devoluciones"`, `"usuarios"`, `"configuracion"`, `"ia"` (agregada en
+PLAN.md Parte 14).
 
 Dos roles de sistema (`es_sistema: true`) vienen seedeados por la migración
-0007: `"administrador"` (los 7 módulos) y `"encargado_turno"` (todos menos
-`"usuarios"` y `"configuracion"`). Un rol de sistema no se puede editar ni
-eliminar (`400`) — solo los roles personalizados creados después
-(`es_sistema: false`) admiten `PATCH`/`DELETE`.
+0007: `"administrador"` (los 8 módulos) y `"encargado_turno"` (todos menos
+`"usuarios"` y `"configuracion"`) — la migración 0010 les agregó `"ia"` a
+ambos. Un rol de sistema no se puede editar ni eliminar (`400`) — solo los
+roles personalizados creados después (`es_sistema: false`) admiten
+`PATCH`/`DELETE`.
 
 ### 10.1 Listar roles
 
@@ -836,7 +838,7 @@ Response `200 OK`
       "id": "uuid",
       "local_id": "uuid o null",
       "nombre": "administrador",
-      "modulos_permitidos": ["venta", "entrada", "inventario", "caja", "devoluciones", "usuarios", "configuracion"],
+      "modulos_permitidos": ["venta", "entrada", "inventario", "caja", "devoluciones", "usuarios", "configuracion", "ia"],
       "es_sistema": true,
       "updated_at": "2026-08-21T12:00:00Z",
       "is_synced": true,
@@ -1052,9 +1054,6 @@ este contrato, sino prerequisitos pendientes):
   emite (sección 2) pero ningún endpoint lo valida todavía; no es parte del
   checklist de la Parte 13, queda abierto para cuando el proyecto lo
   priorice.
-- [ ] Rutas de IA — passthrough a DeepSeek, entrada/salida estructurada,
-  validación de permisos (PLAN.md Partes 14-16), sin diseñar a nivel de
-  contrato.
 
 Genuinamente abierto (no depende de trabajo previo):
 

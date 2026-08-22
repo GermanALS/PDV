@@ -55,8 +55,10 @@ class LocalRolRepositoryTest {
         assertEquals(setOf("administrador", "encargado_turno"), result.map { it.nombre }.toSet())
         val administrador = result.single { it.nombre == "administrador" }
         assertTrue("usuarios" in administrador.modulosPermitidos && "configuracion" in administrador.modulosPermitidos)
+        assertTrue("ia" in administrador.modulosPermitidos)
         val encargadoTurno = result.single { it.nombre == "encargado_turno" }
         assertTrue("usuarios" !in encargadoTurno.modulosPermitidos && "configuracion" !in encargadoTurno.modulosPermitidos)
+        assertTrue("ia" in encargadoTurno.modulosPermitidos)
     }
 
     @Test

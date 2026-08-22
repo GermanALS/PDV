@@ -6,6 +6,8 @@ import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.domain.repository.SucursalRepository
+import com.pdv.pos.ia.LlmClient
+import com.pdv.pos.ia.LlmProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +33,8 @@ class ConfiguracionViewModel @Inject constructor(
     private val sessionManager: SessionManager,
     private val preferences: ConfiguracionPreferences,
     private val sucursalRepository: SucursalRepository,
+    private val iaPreferences: IaPreferences,
+    private val llmClient: LlmClient,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConfiguracionUiState(permisosSimulados = permisosSimuladosDeEjemplo))
@@ -59,6 +63,20 @@ class ConfiguracionViewModel @Inject constructor(
                         sucursalSeleccionada = sucursales.find { sucursal -> sucursal.id == config.sucursalIdSeleccionada }
                             ?: sucursales.firstOrNull(),
                         modo = config.backendMode,
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            iaPreferences.config.collect { config ->
+                // iaTokenInput nunca se siembra desde aca: el campo de texto
+                // del token siempre arranca vacio (PLAN.md Parte 14, sub-paso 2).
+                _uiState.update {
+                    it.copy(
+                        iaActivo = config.activo,
+                        iaProveedor = config.proveedor,
+                        iaModelo = config.modelo.ifBlank { config.proveedor.modeloPorDefecto },
+                        iaTieneTokenGuardado = config.tieneToken,
                     )
                 }
             }
@@ -93,6 +111,50 @@ class ConfiguracionViewModel @Inject constructor(
     fun onModoSelected(modo: BackendMode) {
         viewModelScope.launch {
             preferences.setBackendMode(modo)
+        }
+    }
+
+    fun onIaActivoChange(activo: Boolean) {
+        _uiState.update { it.copy(iaActivo = activo) }
+    }
+
+    fun onIaProveedorSelected(proveedor: LlmProvider) {
+        // Cambiar de proveedor resetea el modelo a su default: los modelos
+        // de un proveedor no existen en otro (PLAN.md Parte 14, sub-paso 2).
+        _uiState.update {
+            if (it.iaProveedor == proveedor) it else it.copy(iaProveedor = proveedor, iaModelo = proveedor.modeloPorDefecto)
+        }
+    }
+
+    fun onIaModeloChange(value: String) {
+        _uiState.update { it.copy(iaModelo = value) }
+    }
+
+    fun onIaTokenInputChange(value: String) {
+        _uiState.update { it.copy(iaTokenInput = value) }
+    }
+
+    fun onGuardarIa() {
+        val estado = _uiState.value
+        viewModelScope.launch {
+            iaPreferences.setActivo(estado.iaActivo)
+            iaPreferences.setProveedor(estado.iaProveedor)
+            iaPreferences.setModelo(estado.iaModelo)
+            if (estado.iaTokenInput.isNotBlank()) {
+                iaPreferences.setToken(estado.iaTokenInput)
+                _uiState.update { it.copy(iaTokenInput = "") }
+            }
+        }
+    }
+
+    fun onProbarConexionIa() {
+        val estado = _uiState.value
+        viewModelScope.launch {
+            _uiState.update { it.copy(iaProbandoConexion = true, iaResultadoPrueba = null) }
+            val token = estado.iaTokenInput.ifBlank { iaPreferences.getToken().orEmpty() }
+            val modelo = estado.iaModelo.ifBlank { estado.iaProveedor.modeloPorDefecto }
+            val resultado = llmClient.probarConectividad(estado.iaProveedor, token, modelo)
+            _uiState.update { it.copy(iaProbandoConexion = false, iaResultadoPrueba = resultado) }
         }
     }
 
