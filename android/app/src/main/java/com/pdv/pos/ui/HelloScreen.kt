@@ -49,26 +49,40 @@ fun HelloScreen(
             }
             Text(text = healthText, style = MaterialTheme.typography.bodyLarge)
 
-            Button(onClick = onNavigateToVenta, modifier = Modifier.fillMaxWidth()) {
-                Text("Venta")
+            if ("venta" in uiState.modulosPermitidos) {
+                Button(onClick = { if (viewModel.onIntentoNavegar("venta")) onNavigateToVenta() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Venta")
+                }
             }
-            Button(onClick = onNavigateToEntrada, modifier = Modifier.fillMaxWidth()) {
-                Text("Entrada de mercancía")
+            if ("entrada" in uiState.modulosPermitidos) {
+                Button(onClick = { if (viewModel.onIntentoNavegar("entrada")) onNavigateToEntrada() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Entrada de mercancía")
+                }
             }
-            Button(onClick = onNavigateToInventario, modifier = Modifier.fillMaxWidth()) {
-                Text("Inventario")
+            if ("inventario" in uiState.modulosPermitidos) {
+                Button(onClick = { if (viewModel.onIntentoNavegar("inventario")) onNavigateToInventario() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Inventario")
+                }
             }
-            Button(onClick = onNavigateToCaja, modifier = Modifier.fillMaxWidth()) {
-                Text("Caja")
+            if ("caja" in uiState.modulosPermitidos) {
+                Button(onClick = { if (viewModel.onIntentoNavegar("caja")) onNavigateToCaja() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Caja")
+                }
             }
-            Button(onClick = onNavigateToDevoluciones, modifier = Modifier.fillMaxWidth()) {
-                Text("Devoluciones")
+            if ("devoluciones" in uiState.modulosPermitidos) {
+                Button(onClick = { if (viewModel.onIntentoNavegar("devoluciones")) onNavigateToDevoluciones() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Devoluciones")
+                }
             }
-            Button(onClick = onNavigateToUsuarios, modifier = Modifier.fillMaxWidth()) {
-                Text("Usuarios")
+            if ("usuarios" in uiState.modulosPermitidos) {
+                Button(onClick = { if (viewModel.onIntentoNavegar("usuarios")) onNavigateToUsuarios() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Usuarios")
+                }
             }
-            Button(onClick = onNavigateToConfiguracion, modifier = Modifier.fillMaxWidth()) {
-                Text("Configuración")
+            if ("configuracion" in uiState.modulosPermitidos) {
+                Button(onClick = { if (viewModel.onIntentoNavegar("configuracion")) onNavigateToConfiguracion() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Configuración")
+                }
             }
             Button(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
                 Text("Cerrar sesión")

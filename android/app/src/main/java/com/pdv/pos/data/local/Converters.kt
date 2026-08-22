@@ -11,4 +11,14 @@ object Converters {
     @TypeConverter
     @JvmStatic
     fun toBigDecimal(value: String?): BigDecimal? = value?.let { BigDecimal(it) }
+
+    // Claves de modulo (PLAN.md Parte 13): sin comas, un join simple alcanza.
+    @TypeConverter
+    @JvmStatic
+    fun fromModulosPermitidos(value: List<String>): String = value.joinToString(",")
+
+    @TypeConverter
+    @JvmStatic
+    fun toModulosPermitidos(value: String): List<String> =
+        if (value.isEmpty()) emptyList() else value.split(",")
 }

@@ -1,6 +1,7 @@
 package com.pdv.pos.caja
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.model.TotalesCorte
@@ -145,7 +146,7 @@ class CajaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val cajaRepository = mockk<CajaRepository>()
         coEvery { cajaRepository.calcularTotales("suc-1", any(), any()) } returns totalesDeEjemplo()
         coEvery { cajaRepository.guardarCorte(any()) } returns Unit
@@ -171,7 +172,7 @@ class CajaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val cajaRepository = mockk<CajaRepository>()
         coEvery { cajaRepository.calcularTotales("suc-1", any(), any()) } returns totalesDeEjemplo()
         coEvery { cajaRepository.guardarCorte(any()) } throws IOException("sin conexion")
@@ -190,7 +191,7 @@ class CajaViewModelTest {
         val preferences = preferences(tempDir)
         preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
-        sessionManager.login("admin", "password")
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
         val retiroRepository = mockk<RetiroEfectivoRepository>()
         coEvery { retiroRepository.registrarRetiro(any()) } returns Unit
         val viewModel = CajaViewModel(mockk<CajaRepository>(), retiroRepository, preferences, sessionManager)

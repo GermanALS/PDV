@@ -23,7 +23,7 @@ class RemoteUsuarioRepositoryTest {
         id = "usuario-1",
         username = "encargado1",
         nombreCompleto = "Encargado de Turno",
-        rol = "encargado_turno",
+        rolId = "rol-encargado-turno",
         activo = true,
     )
 
@@ -37,7 +37,7 @@ class RemoteUsuarioRepositoryTest {
                     id = "usuario-1",
                     username = "encargado1",
                     nombreCompleto = "Encargado de Turno",
-                    rol = "encargado_turno",
+                    rolId = "rol-encargado-turno",
                     activo = true,
                     updatedAt = "2026-08-21T12:00:00Z",
                 ),
@@ -61,13 +61,13 @@ class RemoteUsuarioRepositoryTest {
             id = "usuario-1",
             username = "encargado1",
             nombreCompleto = "Encargado de Turno",
-            rol = "encargado_turno",
+            rolId = "rol-encargado-turno",
             activo = true,
             updatedAt = "2026-08-21T12:00:00Z",
         )
         val repository = RemoteUsuarioRepository(api, appLogger)
 
-        repository.crearUsuario(usuarioDeEjemplo(), sucursalId = "suc-1", actorUsuario = "admin")
+        repository.crearUsuario(usuarioDeEjemplo(), passwordHash = "hash-bcrypt", sucursalId = "suc-1", actorUsuario = "admin")
 
         coVerify {
             api.createUsuario(
@@ -75,8 +75,9 @@ class RemoteUsuarioRepositoryTest {
                     localId = "usuario-1",
                     username = "encargado1",
                     nombreCompleto = "Encargado de Turno",
-                    rol = "encargado_turno",
+                    rolId = "rol-encargado-turno",
                     activo = true,
+                    passwordHash = "hash-bcrypt",
                 ),
             )
         }
@@ -92,7 +93,7 @@ class RemoteUsuarioRepositoryTest {
         val repository = RemoteUsuarioRepository(api, appLogger)
 
         assertFailsWith<IOException> {
-            repository.crearUsuario(usuarioDeEjemplo(), sucursalId = "suc-1", actorUsuario = "admin")
+            repository.crearUsuario(usuarioDeEjemplo(), passwordHash = null, sucursalId = "suc-1", actorUsuario = "admin")
         }
 
         coVerify { appLogger.log(LogType.ERROR, sucursalId = "suc-1", usuario = "admin", mensaje = any()) }

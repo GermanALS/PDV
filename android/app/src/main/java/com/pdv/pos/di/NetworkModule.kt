@@ -1,12 +1,14 @@
 package com.pdv.pos.di
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.pdv.pos.data.remote.AuthApiService
 import com.pdv.pos.data.remote.CajaApiService
 import com.pdv.pos.data.remote.DevolucionApiService
 import com.pdv.pos.data.remote.EntradaApiService
 import com.pdv.pos.data.remote.HealthApiService
 import com.pdv.pos.data.remote.InventarioApiService
 import com.pdv.pos.data.remote.RetiroApiService
+import com.pdv.pos.data.remote.RolApiService
 import com.pdv.pos.data.remote.SucursalApiService
 import com.pdv.pos.data.remote.UsuarioApiService
 import com.pdv.pos.data.remote.VentaApiService
@@ -93,4 +95,14 @@ object NetworkModule {
     @Singleton
     fun provideUsuarioApiService(retrofit: Retrofit): UsuarioApiService =
         retrofit.create(UsuarioApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideRolApiService(retrofit: Retrofit): RolApiService =
+        retrofit.create(RolApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideAuthApiService(retrofit: Retrofit): AuthApiService =
+        retrofit.create(AuthApiService::class.java)
 }

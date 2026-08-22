@@ -17,7 +17,7 @@ data class UsuarioEntity(
     val username: String,
     val nombreCompleto: String,
     val passwordHash: String?,
-    val rol: String,
+    val rolId: String,
     val activo: Boolean,
     val updatedAt: Long,
     val isSynced: Boolean,

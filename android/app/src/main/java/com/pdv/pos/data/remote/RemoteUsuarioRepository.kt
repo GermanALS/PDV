@@ -26,9 +26,9 @@ class RemoteUsuarioRepository @Inject constructor(
         emit(api.getUsuarios().items.map { it.toDomain() })
     }
 
-    override suspend fun crearUsuario(usuario: Usuario, sucursalId: String, actorUsuario: String) {
+    override suspend fun crearUsuario(usuario: Usuario, passwordHash: String?, sucursalId: String, actorUsuario: String) {
         try {
-            api.createUsuario(usuario.toCreateRequestDto())
+            api.createUsuario(usuario.toCreateRequestDto(passwordHash))
         } catch (e: IOException) {
             logFallo("crear", usuario.username, sucursalId, actorUsuario, e)
             throw e
@@ -38,9 +38,9 @@ class RemoteUsuarioRepository @Inject constructor(
         }
     }
 
-    override suspend fun actualizarUsuario(usuario: Usuario, sucursalId: String, actorUsuario: String) {
+    override suspend fun actualizarUsuario(usuario: Usuario, passwordHash: String?, sucursalId: String, actorUsuario: String) {
         try {
-            api.updateUsuario(usuario.id, usuario.toUpdateRequestDto())
+            api.updateUsuario(usuario.id, usuario.toUpdateRequestDto(passwordHash))
         } catch (e: IOException) {
             logFallo("actualizar", usuario.username, sucursalId, actorUsuario, e)
             throw e
@@ -76,21 +76,23 @@ private fun UsuarioDto.toDomain() = Usuario(
     id = id,
     username = username,
     nombreCompleto = nombreCompleto,
-    rol = rol,
+    rolId = rolId,
     activo = activo,
 )
 
-private fun Usuario.toCreateRequestDto() = UsuarioCreateRequestDto(
+private fun Usuario.toCreateRequestDto(passwordHash: String?) = UsuarioCreateRequestDto(
     localId = id,
     username = username,
     nombreCompleto = nombreCompleto,
-    rol = rol,
+    rolId = rolId,
     activo = activo,
+    passwordHash = passwordHash,
 )
 
-private fun Usuario.toUpdateRequestDto() = UsuarioUpdateRequestDto(
+private fun Usuario.toUpdateRequestDto(passwordHash: String?) = UsuarioUpdateRequestDto(
     username = username,
     nombreCompleto = nombreCompleto,
-    rol = rol,
+    rolId = rolId,
     activo = activo,
+    passwordHash = passwordHash,
 )

@@ -6,27 +6,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Login ficticio de la Parte 4 (PLAN.md). Se reemplaza por completo en la
- * Parte 13 junto con las credenciales admin/password y user1/password.
- */
+// Contenedor de la sesion activa (PLAN.md Parte 13): la validacion de
+// credenciales vive en AuthRepository, no aqui - este objeto solo guarda el
+// resultado. Reemplaza el login ficticio en memoria de la Parte 4.
 @Singleton
 class SessionManager @Inject constructor() {
-
-    private val fakeUsers = mapOf(
-        "admin" to "password",
-        "user1" to "password",
-    )
 
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session.asStateFlow()
 
-    fun login(username: String, password: String): Boolean {
-        val isValid = fakeUsers[username] == password
-        if (isValid) {
-            _session.value = Session(username)
-        }
-        return isValid
+    fun iniciarSesion(session: Session) {
+        _session.value = session
     }
 
     fun logout() {
