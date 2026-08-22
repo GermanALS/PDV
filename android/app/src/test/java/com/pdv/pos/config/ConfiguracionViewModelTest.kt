@@ -1,10 +1,17 @@
 package com.pdv.pos.config
 
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.pdv.pos.auth.SessionManager
+import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.domain.repository.SucursalRepository
+import com.pdv.pos.ia.LlmClient
+import com.pdv.pos.ia.LlmProvider
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
@@ -48,23 +55,44 @@ class ConfiguracionViewModelTest {
     // interno de DataStore corre en el mismo dispatcher de prueba que
     // viewModelScope, para que las escrituras sean observables de forma
     // sincronica en el test en vez de terminar en un hilo real sin trackear.
-    private fun preferences(tempDir: File): ConfiguracionPreferences {
-        val dataStore = PreferenceDataStoreFactory.create(
-            scope = CoroutineScope(dispatcher + SupervisorJob()),
-            produceFile = { File(tempDir, "test.preferences_pb") },
-        )
-        return ConfiguracionPreferences(dataStore)
-    }
+    // Mismo DataStore<Preferences> subyacente para ConfiguracionPreferences e
+    // IaPreferences, como en produccion (DataStoreModule provee un unico
+    // DataStore compartido, cada clase usa sus propias keys).
+    private fun dataStore(tempDir: File): DataStore<Preferences> = PreferenceDataStoreFactory.create(
+        scope = CoroutineScope(dispatcher + SupervisorJob()),
+        produceFile = { File(tempDir, "test.preferences_pb") },
+    )
+
+    // FakeTokenCipher: AndroidKeystoreTokenCipher no es testeable en JVM
+    // (PLAN.md Parte 14, sub-paso 3).
+    private fun fakeIaPreferences(dataStore: DataStore<Preferences>): IaPreferences =
+        IaPreferences(dataStore, FakeTokenCipher())
 
     private val fakeSucursalRepository = object : SucursalRepository {
         override fun observeSucursales(): Flow<List<Sucursal>> =
             flowOf(listOf(Sucursal(id = "s1", nombre = "Sucursal Test")))
     }
 
+    private fun viewModel(
+        tempDir: File,
+        sessionManager: SessionManager = mockk(relaxed = true),
+        llmClient: LlmClient = mockk(relaxed = true),
+    ): ConfiguracionViewModel {
+        val dataStore = dataStore(tempDir)
+        return ConfiguracionViewModel(
+            sessionManager,
+            ConfiguracionPreferences(dataStore),
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            llmClient,
+        )
+    }
+
     @Test
     fun `selecting a mode from the UI persists it to DataStore and updates uiState`(@TempDir tempDir: File) = runTest(dispatcher) {
-        val preferences = preferences(tempDir)
-        val viewModel = ConfiguracionViewModel(mockk(relaxed = true), preferences, fakeSucursalRepository)
+        val dataStore = dataStore(tempDir)
+        val preferences = ConfiguracionPreferences(dataStore)
+        val viewModel = ConfiguracionViewModel(mockk(relaxed = true), preferences, fakeSucursalRepository, fakeIaPreferences(dataStore), mockk(relaxed = true))
         assertEquals(BackendMode.LOCAL, viewModel.uiState.value.modo)
 
         viewModel.onModoSelected(BackendMode.REMOTO)
@@ -76,7 +104,7 @@ class ConfiguracionViewModelTest {
     @Test
     fun `logout delegates to the session manager`(@TempDir tempDir: File) = runTest(dispatcher) {
         val sessionManager = mockk<SessionManager>(relaxed = true)
-        val viewModel = ConfiguracionViewModel(sessionManager, preferences(tempDir), fakeSucursalRepository)
+        val viewModel = viewModel(tempDir, sessionManager = sessionManager)
 
         viewModel.logout()
 
@@ -85,12 +113,116 @@ class ConfiguracionViewModelTest {
 
     @Test
     fun `switching sucursal does not clobber an unsaved connection field edit`(@TempDir tempDir: File) = runTest(dispatcher) {
-        val preferences = preferences(tempDir)
-        val viewModel = ConfiguracionViewModel(mockk(relaxed = true), preferences, fakeSucursalRepository)
+        val viewModel = viewModel(tempDir)
 
         viewModel.onIpChange("192.168.1.50")
         viewModel.onSucursalSelected(Sucursal(id = "s1", nombre = "Sucursal Test"))
 
         assertEquals("192.168.1.50", viewModel.uiState.value.ip)
+    }
+
+    @Test
+    fun `saving an ia token persists it, clears the draft and never re-exposes it`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val iaPreferences = fakeIaPreferences(dataStore)
+        val viewModel = ConfiguracionViewModel(mockk(relaxed = true), ConfiguracionPreferences(dataStore), fakeSucursalRepository, iaPreferences, mockk(relaxed = true))
+
+        viewModel.onIaTokenInputChange("token-secreto")
+        viewModel.onGuardarIa()
+
+        assertEquals("token-secreto", iaPreferences.getToken())
+        assertEquals("", viewModel.uiState.value.iaTokenInput)
+        assertEquals(true, viewModel.uiState.value.iaTieneTokenGuardado)
+    }
+
+    @Test
+    fun `saving without touching the token field keeps the previously saved token`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val iaPreferences = fakeIaPreferences(dataStore)
+        iaPreferences.setToken("token-existente")
+        val viewModel = ConfiguracionViewModel(mockk(relaxed = true), ConfiguracionPreferences(dataStore), fakeSucursalRepository, iaPreferences, mockk(relaxed = true))
+
+        viewModel.onIaActivoChange(true)
+        viewModel.onGuardarIa()
+
+        assertEquals("token-existente", iaPreferences.getToken())
+    }
+
+    @Test
+    fun `a fresh install shows the provider default model instead of a blank field`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val viewModel = viewModel(tempDir)
+
+        assertEquals(LlmProvider.DEEP_SEEK.modeloPorDefecto, viewModel.uiState.value.iaModelo)
+    }
+
+    @Test
+    fun `switching provider resets the model field to the new provider's default`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val viewModel = viewModel(tempDir)
+
+        viewModel.onIaModeloChange("deepseek-reasoner")
+        viewModel.onIaProveedorSelected(LlmProvider.OPEN_AI)
+
+        assertEquals(LlmProvider.OPEN_AI.modeloPorDefecto, viewModel.uiState.value.iaModelo)
+    }
+
+    @Test
+    fun `re-selecting the already active provider does not clobber a custom model`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val viewModel = viewModel(tempDir)
+
+        viewModel.onIaModeloChange("deepseek-reasoner")
+        viewModel.onIaProveedorSelected(LlmProvider.DEEP_SEEK)
+
+        assertEquals("deepseek-reasoner", viewModel.uiState.value.iaModelo)
+    }
+
+    @Test
+    fun `testing the connection uses a custom model for a non-OpenRouter provider`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        coEvery { llmClient.probarConectividad(any(), any(), any()) } returns ApiResult.Success("4")
+        val viewModel = viewModel(tempDir, llmClient = llmClient)
+
+        viewModel.onIaModeloChange("deepseek-reasoner")
+        viewModel.onProbarConexionIa()
+
+        coVerify { llmClient.probarConectividad(LlmProvider.DEEP_SEEK, "", "deepseek-reasoner") }
+    }
+
+    @Test
+    fun `testing the connection reports success in the ui state`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        coEvery { llmClient.probarConectividad(any(), any(), any()) } returns ApiResult.Success("4")
+        val viewModel = viewModel(tempDir, llmClient = llmClient)
+
+        viewModel.onIaTokenInputChange("token")
+        viewModel.onProbarConexionIa()
+
+        assertEquals(ApiResult.Success("4"), viewModel.uiState.value.iaResultadoPrueba)
+        assertEquals(false, viewModel.uiState.value.iaProbandoConexion)
+    }
+
+    @Test
+    fun `testing the connection with an unsaved draft token uses that draft, not a stale saved one`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        coEvery { llmClient.probarConectividad(any(), any(), any()) } returns ApiResult.Success("4")
+        val viewModel = viewModel(tempDir, llmClient = llmClient)
+
+        viewModel.onIaTokenInputChange("token-sin-guardar")
+        viewModel.onProbarConexionIa()
+
+        coVerify { llmClient.probarConectividad(LlmProvider.DEEP_SEEK, "token-sin-guardar", LlmProvider.DEEP_SEEK.modeloPorDefecto) }
+    }
+
+    @Test
+    fun `testing the connection reports the error in the ui state`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        coEvery { llmClient.probarConectividad(any(), any(), any()) } returns ApiResult.Error("Token invalido o sin permiso para el proveedor seleccionado")
+        val viewModel = viewModel(tempDir, llmClient = llmClient)
+
+        viewModel.onProbarConexionIa()
+
+        assertEquals(
+            ApiResult.Error("Token invalido o sin permiso para el proveedor seleccionado"),
+            viewModel.uiState.value.iaResultadoPrueba,
+        )
     }
 }

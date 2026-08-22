@@ -58,7 +58,7 @@
       "notes": "PLAN.md Parte 13. modulos_permitidos activa/desactiva pantallas completas, no acciones dentro de un modulo. es_sistema=true protege a Administrador/Encargado de turno (seed) de edicion/eliminacion; los roles personalizados (es_sistema=false) si son editables.",
       "fields": [
         { "name": "nombre", "type": "string", "nullable": false, "unique": true },
-        { "name": "modulos_permitidos", "type": "array<string>", "nullable": false, "description": "claves de modulo: venta, entrada, inventario, caja, devoluciones, usuarios, configuracion" },
+        { "name": "modulos_permitidos", "type": "array<string>", "nullable": false, "description": "claves de modulo: venta, entrada, inventario, caja, devoluciones, usuarios, configuracion, ia" },
         { "name": "es_sistema", "type": "bool", "nullable": false, "default": false }
       ]
     },

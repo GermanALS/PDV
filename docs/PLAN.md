@@ -1768,88 +1768,201 @@ registrado cuando el usuario la olvida. Puntos identificados si se retoma:
 
 ---
 
-## Parte 14: Conectividad de IA
+## Parte 14: Conectividad de IA multi-proveedor  <!-- POS-60 -->
 
-Permite que el backend realice una llamada de IA a través de DeepSeek.
-Prueba la conectividad con una prueba sencilla de "2+2" y asegúrate de que
-la llamada de IA funcione.
+Permite que la app se conecte a un proveedor de IA a elección del usuario
+(DeepSeek, OpenAI u OpenRouter) y agrega a Configuración el módulo donde se
+activa/desactiva la IA, se elige el proveedor y se introduce el API token.
+
+**Decisión de arquitectura (confirmada con el usuario, 2026-08-22)**: la
+llamada al LLM se hace siempre directo desde Android al proveedor, nunca a
+través del backend FastAPI. Las tres APIs (DeepSeek, OpenAI, OpenRouter) son
+compatibles con el formato "chat completions" de OpenAI, así que es un solo
+cliente HTTP parametrizado por `baseUrl`/`apiKey`/`modelo` — mismo espíritu
+que el patrón `ModeAware*Repository` ya usado en el proyecto, pero
+seleccionando proveedor en vez de modo. Esto resuelve de forma natural el
+modo LOCAL+internet de la Parte 16 (no depende de que haya backend
+configurado) y evita que el token del usuario viaje por nuestro backend: solo
+viaja hacia el proveedor, por HTTPS. El backend no gana ninguna ruta de IA;
+su único cambio relacionado es agregar la clave de módulo `"ia"` al catálogo
+de permisos ya existente (sub-paso 3).
 
 ### Checklist
-- [ ] Cliente DeepSeek configurado en el backend con la API key vía
-  variable de entorno, nunca hardcodeada — criterio: se lee desde
-  `.env`/entorno; `.env` sigue en `.gitignore`.
-- [ ] Prueba de conectividad "2+2" recibe respuesta de DeepSeek —
-  criterio: `pytest backend/tests/test_deepseek.py` en verde.
-- [ ] Manejo de error si DeepSeek no está disponible o la API key es
-  inválida — criterio: prueba unitaria del caso de error (CLAUDE.md §6).
+
+**1. Cliente LLM multi-proveedor** (POS-61)
+- [x] Abstracción `LlmProvider` (`ia/` nuevo paquete Android): enum
+  `DeepSeek`/`OpenAi`/`OpenRouter` con `baseUrl` y modelo por defecto
+  (`deepseek-chat`, `gpt-4o-mini`; OpenRouter usa un campo `modelo` de texto
+  libre por agrupar múltiples modelos bajo un mismo endpoint) — criterio:
+  compila sin duplicar el cliente HTTP por proveedor.
+- [x] Prueba de conectividad "2+2" contra los tres proveedores, parametrizada
+  (no triplicada) — criterio: `./gradlew testDebugUnitTest` en verde contra
+  un servidor HTTP de prueba (MockWebServer/interceptor de test).
+- [x] Manejo de error si el proveedor no está disponible, el token es
+  inválido, o no hay conexión — criterio: prueba unitaria de cada caso
+  (CLAUDE.md §6), nunca crashea.
+- [x] `OkHttpClient` dedicado para este servicio, sin `HttpLoggingInterceptor`
+  (o en `Level.NONE`) — criterio: revisión de código confirma que el header
+  `Authorization` con el token nunca llega a Logcat.
+
+**2. UI de Configuración — sección "Asistente de IA"** (POS-62)
+- [x] Propuesta de pantalla (switch activo/inactivo, selector de proveedor,
+  campo de modelo para OpenRouter, campo de token enmascarado) presentada y
+  aprobada — criterio: aprobación explícita registrada antes de implementar.
+  `needs-approval` (aprobada 2026-08-22; se agregó ademas un boton "Probar
+  conexion" fuera del checklist original, tambien aprobado explicitamente)
+- [x] Campo de token nunca muestra el valor guardado — al reabrir la
+  pantalla aparece vacío con un indicador "token configurado" si ya hay uno;
+  escribir un valor nuevo lo reemplaza, sin acción de "ver en claro" —
+  criterio: revisión de código confirma que el valor descifrado nunca se
+  asigna a un campo de texto visible.
+- [x] Instalado y verificado en el Xiaomi — `needs-device` (confirmado por
+  el usuario 2026-08-22)
+
+Post-aprobación (mismo sub-paso, pedido explícito del usuario tras probar en
+el Xiaomi): el campo de modelo se extendió de "solo texto libre en
+OpenRouter" a un combo editable disponible para los 3 proveedores
+(`LlmProvider.modelosSugeridos`, sugerencias filtradas a medida que se
+escribe, con el modelo por defecto de cada proveedor como primera opción) —
+para poder elegir un modelo distinto y economizar tokens o mejorar el
+razonamiento. También se corrigió un bug preexistente (no introducido por
+esta Parte, pero expuesto por el crecimiento de la pantalla): el `Column`
+raíz de `ConfiguracionScreen` no tenía scroll, así que el contenido se
+cortaba en pantallas más chicas — se agregó `.verticalScroll(...)`, mismo
+patrón que ya usan las otras 6 pantallas del proyecto.
+
+**3. Cifrado en reposo y permisos** (POS-63)
+- [x] Token cifrado con clave AES-GCM respaldada por Android Keystore
+  (`android.security.keystore`, API nativa) antes de guardarse en DataStore
+  (ciphertext + IV, nunca texto plano) — criterio: prueba unitaria confirma
+  que el valor persistido no es el texto plano. Implementado como
+  `TokenCipher` (interfaz) + `AndroidKeystoreTokenCipher` (impl real,
+  `config/`): AndroidKeyStore no es testeable en JVM, asi que
+  `IaPreferencesTest` inyecta un `FakeTokenCipher` para probar el contrato
+  de `IaPreferences` (nunca persiste texto plano, descifra al valor
+  original). `AndroidKeystoreTokenCipher` en si se ejercita end-to-end via
+  el flujo de Guardar/Probar conexion ya verificado en el Xiaomi
+  (sub-paso 2).
+- [x] `"ia"` agregado a `Modulo` (`backend/app/schemas/rol.py`) y a
+  `MODULOS_DISPONIBLES`/`RolesDeSistemaSeed` (Android) — criterio: `pytest`
+  y `./gradlew testDebugUnitTest` en verde. `schema-parity`
+- [x] Migración nueva que agrega `"ia"` a `modulos_permitidos` de los dos
+  roles de sistema ya sembrados (`administrador` y `encargado_turno`) —
+  criterio: `alembic upgrade head` deja ambos roles con `"ia"` incluido.
+  Migración `0010_add_ia_modulo_roles`, verificada con upgrade/downgrade/
+  upgrade contra la base del contenedor.
+- [x] `docs/api-contract.md` §10 actualizado con la clave `"ia"` — criterio:
+  revisión antes de cerrar este sub-paso (CLAUDE.md §9). `docs/schema-pos.json`
+  tambien actualizado (mismo catalogo de claves referenciado ahi).
+
+### Decisiones abiertas
+
+- [x] ¿El rol de sistema `encargado_turno` debe incluir `"ia"` por defecto,
+  o debe quedar reservado a roles que el administrador habilite
+  explícitamente? **Decidido** (2026-08-22): sí, `encargado_turno` incluye
+  `"ia"` por defecto — ya tiene venta/entrada/inventario/caja/devoluciones,
+  así que la IA no le da ningún permiso de acción que no tuviera ya.
 
 ---
 
 ## Parte 15: Refinamiento de IA
 
-Amplía la llamada al backend para que siempre envíe a la IA información en
-formato JSON desde el punto de venta, además de la pregunta del usuario (y
-el historial de la conversación). La IA debe responder con salidas
-estructuradas que incluyan la respuesta al usuario y, opcionalmente, una
-actualización del punto de venta de acuerdo a la instrucción.
+Define el estado del punto de venta que se envía a la IA como contexto, el
+esquema de salida estructurada (respuesta al usuario + lista de acciones
+propuestas), y la validación de permisos antes de ejecutar cualquier acción.
 
-**Validación de permisos (obligatoria)**: toda actualización del punto de
-venta propuesta por la IA debe validarse contra los permisos del usuario en
-turno (Parte 13) antes de aplicarse. Las acciones rechazadas por falta de
-permiso se registran en el log (Parte 5, categoría `AUTH`) y se le informa
-al usuario en el chat por qué no se ejecutó.
+**Validación de permisos (obligatoria)**: cada acción propuesta por la IA se
+valida contra los permisos del usuario en turno (Parte 13) antes de
+ejecutarse; una acción rechazada no bloquea al resto de la respuesta. Las
+acciones rechazadas se registran en el log (Parte 5, categoría `AUTH`) y se
+informan al usuario en el chat.
+
+**Ejecución sin camino paralelo**: cada acción se traduce a una llamada al
+mismo caso de uso/repositorio que ya usa la pantalla manual de ese módulo
+(ej. una acción de corte parcial llama exactamente lo mismo que usa
+`CajaViewModel` al confirmar un corte parcial desde la UI) — mismo
+`DB_WRITE`, mismo motor de sync que cualquier acción manual, per la decisión
+de arquitectura de la Parte 14 (todo ocurre en Android, vía los
+repositorios `ModeAware*` existentes).
+
+**Confirmación explícita**: antes de ejecutar cualquier acción con efecto en
+datos de negocio, el chat muestra una tarjeta de confirmación (ej. "¿Confirmas
+retiro de $500 en corte parcial?"); el detalle visual se propone y aprueba en
+la Parte 16 (sub-paso de UI).
 
 ### Checklist
 
-**1. Payload y respuesta estructurada**
-- [ ] Backend envía a la IA el estado del punto de venta en JSON, más la
-  pregunta y el historial — criterio: prueba backend verifica el shape
-  del payload enviado.
-- [ ] IA responde con salida estructurada (respuesta al usuario +
-  actualización opcional) — criterio: prueba backend valida el schema de
-  la respuesta con Pydantic.
+**1. Estado del punto de venta**
+- [ ] Función que arma el JSON de contexto (catálogo/inventario resumido,
+  sucursal y caja actual, historial corto de conversación) reutilizando las
+  lecturas ya existentes de cada `ModeAwareXRepository` — criterio: prueba
+  unitaria verifica el shape del JSON.
 
-**2. Validación de permisos**
-- [ ] Toda actualización propuesta por la IA se valida contra los
-  permisos del usuario en turno (Parte 13) antes de aplicarse — criterio:
-  prueba de integración con un usuario sin permiso confirma el rechazo.
-- [ ] Acciones rechazadas se registran en el log (Parte 5, categoría
-  `AUTH`) y se informan en el chat — criterio: prueba verifica ambas
-  cosas.
+**2. Esquema de salida estructurada**
+- [ ] Esquema único `{ respuesta_usuario, acciones: [{ modulo, tipo,
+  parametros }] }`, usando el modo de salida estructurada/tool-calling de
+  cada proveedor — criterio: prueba unitaria valida un ejemplo de cada uno
+  de los 4 tipos de acción pedidos por el usuario (alta a inventario +
+  ajuste de costo, corte parcial con retiro, devolución, sincronización).
+- [ ] **Prompt de sistema / rol de la IA presentado como texto completo y
+  aprobado explícitamente antes de activarse de forma operativa** — ver
+  Decisiones abiertas (bloqueante, `needs-approval`).
+
+**3. Validación de permisos y ejecución**
+- [ ] Cada acción se valida contra los permisos reales del usuario en turno
+  antes de ejecutarse — criterio: prueba de integración con un usuario sin
+  permiso confirma el rechazo selectivo (una acción se ejecuta, otra en la
+  misma respuesta se rechaza).
+- [ ] Acciones rechazadas se registran `AUTH` (Parte 5) y se informan en el
+  chat — criterio: prueba verifica ambas cosas.
+- [ ] Cada acción ejecutada pasa por el caso de uso real del módulo
+  correspondiente, sin camino de escritura aparte — criterio: revisión de
+  código explícita al cierre de este sub-paso.
 
 ### Decisiones abiertas
 
-- [ ] Ruta de escritura de las actualizaciones propuestas por la IA: si
-  pasan por el mismo `LocalXRepository`/`RemoteXRepository` —y por tanto
-  registran `DB_WRITE` y participan del sync como cualquier otra
-  escritura— o si toman un camino aparte.
-- [ ] Dónde vive la validación de permisos: el backend propone la
-  actualización, pero el catálogo de permisos existe en ambos lados vía
-  `UsuarioRepository`. Definir si la validación es de servidor, de
-  cliente, o doble.
+- [ ] Nombre/alcance del `modulo` sintético de sincronización manual y qué
+  permiso exige (¿`"ia"` solo, o también `"configuracion"` por tocar el
+  motor de sync?).
+- [ ] Si una respuesta con múltiples acciones se ejecuta todo-o-nada o
+  parcialmente (ej. si el usuario descarta la confirmación de una acción,
+  ¿se cancelan las demás de la misma respuesta o siguen su curso
+  independiente?).
+- [ ] **Prompt de sistema / rol de la IA — bloqueante**: antes de activar
+  esta Parte de forma operativa en la app (build instalado con datos
+  reales), el usuario debe poder revisar y modificar el texto exacto del
+  prompt de sistema (comportamiento, tono, límites, qué tan proactiva es
+  sugiriendo acciones, cómo redacta `respuesta_usuario`). Queda abierto si
+  el prompt es fijo en el código (versionado en git) o editable desde
+  Configuración como dato de dispositivo — a decidir junto con la
+  aprobación del texto inicial.
 
 ---
 
-## Parte 16: Chat IA
+## Parte 16: Chat IA y comandos de voz
 
-Agrega un widget flotante a la interfaz de usuario que permita el chat
-completo con IA y permita que el LLM actualice el punto de venta basándose
-en sus resultados estructurados (Parte 15). Si la IA actualiza el punto de
-venta, la interfaz de usuario debe actualizarse automáticamente cuando
-aplique.
+Agrega un widget flotante de chat con IA, con un botón de micrófono para
+comandos de voz (`android.speech.SpeechRecognizer` nativo — sin costo, sin
+dependencia nueva, sin API key adicional). La voz es solo otra forma de
+llenar el mismo campo de texto del chat; no es un subsistema aparte del
+pipeline de la Parte 15.
 
 ### Comportamiento por modo y conectividad
 
 - **Modo remoto o local-con-sincronización, con conexión**: chat completo
-  disponible, incluyendo actualizaciones al punto de venta (sujetas a
+  disponible, incluyendo acciones sobre el punto de venta (sujetas a
   validación de permisos de la Parte 15).
 - **Modo local, con conexión a internet**: la IA puede responder dudas sobre
-  funcionalidad de la app, usando el contenido del FAQ empaquetado (ver
-  abajo) como contexto para DeepSeek. **No puede realizar cambios en la base
-  de datos local del dispositivo** bajo ninguna circunstancia en este modo.
+  funcionalidad de la app, usando el FAQ empaquetado (ver abajo) como
+  contexto. **No puede realizar cambios en la base de datos local del
+  dispositivo** bajo ninguna circunstancia en este modo.
 - **Sin conexión a internet** (cualquier modo): el chat con IA no está
-  disponible (DeepSeek requiere conexión); se muestra el FAQ estático
-  empaquetado como recurso de ayuda.
+  disponible; se muestra el FAQ estático empaquetado como recurso de ayuda.
+
+Con la decisión de arquitectura de la Parte 14 (Android llama directo al
+proveedor), no hay contradicción entre "modo LOCAL sin backend" y "chat
+disponible con conexión a internet": el proveedor se llama igual en los tres
+casos, sin depender de que haya backend configurado.
 
 ### FAQ empaquetado
 
@@ -1863,29 +1976,44 @@ Backlog) no esté implementado.
 **1. Widget de chat**
 - [ ] Widget flotante implementado, accesible desde cualquier pantalla —
   criterio: Compose UI Test confirma que aparece y funciona.
-- [ ] La UI se actualiza automáticamente cuando la IA modifica el punto
-  de venta — criterio: prueba de integración confirma el refresco del
-  estado tras una respuesta con actualización.
+- [ ] Widget oculto/deshabilitado si el usuario en turno no tiene el permiso
+  de módulo `"ia"` (Parte 14) — criterio: prueba de integración. Esta es la
+  primera compuerta, antes incluso de la validación por acción de la
+  Parte 15.
+- [ ] Tarjeta de confirmación de acciones con efecto en datos de negocio,
+  propuesta y aprobada antes de implementar — criterio: aprobación explícita
+  registrada. `needs-approval`
+- [ ] La UI se actualiza automáticamente cuando la IA modifica el punto de
+  venta — criterio: prueba de integración confirma el refresco del estado
+  tras una acción confirmada.
 
-**2. Comportamiento por modo y conectividad**
-- [ ] Modo remoto/local-con-sync + conexión: chat completo con
-  actualizaciones sujetas a la Parte 15 — criterio: prueba de
-  integración.
+**2. Comandos de voz**
+- [ ] Botón de micrófono + permiso `RECORD_AUDIO` (runtime permission,
+  mismo patrón que el permiso de cámara de la Parte 7) — criterio: prueba de
+  integración simula una transcripción y confirma que llena el campo de
+  texto del chat.
+
+**3. Comportamiento por modo y conectividad**
+- [ ] Modo remoto/local-con-sync + conexión: chat completo con acciones
+  sujetas a la Parte 15 — criterio: prueba de integración.
 - [ ] Modo local + conexión: solo responde dudas de funcionalidad con el
   FAQ empaquetado como contexto, sin poder tocar la base de datos local —
-  criterio: prueba de integración confirma que un intento de
-  actualización se rechaza en este modo.
-- [ ] Sin conexión (cualquier modo): chat deshabilitado, se muestra el
-  FAQ estático — criterio: prueba de integración simula sin conexión y
-  confirma el fallback.
+  criterio: prueba de integración confirma que un intento de acción se
+  rechaza en este modo.
+- [ ] Sin conexión (cualquier modo): chat deshabilitado, se muestra el FAQ
+  estático — criterio: prueba de integración simula sin conexión y confirma
+  el fallback.
 
-**3. FAQ empaquetado**
-- [ ] FAQ generado y empaquetado como recurso offline de la app —
-  criterio: archivo de recurso presente, accesible sin conexión.
+**4. FAQ empaquetado**
+- [ ] FAQ generado y empaquetado como recurso offline de la app — criterio:
+  archivo de recurso presente, accesible sin conexión.
 
-**4. Verificación**
+**5. Verificación**
 - [ ] Instalado y verificado en el Xiaomi los tres escenarios de
-  conectividad/modo — `needs-device`
+  conectividad/modo, más un comando de voz de cada uno de los 4 ejemplos
+  dados por el usuario ("agrega N artículos e actualiza costo", "corte
+  parcial con retiro", "registra devolución", "sincroniza inventario") —
+  `needs-device`
 
 ---
 
