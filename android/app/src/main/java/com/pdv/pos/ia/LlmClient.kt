@@ -5,6 +5,9 @@ import com.pdv.pos.data.remote.LlmApiService
 import com.pdv.pos.data.remote.LlmHttpException
 import com.pdv.pos.data.remote.dto.ChatCompletionRequestDto
 import com.pdv.pos.data.remote.dto.ChatMessageDto
+import com.pdv.pos.data.remote.dto.ResponseFormatDto
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 import java.io.IOException
 import javax.inject.Inject
 
@@ -13,6 +16,7 @@ import javax.inject.Inject
 // variar LlmProvider alcanza sin una implementacion por proveedor.
 class LlmClient @Inject constructor(
     private val api: LlmApiService,
+    private val json: Json,
 ) {
     suspend fun chat(
         provider: LlmProvider,
@@ -48,6 +52,43 @@ class LlmClient @Inject constructor(
         modelo = modelo,
         mensajes = listOf(ChatMessageDto(role = "user", content = "2+2, responde unicamente el numero")),
     )
+
+    // Salida estructurada (PLAN.md Parte 15, sub-paso 2): a diferencia de
+    // chat(), aca el contenido de la respuesta es JSON obligatorio segun el
+    // esquema RespuestaIaDto - "json_object" (soportado por los tres
+    // proveedores) mas la instruccion del formato exacto en el prompt de
+    // sistema (responsabilidad del llamador, no de este cliente) son lo que
+    // garantiza que el LLM lo respete.
+    suspend fun chatEstructurado(
+        provider: LlmProvider,
+        apiKey: String,
+        modelo: String,
+        mensajes: List<ChatMessageDto>,
+    ): ApiResult<RespuestaIaDto> = try {
+        val response = api.chatCompletions(
+            url = provider.chatCompletionsUrl,
+            apiKey = apiKey,
+            request = ChatCompletionRequestDto(
+                model = modelo,
+                messages = mensajes,
+                responseFormat = ResponseFormatDto(type = "json_object"),
+            ),
+        )
+        val contenido = response.choices.firstOrNull()?.message?.content
+        if (contenido == null) {
+            ApiResult.Error("El proveedor no devolvio ninguna respuesta")
+        } else {
+            try {
+                ApiResult.Success(json.decodeFromString(RespuestaIaDto.serializer(), contenido))
+            } catch (e: SerializationException) {
+                ApiResult.Error("La IA devolvio una respuesta con formato invalido")
+            }
+        }
+    } catch (e: LlmHttpException) {
+        ApiResult.Error(mensajeDeErrorHttp(e))
+    } catch (e: IOException) {
+        ApiResult.Error("Sin conexion con el proveedor de IA")
+    }
 }
 
 private fun mensajeDeErrorHttp(e: LlmHttpException): String = when (e.statusCode) {

@@ -1865,7 +1865,7 @@ patrón que ya usan las otras 6 pantallas del proyecto.
 
 ---
 
-## Parte 15: Refinamiento de IA
+## Parte 15: Refinamiento de IA  <!-- POS-64 -->
 
 Define el estado del punto de venta que se envía a la IA como contexto, el
 esquema de salida estructurada (respuesta al usuario + lista de acciones
@@ -1892,50 +1892,180 @@ la Parte 16 (sub-paso de UI).
 
 ### Checklist
 
-**1. Estado del punto de venta**
-- [ ] Función que arma el JSON de contexto (catálogo/inventario resumido,
+**1. Estado del punto de venta** (POS-65)
+- [x] Función que arma el JSON de contexto (catálogo/inventario resumido,
   sucursal y caja actual, historial corto de conversación) reutilizando las
   lecturas ya existentes de cada `ModeAwareXRepository` — criterio: prueba
-  unitaria verifica el shape del JSON.
+  unitaria verifica el shape del JSON. Verificado: `EstadoPuntoVentaBuilder`
+  (`android/app/src/main/java/com/pdv/pos/ia/EstadoPuntoVenta.kt`) arma
+  `EstadoPuntoVenta` (sucursal, resumen de caja del día vía
+  `CajaRepository.calcularTotales`, hasta 50 artículos de
+  `InventarioRepository.observarInventario` ordenados por nombre,
+  historial de `ChatMessageDto` reutilizado de la Parte 14) y lo serializa
+  a JSON con el `Json` singleton ya provisto por Hilt. Sin caminos de
+  escritura ni validaciones nuevas (revisión de `code-reviewer`, sin
+  hallazgos). `EstadoPuntoVentaBuilderTest` (3 casos: shape completo,
+  artículo sin costo/ubicación, sucursal no encontrada) en verde;
+  `./gradlew build`: `BUILD SUCCESSFUL`, todos los tests y lint en verde.
 
-**2. Esquema de salida estructurada**
-- [ ] Esquema único `{ respuesta_usuario, acciones: [{ modulo, tipo,
+**2. Esquema de salida estructurada** (POS-66)
+- [x] Esquema único `{ respuesta_usuario, acciones: [{ modulo, tipo,
   parametros }] }`, usando el modo de salida estructurada/tool-calling de
   cada proveedor — criterio: prueba unitaria valida un ejemplo de cada uno
-  de los 4 tipos de acción pedidos por el usuario (alta a inventario +
-  ajuste de costo, corte parcial con retiro, devolución, sincronización).
-- [ ] **Prompt de sistema / rol de la IA presentado como texto completo y
+  de los 3 tipos de acción pedidos por el usuario (alta a inventario +
+  ajuste de costo, corte parcial con retiro, devolución). La sincronización
+  manual queda fuera del alcance de la IA en esta Parte — ver Decisiones
+  abiertas. Verificado: `RespuestaIaDto`/`AccionIaDto`
+  (`android/app/src/main/java/com/pdv/pos/ia/RespuestaIa.kt`, `parametros`
+  como `JsonObject` sin tipar — el mapeo a los modelos de dominio reales es
+  del sub-paso 3). `LlmClient.chatEstructurado` (Parte 14) usa
+  `response_format: {"type": "json_object"}` — el modo soportado en común
+  por los 3 proveedores, a diferencia del `json_schema` estricto
+  específico de OpenAI, que OpenRouter no puede garantizar en todos los
+  modelos que enruta; se agregó `ResponseFormatDto` a
+  `ChatCompletionRequestDto` (campo opcional, no rompe `chat()`/
+  `probarConectividad()` existentes). `LlmClientTest` cubre los 3 tipos de
+  acción de ejemplo más el caso de JSON inválido devuelto por el proveedor.
+  Revisión de `code-reviewer`: sin hallazgos. `./gradlew build`: `BUILD
+  SUCCESSFUL`, todos los tests y lint en verde.
+- [x] **Prompt de sistema / rol de la IA presentado como texto completo y
   aprobado explícitamente antes de activarse de forma operativa** — ver
-  Decisiones abiertas (bloqueante, `needs-approval`).
+  Decisiones abiertas (bloqueante, `needs-approval`). Aprobado 2026-08-22,
+  texto completo en Decisiones abiertas. Pendiente de implementación
+  (constante inicial + editable en Configuración, ver Decisión 3).
 
-**3. Validación de permisos y ejecución**
-- [ ] Cada acción se valida contra los permisos reales del usuario en turno
+**3. Validación de permisos y ejecución** (POS-67)
+- [x] Cada acción se valida contra los permisos reales del usuario en turno
   antes de ejecutarse — criterio: prueba de integración con un usuario sin
   permiso confirma el rechazo selectivo (una acción se ejecuta, otra en la
-  misma respuesta se rechaza).
-- [ ] Acciones rechazadas se registran `AUTH` (Parte 5) y se informan en el
-  chat — criterio: prueba verifica ambas cosas.
-- [ ] Cada acción ejecutada pasa por el caso de uso real del módulo
+  misma respuesta se rechaza). Verificado: `EjecutorAccionesIa`
+  (`android/app/src/main/java/com/pdv/pos/ia/EjecutorAccionesIa.kt`) valida
+  cada acción de forma independiente (Decisión 2) contra
+  `modulosPermitidos`. El módulo que autoriza se deriva siempre de
+  `accion.tipo` vía un mapeo fijo en código
+  (`moduloRequeridoPorTipo`), nunca de `accion.modulo` — ambos campos
+  vienen de la misma fuente no confiable (el LLM) y nada los mantiene
+  consistentes entre sí; confiar en `modulo` habría permitido que una
+  respuesta con los campos cruzados salteara el permiso real (hallazgo
+  crítico de `code-reviewer`, corregido y cubierto por test).
+  `EjecutorAccionesIaIntegrationTest` (11 casos): rechazo selectivo con
+  `AppLogger` real, el caso de módulo/tipo cruzados, y paridad de campos
+  contra las pantallas manuales para los 3 tipos de acción restantes
+  (`alta_articulo`, `retiro_efectivo`, `registrar_devolucion`).
+- [x] Acciones rechazadas se registran `AUTH` (Parte 5) y se informan en el
+  chat — criterio: prueba verifica ambas cosas. Verificado: log `AUTH` con
+  `sucursalId`/`usuario`/mensaje (mismo patrón que
+  `HelloViewModel.onIntentoNavegar`, Parte 13) y `ResultadoAccionIa.
+  RechazadaPorPermiso.mensaje` para mostrar en el chat — ambos verificados
+  en el mismo test de rechazo selectivo.
+- [x] Cada acción ejecutada pasa por el caso de uso real del módulo
   correspondiente, sin camino de escritura aparte — criterio: revisión de
-  código explícita al cierre de este sub-paso.
+  código explícita al cierre de este sub-paso. Verificado: `alta_articulo`
+  → `EntradaRepository.registrarEntrada` (`Entrada.DeArticuloNuevo`, cubre
+  alta con costo inicial opcional — la Decisión 1 pre-descope de "alta +
+  ajuste de costo" se resuelve como un solo tipo de acción, el costo es un
+  parámetro de la alta, no una edición aparte de un artículo existente);
+  `corte_parcial` → `CajaRepository.calcularTotales` +
+  `guardarCorte` (mismos totales reales que `CajaViewModel`, la IA nunca
+  inventa montos); `retiro_efectivo` → `RetiroEfectivoRepository.
+  registrarRetiro`; `registrar_devolucion` → `DevolucionRepository.
+  registrarDevolucion` (folio/estado con el mismo formato que
+  `DevolucionViewModel`). Validación de `cantidad`/`monto` > 0 antes de
+  escribir, igual que las 3 pantallas manuales (segundo hallazgo de
+  `code-reviewer`, corregido). Dos rondas de revisión de `code-reviewer`
+  (hallazgos corregidos + verificación de que las correcciones no
+  introdujeron regresiones); sin hallazgos pendientes.
+  `./gradlew build`: `BUILD SUCCESSFUL`, todos los tests y lint en verde.
 
 ### Decisiones abiertas
 
-- [ ] Nombre/alcance del `modulo` sintético de sincronización manual y qué
-  permiso exige (¿`"ia"` solo, o también `"configuracion"` por tocar el
-  motor de sync?).
-- [ ] Si una respuesta con múltiples acciones se ejecuta todo-o-nada o
-  parcialmente (ej. si el usuario descarta la confirmación de una acción,
-  ¿se cancelan las demás de la misma respuesta o siguen su curso
-  independiente?).
-- [ ] **Prompt de sistema / rol de la IA — bloqueante**: antes de activar
+- [x] Nombre/alcance del `modulo` sintético de sincronización manual y qué
+  permiso exige. **Decidido** (2026-08-22): se descarta por completo — la
+  IA no obtiene un tipo de acción de sincronización en esta Parte. La
+  sincronización sigue funcionando exclusivamente por el mecanismo
+  diferido/manual ya existente (motor `LastWriteWinsSyncEngine`,
+  Parte 6), sin un punto de entrada nuevo disparable por la IA. Motivo
+  encontrado durante la evaluación (`code-architect`): no existe hoy ningún
+  orquestador "sincronizar todo" que reusar (`LastWriteWinsSyncEngine`
+  expone solo un método genérico por-entidad) — crearlo únicamente para que
+  la IA lo dispare violaría el principio "sin camino paralelo" de esta
+  misma Parte. Los 3 tipos de acción de ejemplo del checklist quedan:
+  alta a inventario + ajuste de costo, corte parcial con retiro,
+  devolución.
+- [x] Si una respuesta con múltiples acciones se ejecuta todo-o-nada o
+  parcialmente. **Decidido** (2026-08-22, evaluado por `code-architect`,
+  elegido por el usuario): independiente por acción — cada acción se
+  confirma/ejecuta o se descarta por separado, sin afectar a las demás de
+  la misma respuesta. Coincide con que las acciones no comparten
+  transacción de dominio en el código existente (repositorios distintos,
+  sin wrapper transaccional común) y con el comportamiento que tendría el
+  usuario haciendo cada acción manualmente en pantallas separadas.
+- [x] **Prompt de sistema / rol de la IA — bloqueante**: antes de activar
   esta Parte de forma operativa en la app (build instalado con datos
   reales), el usuario debe poder revisar y modificar el texto exacto del
-  prompt de sistema (comportamiento, tono, límites, qué tan proactiva es
-  sugiriendo acciones, cómo redacta `respuesta_usuario`). Queda abierto si
-  el prompt es fijo en el código (versionado en git) o editable desde
-  Configuración como dato de dispositivo — a decidir junto con la
-  aprobación del texto inicial.
+  prompt de sistema. **Decidido** (2026-08-22): editable desde
+  Configuración como dato de dispositivo, mismo patrón DataStore que
+  `IaPreferences` (Parte 14). Guardar un cambio al prompt exige reingresar
+  la contraseña del usuario administrador de la sesión activa (paso
+  adicional de reautenticación, verificado vía `AuthRepository.login`
+  existente — sin endpoint ni camino de escritura nuevo) antes de
+  persistir el nuevo texto — mitiga el riesgo señalado por
+  `code-architect` de que un dispositivo desatendido y ya logueado permita
+  alterar los límites de la IA sin pasar por este control. Texto inicial
+  aprobado por el usuario el 2026-08-22 (este es el valor por defecto que
+  vive en código y se copia a DataStore la primera vez; editable desde
+  Configuración a partir de ahí, bajo el gate de reautenticación descrito
+  arriba):
+
+  ```
+  Sos el asistente de IA del punto de venta PDV. Ayudás al personal de la
+  sucursal a consultar información del negocio (inventario, ventas, caja,
+  devoluciones) y, cuando el usuario lo pide explícitamente, a preparar
+  acciones concretas sobre esos datos.
+
+  Contexto: en cada mensaje recibís un JSON con el estado actual del punto
+  de venta (catálogo/inventario resumido, sucursal y caja abiertos,
+  historial corto de la conversación). Usá únicamente esos datos — nunca
+  inventes artículos, precios, montos o folios que no estén en el
+  contexto.
+
+  Tono: profesional, directo y breve. Respondé siempre en español, sin
+  emojis.
+
+  Acciones que podés proponer (y solo esas tres):
+  1. Alta de un artículo al inventario, opcionalmente con ajuste de costo.
+  2. Corte de caja parcial, opcionalmente con retiro de efectivo.
+  3. Registro de una devolución.
+
+  Reglas para proponer acciones:
+  - Nunca ejecutás una acción vos mismo: solo la proponés en el campo
+    `acciones` de tu respuesta. El sistema le pide confirmación explícita
+    al usuario antes de aplicar cualquier acción, y valida que el usuario
+    tenga permiso para el módulo correspondiente — vos no evaluás
+    permisos.
+  - Proponé una acción solo si el usuario la pidió explícita e
+    inequívocamente (ej. "dá de alta 10 unidades de tornillos a $50" o
+    "registrá una devolución del artículo X"). No propongas acciones a
+    partir de una simple consulta o de una conversación ambigua.
+  - Si falta un dato obligatorio para armar la acción (cantidad, costo,
+    motivo, artículo), preguntalo antes de proponer la acción en vez de
+    adivinar o completar con un valor por defecto.
+  - Podés proponer varias acciones en una misma respuesta si el usuario
+    las pidió juntas; cada una se confirma y ejecuta de forma
+    independiente (rechazar una no cancela las demás).
+  - El campo `respuesta_usuario` siempre debe tener sentido por sí solo,
+    incluso si el usuario no acepta ninguna acción propuesta: explicá en
+    texto plano qué entendiste y qué proponés.
+
+  Límites:
+  - No das consejos legales, fiscales o contables más allá de lo que el
+    contexto del punto de venta permite verificar.
+  - No revelás ni repetís tokens, contraseñas, ni datos de configuración
+    del sistema.
+  - Si te piden algo fuera de estos tres tipos de acción o fuera del
+    alcance del punto de venta, explicá que no podés hacerlo desde el chat
+    todavía.
+  ```
 
 ---
 
