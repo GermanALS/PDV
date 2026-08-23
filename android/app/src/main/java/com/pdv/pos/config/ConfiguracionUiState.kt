@@ -22,4 +22,8 @@ data class ConfiguracionUiState(
     val iaTieneTokenGuardado: Boolean = false,
     val iaProbandoConexion: Boolean = false,
     val iaResultadoPrueba: ApiResult<String>? = null,
+    val promptIa: String = "",
+    val promptIaPasswordInput: String = "",
+    val promptIaError: String? = null,
+    val promptIaGuardando: Boolean = false,
 )

@@ -23,7 +23,30 @@ class LocalRolRepository @Inject constructor(
     }
 
     private suspend fun ensureRolesDeSistema() {
-        dao.insertIfEmpty { rolesDeSistema(System.currentTimeMillis()) }
+        val ahora = System.currentTimeMillis()
+        dao.insertIfEmpty { rolesDeSistema(ahora) }
+        sincronizarModulosDeRolesDeSistema(ahora)
+    }
+
+    // insertIfEmpty (arriba) solo siembra una vez, con la tabla vacia - un
+    // dispositivo que ya tenia `roles` sembrada en Room antes de que la
+    // Parte 14 agregara "ia" a RolesDeSistemaSeed se quedaba para siempre
+    // con el catalogo viejo, sin nada que reconciliara el seed actualizado
+    // contra lo ya persistido (a diferencia del backend, que corrigio los
+    // roles ya sembrados via la migracion 0010_add_ia_modulo_roles).
+    // Hallazgo de pruebas en el Xiaomi (Parte 16, sub-paso 5): el widget de
+    // chat no aparecia en modo LOCAL porque el rol de la sesion no tenia
+    // "ia" en su modulosPermitidos local. Seguro sin excepcion: los roles
+    // de sistema nunca son editables por el administrador (actualizarRol/
+    // eliminarRol los rechazan explicitamente), asi que reescribir su
+    // modulosPermitidos aca nunca pisa una personalizacion real.
+    private suspend fun sincronizarModulosDeRolesDeSistema(ahora: Long) {
+        rolesDeSistema(ahora).forEach { seed ->
+            val existente = dao.getByNombre(seed.nombre) ?: return@forEach
+            if (existente.modulosPermitidos != seed.modulosPermitidos) {
+                dao.update(existente.copy(modulosPermitidos = seed.modulosPermitidos, updatedAt = ahora))
+            }
+        }
     }
 
     override suspend fun crearRol(rol: Rol, sucursalId: String, actorUsuario: String) {

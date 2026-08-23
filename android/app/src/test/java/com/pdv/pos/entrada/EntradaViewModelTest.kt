@@ -4,26 +4,34 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
+import com.pdv.pos.domain.model.Articulo
+import com.pdv.pos.domain.model.InventarioItem
+import com.pdv.pos.domain.model.PaginaInventario
 import com.pdv.pos.domain.repository.EntradaRepository
+import com.pdv.pos.domain.repository.InventarioRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.io.IOException
+import java.math.BigDecimal
 
 // UnconfinedTestDispatcher: mismo motivo que VentaViewModelTest -
 // ConfiguracionPreferences hace I/O real de DataStore.
@@ -50,11 +58,46 @@ class EntradaViewModelTest {
         return ConfiguracionPreferences(dataStore)
     }
 
+    private fun articuloDeEjemplo() = Articulo(
+        id = "11111111-1111-4111-8111-111111111111",
+        codigoBarras = "7501234567890",
+        sku = "REF-001",
+        nombre = "Refresco de cola 600ml",
+        categoria = "Bebidas",
+        unidadMedida = "pieza",
+        precioVenta = BigDecimal("18.50"),
+    )
+
+    // Filtra por nombre/sku/codigoBarras, mismo criterio de matching que
+    // InventarioDao.observarPagina (LIKE), para que las pruebas ejerzan el
+    // mismo contrato que el repositorio real.
+    private fun inventarioRepository(articulos: List<Articulo> = listOf(articuloDeEjemplo())): InventarioRepository {
+        val repo = mockk<InventarioRepository>()
+        every { repo.observarInventario(any(), any(), any(), any()) } answers {
+            val termino = (it.invocation.args[1] as String)
+            val encontrados = articulos.filter { articulo ->
+                articulo.nombre.contains(termino, ignoreCase = true) ||
+                    articulo.sku.contains(termino, ignoreCase = true) ||
+                    (articulo.codigoBarras?.contains(termino, ignoreCase = true) == true)
+            }
+            flowOf(
+                PaginaInventario(
+                    items = encontrados.map { articulo -> InventarioItem(articulo, BigDecimal.ZERO, null) },
+                    pagina = 1,
+                    tamanioPagina = 1,
+                    total = encontrados.size,
+                ),
+            )
+        }
+        return repo
+    }
+
     private fun viewModel(
         entradaRepository: EntradaRepository,
         preferences: ConfiguracionPreferences,
         sessionManager: SessionManager,
-    ) = EntradaViewModel(entradaRepository, preferences, sessionManager)
+        inventarioRepository: InventarioRepository = inventarioRepository(),
+    ) = EntradaViewModel(entradaRepository, inventarioRepository, preferences, sessionManager)
 
     @Test
     fun `registrarEntrada de articulo existente persists via EntradaRepository and shows confirmation`(@TempDir tempDir: File) = runTest(dispatcher) {
@@ -168,5 +211,24 @@ class EntradaViewModelTest {
 
         assertEquals("No se pudo registrar la entrada: sin conexion", viewModel.uiState.value.mensajeConfirmacion)
         assertEquals("5", viewModel.uiState.value.cantidad)
+    }
+
+    // Hallazgo de pruebas en el Xiaomi: la busqueda ahora consulta
+    // InventarioRepository real, no un catalogo estatico - confirma que un
+    // termino sin coincidencias reales muestra el error, no un falso
+    // positivo de datos de ejemplo.
+    @Test
+    fun `buscarArticuloExistente shows an error when the real repository finds no match`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val preferences = preferences(tempDir)
+        preferences.setSucursalSeleccionada("suc-1")
+        val sessionManager = SessionManager()
+        sessionManager.iniciarSesion(Session("admin", "usuario-1", "rol-1"))
+        val viewModel = viewModel(mockk(), preferences, sessionManager, inventarioRepository(articulos = emptyList()))
+
+        viewModel.onBusquedaChange("coca")
+        viewModel.buscarArticuloExistente()
+
+        assertNull(viewModel.uiState.value.articuloEncontrado)
+        assertEquals("Artículo no encontrado", viewModel.uiState.value.errorBusqueda)
     }
 }

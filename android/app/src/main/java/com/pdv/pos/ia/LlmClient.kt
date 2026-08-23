@@ -11,6 +11,12 @@ import kotlinx.serialization.json.Json
 import java.io.IOException
 import javax.inject.Inject
 
+// Constante compartida con ChatViewModel (PLAN.md Parte 16, sub-paso 3): al
+// recibir este mensaje exacto, el widget de chat interpreta que no hay
+// conexion a internet (deteccion reactiva, no proactiva) y muestra el FAQ
+// empaquetado en vez de un error generico.
+const val MENSAJE_SIN_CONEXION_IA = "Sin conexion con el proveedor de IA"
+
 // Cliente unico para los tres proveedores (PLAN.md Parte 14): DeepSeek,
 // OpenAI y OpenRouter exponen el mismo formato "chat completions", asi que
 // variar LlmProvider alcanza sin una implementacion por proveedor.
@@ -38,7 +44,7 @@ class LlmClient @Inject constructor(
     } catch (e: LlmHttpException) {
         ApiResult.Error(mensajeDeErrorHttp(e))
     } catch (e: IOException) {
-        ApiResult.Error("Sin conexion con el proveedor de IA")
+        ApiResult.Error(MENSAJE_SIN_CONEXION_IA)
     }
 
     // Prueba de conectividad "2+2" (PLAN.md Parte 14, sub-paso 1).
@@ -87,7 +93,7 @@ class LlmClient @Inject constructor(
     } catch (e: LlmHttpException) {
         ApiResult.Error(mensajeDeErrorHttp(e))
     } catch (e: IOException) {
-        ApiResult.Error("Sin conexion con el proveedor de IA")
+        ApiResult.Error(MENSAJE_SIN_CONEXION_IA)
     }
 }
 

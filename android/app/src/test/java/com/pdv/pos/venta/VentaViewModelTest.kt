@@ -4,7 +4,11 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
+import com.pdv.pos.domain.model.Articulo
+import com.pdv.pos.domain.model.InventarioItem
+import com.pdv.pos.domain.model.PaginaInventario
 import com.pdv.pos.domain.model.Sucursal
+import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.SucursalRepository
 import com.pdv.pos.domain.repository.VentaRepository
 import com.pdv.pos.venta.ticket.TicketManager
@@ -72,14 +76,55 @@ class VentaViewModelTest {
         return manager
     }
 
+    private fun articuloDeEjemplo() = Articulo(
+        id = "11111111-1111-4111-8111-111111111111",
+        codigoBarras = "7501234567890",
+        sku = "REF-001",
+        nombre = "Refresco de cola 600ml",
+        unidadMedida = "pieza",
+        precioVenta = BigDecimal("18.50"),
+    )
+
+    // Filtra por nombre/sku/codigoBarras, mismo criterio de matching que
+    // InventarioDao.observarPagina (LIKE), para que las pruebas ejerzan el
+    // mismo contrato que el repositorio real.
+    private fun inventarioRepository(articulos: List<Articulo> = listOf(articuloDeEjemplo())): InventarioRepository {
+        val repo = mockk<InventarioRepository>()
+        every { repo.observarInventario(any(), any(), any(), any()) } answers {
+            val termino = (it.invocation.args[1] as String)
+            val encontrados = articulos.filter { articulo ->
+                articulo.nombre.contains(termino, ignoreCase = true) ||
+                    articulo.sku.contains(termino, ignoreCase = true) ||
+                    (articulo.codigoBarras?.contains(termino, ignoreCase = true) == true)
+            }
+            flowOf(
+                PaginaInventario(
+                    items = encontrados.map { articulo -> InventarioItem(articulo, BigDecimal.ZERO, null) },
+                    pagina = 1,
+                    tamanioPagina = 1,
+                    total = encontrados.size,
+                ),
+            )
+        }
+        return repo
+    }
+
     private fun viewModelConUnArticuloEnElCarrito(
         ventaRepository: VentaRepository,
         preferences: ConfiguracionPreferences,
         sessionManager: SessionManager,
         sucursalRepository: SucursalRepository = sucursalRepository(),
         ticketManager: TicketManager = ticketManager(),
+        inventarioRepository: InventarioRepository = inventarioRepository(),
     ): VentaViewModel {
-        val viewModel = VentaViewModel(ventaRepository, preferences, sessionManager, sucursalRepository, ticketManager)
+        val viewModel = VentaViewModel(
+            ventaRepository,
+            inventarioRepository,
+            preferences,
+            sessionManager,
+            sucursalRepository,
+            ticketManager,
+        )
         viewModel.onBusquedaChange("REF-001")
         viewModel.buscar()
         viewModel.agregarAlCarrito()
@@ -153,8 +198,13 @@ class VentaViewModelTest {
     }
 
     @Test
-    fun `confirmarVenta shows an error and keeps the cart when there is no sucursal or active session`(@TempDir tempDir: File) = runTest(dispatcher) {
+    fun `confirmarVenta shows an error and keeps the cart when there is no active session`(@TempDir tempDir: File) = runTest(dispatcher) {
         val preferences = preferences(tempDir)
+        // Sucursal seleccionada para que la busqueda (ahora real, contra
+        // InventarioRepository) pueda poblar el carrito - lo que este test
+        // ejercita es la falta de sesion activa al confirmar, no la falta
+        // de sucursal.
+        preferences.setSucursalSeleccionada("suc-1")
         val sessionManager = SessionManager()
         val ventaRepository = mockk<VentaRepository>()
         val viewModel = viewModelConUnArticuloEnElCarrito(ventaRepository, preferences, sessionManager)
@@ -187,5 +237,29 @@ class VentaViewModelTest {
         assertEquals(1, viewModel.uiState.value.carrito.size)
         assertFalse(viewModel.uiState.value.mostrarDialogoEfectivo)
         assertEquals("No se pudo registrar la venta: sin conexion", viewModel.uiState.value.mensajeConfirmacion)
+    }
+
+    // Hallazgo de pruebas en el Xiaomi: la busqueda ahora consulta
+    // InventarioRepository real, no un catalogo estatico - confirma que un
+    // termino sin coincidencias reales muestra el error, no un falso
+    // positivo de datos de ejemplo.
+    @Test
+    fun `buscar shows an error when the real inventory repository finds no match`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val preferences = preferences(tempDir)
+        preferences.setSucursalSeleccionada("suc-1")
+        val viewModel = VentaViewModel(
+            mockk(),
+            inventarioRepository(articulos = emptyList()),
+            preferences,
+            SessionManager(),
+            sucursalRepository(),
+            ticketManager(),
+        )
+
+        viewModel.onBusquedaChange("coca")
+        viewModel.buscar()
+
+        assertNull(viewModel.uiState.value.articuloEncontrado)
+        assertEquals("Artículo no encontrado", viewModel.uiState.value.errorBusqueda)
     }
 }

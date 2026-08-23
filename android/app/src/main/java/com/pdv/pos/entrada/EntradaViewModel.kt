@@ -8,6 +8,7 @@ import com.pdv.pos.domain.model.Articulo
 import com.pdv.pos.domain.model.ArticuloNuevo
 import com.pdv.pos.domain.model.Entrada
 import com.pdv.pos.domain.repository.EntradaRepository
+import com.pdv.pos.domain.repository.InventarioRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +81,7 @@ private val UBICACIONES_EJEMPLO = listOf("Estante A1", "Estante B2", "Refrigerad
 @HiltViewModel
 class EntradaViewModel @Inject constructor(
     private val entradaRepository: EntradaRepository,
+    private val inventarioRepository: InventarioRepository,
     private val preferences: ConfiguracionPreferences,
     private val sessionManager: SessionManager,
 ) : ViewModel() {
@@ -101,21 +103,39 @@ class EntradaViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(busqueda = valor)
     }
 
+    // Busqueda real contra InventarioRepository (hallazgo de pruebas en el
+    // Xiaomi, Parte 16): antes buscaba en CATALOGO_EJEMPLO, un catalogo
+    // estatico de 5 articulos que nunca se reemplazo por el repositorio real
+    // pese a que el propio comentario original lo daba por hecho desde la
+    // Parte 8 - ni siquiera un articulo creado a mano aparecia en esta
+    // busqueda. Misma consulta que ya usa InventarioViewModel (Parte 9) y el
+    // contexto de la IA (Parte 15).
     fun buscarArticuloExistente() {
         val termino = _uiState.value.busqueda.trim()
-        val encontrado = if (termino.isEmpty()) {
-            null
-        } else {
-            CATALOGO_EJEMPLO.firstOrNull {
-                it.codigoBarras == termino ||
-                    it.sku.equals(termino, ignoreCase = true) ||
-                    it.nombre.contains(termino, ignoreCase = true)
-            }
+        if (termino.isEmpty()) {
+            _uiState.value = _uiState.value.copy(articuloEncontrado = null, errorBusqueda = null)
+            return
         }
-        _uiState.value = _uiState.value.copy(
-            articuloEncontrado = encontrado,
-            errorBusqueda = if (encontrado == null && termino.isNotEmpty()) "Artículo no encontrado" else null,
-        )
+        viewModelScope.launch {
+            val sucursalId = preferences.deviceConfig.first().sucursalIdSeleccionada
+            if (sucursalId == null) {
+                _uiState.value = _uiState.value.copy(
+                    articuloEncontrado = null,
+                    errorBusqueda = "Selecciona una sucursal en Configuración",
+                )
+                return@launch
+            }
+            val encontrado = inventarioRepository
+                .observarInventario(sucursalId, busqueda = termino, pagina = 1, tamanioPagina = 1)
+                .first()
+                .items
+                .firstOrNull()
+                ?.articulo
+            _uiState.value = _uiState.value.copy(
+                articuloEncontrado = encontrado,
+                errorBusqueda = if (encontrado == null) "Artículo no encontrado" else null,
+            )
+        }
     }
 
     fun onEscanearClick(objetivo: ObjetivoEscaneo) {

@@ -2069,7 +2069,7 @@ la Parte 16 (sub-paso de UI).
 
 ---
 
-## Parte 16: Chat IA y comandos de voz
+## Parte 16: Chat IA y comandos de voz  <!-- POS-68 -->
 
 Agrega un widget flotante de chat con IA, con un botón de micrófono para
 comandos de voz (`android.speech.SpeechRecognizer` nativo — sin costo, sin
@@ -2079,15 +2079,22 @@ pipeline de la Parte 15.
 
 ### Comportamiento por modo y conectividad
 
-- **Modo remoto o local-con-sincronización, con conexión**: chat completo
-  disponible, incluyendo acciones sobre el punto de venta (sujetas a
-  validación de permisos de la Parte 15).
-- **Modo local, con conexión a internet**: la IA puede responder dudas sobre
-  funcionalidad de la app, usando el FAQ empaquetado (ver abajo) como
-  contexto. **No puede realizar cambios en la base de datos local del
-  dispositivo** bajo ninguna circunstancia en este modo.
+- **Cualquier modo (remoto, local-con-sincronización, o local), con
+  conexión**: chat completo disponible, incluyendo acciones sobre el punto
+  de venta (sujetas a validación de permisos de la Parte 15). **Revisado
+  2026-08-22** (ver Decisiones abiertas): la redacción original restringía
+  el modo local a solo responder dudas con el FAQ, sin poder tocar la base
+  de datos local; se decidió permitir acciones también en este modo — el
+  administrador acepta el riesgo al activar la IA (Parte 14) y al poder
+  modificar el prompt de sistema (ver Decisiones abiertas de esta Parte).
+  Modo local ya permite escritura sin restricción para toda acción manual
+  de los demás módulos (Partes 6-13); la IA deja de ser una excepción.
 - **Sin conexión a internet** (cualquier modo): el chat con IA no está
   disponible; se muestra el FAQ estático empaquetado como recurso de ayuda.
+  Detección reactiva (ver Decisiones abiertas): sin chequeo proactivo de
+  conectividad — se intenta la llamada real al proveedor y, si falla por
+  `IOException` (ya distinguido en `LlmClient`, Parte 14), el widget cae al
+  FAQ en vez de mostrar el error genérico.
 
 Con la decisión de arquitectura de la Parte 14 (Android llama directo al
 proveedor), no hay contradicción entre "modo LOCAL sin backend" y "chat
@@ -2103,47 +2110,326 @@ Backlog) no esté implementado.
 
 ### Checklist
 
-**1. Widget de chat**
-- [ ] Widget flotante implementado, accesible desde cualquier pantalla —
-  criterio: Compose UI Test confirma que aparece y funciona.
-- [ ] Widget oculto/deshabilitado si el usuario en turno no tiene el permiso
+**1. Widget de chat** (POS-69)
+- [x] Widget flotante implementado, accesible desde cualquier pantalla —
+  criterio: Compose UI Test confirma que aparece y funciona. `AsistenteIaWidget`
+  (`ia/AsistenteIaWidget.kt`, `FloatingActionButton` + `ModalBottomSheet`) se
+  monta una sola vez en `MainActivity.kt`, fuera del `when(pantalla)` de
+  navegación manual (dentro de un `Box` nuevo que envuelve las 9 pantallas
+  existentes), así queda accesible sin agregarlo a cada pantalla. Sin
+  instrumented Compose UI Test (ningún módulo del proyecto los tiene hasta
+  ahora — CLAUDE.md §6 pide testear el ViewModel, no detalles de Compose):
+  verificado con `ChatViewModelTest` (8 pruebas) a nivel de `ChatViewModel` +
+  confirmación visual en el Xiaomi diferida al sub-paso 5 (`needs-device`).
+  `./gradlew build`: `BUILD SUCCESSFUL`.
+- [x] Widget oculto/deshabilitado si el usuario en turno no tiene el permiso
   de módulo `"ia"` (Parte 14) — criterio: prueba de integración. Esta es la
   primera compuerta, antes incluso de la validación por acción de la
-  Parte 15.
-- [ ] Tarjeta de confirmación de acciones con efecto en datos de negocio,
+  Parte 15. Verificado: mismo patrón que
+  `HelloViewModel.observarModulosPermitidos` (Parte 13) —
+  `ChatViewModel` observa `SessionManager.session` +
+  `RolRepository.observeRoles()` y expone `visible` en `ChatUiState`.
+  `ChatViewModelTest` cubre visible/oculto según el rol de la sesión.
+- [x] Tarjeta de confirmación de acciones con efecto en datos de negocio,
   propuesta y aprobada antes de implementar — criterio: aprobación explícita
-  registrada. `needs-approval`
-- [ ] La UI se actualiza automáticamente cuando la IA modifica el punto de
+  registrada. `needs-approval` Aprobado el 2026-08-22: `ModalBottomSheet`
+  con lista de mensajes, tarjeta de confirmación inline por acción propuesta
+  (Confirmar/Rechazar independientes, Decisión 2 de la Parte 15), campo de
+  texto + botón de micrófono, botón de ayuda/FAQ en el header, y vista de
+  solo-FAQ cuando no hay conexión.
+- [x] La UI se actualiza automáticamente cuando la IA modifica el punto de
   venta — criterio: prueba de integración confirma el refresco del estado
-  tras una acción confirmada.
+  tras una acción confirmada. Verificado: `confirmarAccion` llama a
+  `EjecutorAccionesIa.ejecutar`, que a su vez llama a los mismos
+  repositorios `ModeAware*` (Room/Retrofit reales) que las pantallas
+  manuales de cada módulo — el refresco reactivo ya existe en esas
+  pantallas (Flow de Room observado con `collectAsState`, Partes 6-11), sin
+  código nuevo. `ChatViewModelTest` confirma que `confirmarAccion` invoca al
+  ejecutor real y marca la tarjeta como resuelta con el resultado.
+- [x] Prompt de sistema editable desde Configuración (mismo patrón
+  DataStore que `IaPreferences`, Parte 14), con reautenticación del
+  administrador de la sesión activa antes de persistir un cambio
+  (`AuthRepository.login` existente, sin endpoint ni camino de escritura
+  nuevo) — cierra el gate bloqueante dejado pendiente en la Parte 15,
+  Decisión 3 (ítem agregado tras confirmar el alcance de esta Parte con el
+  usuario, ver Decisiones abiertas). Verificado: `PromptIaPreferences`
+  (`config/`) + sección "Prompt de sistema de la IA" en `ConfiguracionScreen`
+  (visible cuando la IA está activa) + `ConfiguracionViewModel.onGuardarPromptIa`,
+  que llama a `AuthRepository.login(username, password)` antes de persistir
+  — contraseña incorrecta no guarda el cambio y muestra
+  "Contraseña incorrecta, cambio no guardado.". Valor por defecto:
+  `PROMPT_SISTEMA_DEFAULT` (`ia/PromptSistema.kt`) con el texto exacto
+  aprobado el 2026-08-22 (Parte 15). `PromptIaPreferencesTest` (2 pruebas) +
+  `ConfiguracionViewModelTest` (2 pruebas nuevas: guardado exitoso
+  reautenticado, rechazo por contraseña incorrecta) en verde.
+  `code-reviewer` revisó el flujo completo del sub-paso 1 y confirmó que no
+  hay forma de persistir un cambio de prompt sin reautenticación exitosa, y
+  que el token/contraseña nunca llegan a logs ni a estado visible. Encontró
+  un hallazgo real (confianza 85) no relacionado con el prompt: `ChatViewModel`
+  se monta una sola vez a nivel de `MainActivity` (fuera del `when(pantalla)`),
+  así que la misma instancia sobrevivía a un logout/login — el historial de
+  chat y cualquier acción sin confirmar de un usuario quedaban visibles (y
+  confirmables, atribuyéndose al usuario nuevo) para el siguiente que
+  iniciara sesión en el mismo dispositivo. Corregido: el `init` de
+  `ChatViewModel` ahora reinicia el estado completo (`ChatUiState(visible = ...)`)
+  cada vez que cambia el `username` de la sesión activa, no solo el flag
+  `visible`. Prueba de regresión agregada
+  (`ChatViewModelTest."cambiar de usuario en el mismo dispositivo..."`).
+  `./gradlew build` tras la corrección: `BUILD SUCCESSFUL`.
 
-**2. Comandos de voz**
-- [ ] Botón de micrófono + permiso `RECORD_AUDIO` (runtime permission,
+**2. Comandos de voz** (POS-70)
+- [x] Botón de micrófono + permiso `RECORD_AUDIO` (runtime permission,
   mismo patrón que el permiso de cámara de la Parte 7) — criterio: prueba de
   integración simula una transcripción y confirma que llena el campo de
-  texto del chat.
+  texto del chat. Verificado: `VoiceInputButton` (`ia/VoiceInputButton.kt`)
+  replica el patrón de permiso de `BarcodeScannerDialog` (Parte 7) —
+  `rememberLauncherForActivityResult(RequestPermission())` sobre
+  `Manifest.permission.RECORD_AUDIO`, agregado a `AndroidManifest.xml` junto
+  con `<uses-feature android:name="android.hardware.microphone"
+  android:required="false" />`. `android.speech.SpeechRecognizer` +
+  `RecognitionListener` nativos (sin dependencia nueva); el resultado se
+  cablea directo a `ChatViewModel.onTextoChange` desde `AsistenteIaWidget`
+  — la voz llena el mismo campo que escribir, sin estado ni camino aparte
+  (intro de esta Parte). Sin test unitario del reconocimiento en
+  sí (`SpeechRecognizer`/`RecognitionListener` son APIs de Android sin
+  Robolectric en este proyecto) — mismo criterio que `BarcodeAnalyzer`/ML Kit
+  (Parte 7): se verifica en el Xiaomi (`needs-device`, sub-paso 5).
+  `ChatViewModelTest."una transcripcion de voz llena el campo de texto..."`
+  cubre el contrato que el botón consume (`onTextoChange` llena
+  `entradaTexto`). `./gradlew build`: `BUILD SUCCESSFUL` (incluye lint,
+  sin findings nuevos por el permiso agregado).
 
-**3. Comportamiento por modo y conectividad**
-- [ ] Modo remoto/local-con-sync + conexión: chat completo con acciones
-  sujetas a la Parte 15 — criterio: prueba de integración.
-- [ ] Modo local + conexión: solo responde dudas de funcionalidad con el
-  FAQ empaquetado como contexto, sin poder tocar la base de datos local —
-  criterio: prueba de integración confirma que un intento de acción se
-  rechaza en este modo.
-- [ ] Sin conexión (cualquier modo): chat deshabilitado, se muestra el FAQ
+**3. Comportamiento por modo y conectividad** (POS-71)
+- [x] Modo remoto/local-con-sync + conexión: chat completo con acciones
+  sujetas a la Parte 15 — criterio: prueba de integración. Verificado:
+  `ChatViewModel` no lee `BackendMode` en ningún punto del envío de
+  mensajes ni de la ejecución de acciones — un solo camino de armado de
+  mensaje y ejecución para los tres modos (Decisiones abiertas de esta
+  Parte). Cubierto desde el sub-paso 1 (`ChatViewModelTest` usa
+  `BackendMode.LOCAL` por defecto) y explícitamente por el ítem siguiente.
+- [x] Modo local + conexión: chat completo con acciones, mismo criterio que
+  remoto/local-con-sync (revisión 2026-08-22, ver Decisiones abiertas) —
+  criterio: prueba de integración confirma que una acción se ejecuta igual
+  que en los otros dos modos. Verificado:
+  `ChatViewModelTest."una accion se ejecuta igual en los tres modos de
+  backend, incluido LOCAL"` recorre `BackendMode.entries` y confirma que
+  `EjecutorAccionesIa.ejecutar` se invoca igual en los tres.
+- [x] Sin conexión (cualquier modo): chat deshabilitado, se muestra el FAQ
   estático — criterio: prueba de integración simula sin conexión y confirma
-  el fallback.
+  el fallback. Verificado: detección reactiva (Decisiones abiertas) — se
+  extrajo la constante `MENSAJE_SIN_CONEXION_IA` en `LlmClient.kt`
+  (antes un string duplicado en sus dos `catch (e: IOException)`).
+  `ChatViewModel.obtenerRespuesta` distingue ese mensaje exacto del resto de
+  los errores del proveedor y, si coincide, pone `ChatUiState.sinConexion =
+  true` en vez de agregar un mensaje de error más; `AsistenteIaWidget`
+  reemplaza el panel completo por `FaqPanelContent` (texto de
+  `FaqContent.texto()` + botón "Reintentar" que llama a
+  `ChatViewModel.reintentarConexion()`, sin perder el historial ya
+  construido). `ChatViewModelTest` cubre: activación del fallback ante
+  `MENSAJE_SIN_CONEXION_IA`, que un error distinto (ej. token inválido) NO
+  lo activa, y que reintentar limpia `sinConexion` conservando los
+  mensajes. `code-reviewer` encontró y se corrigió un hallazgo antes de
+  cerrar este ítem (confianza 85): el botón "Ayuda" del header no estaba
+  deshabilitado durante `enviando`, así que si el usuario lo tocaba
+  (`verFaq = true`) mientras un mensaje en vuelo terminaba fallando por
+  conexión (`sinConexion = true`), `reintentarConexion()` solo limpiaba
+  `sinConexion` — el usuario quedaba atrapado en la vista de Ayuda tras
+  tocar "Reintentar" en vez de volver al chat. Corregido: `reintentarConexion()`
+  limpia ambos flags. Prueba de regresión agregada
+  (`ChatViewModelTest."reintentar conexion tambien cierra la vista de
+  ayuda..."`). `./gradlew build` tras la corrección: `BUILD SUCCESSFUL`.
 
-**4. FAQ empaquetado**
-- [ ] FAQ generado y empaquetado como recurso offline de la app — criterio:
-  archivo de recurso presente, accesible sin conexión.
+**4. FAQ empaquetado** (POS-72)
+- [x] FAQ generado y empaquetado como recurso offline de la app — criterio:
+  archivo de recurso presente, accesible sin conexión. Verificado:
+  `res/raw/faq.md` (preguntas/respuestas de los 8 módulos: Venta, Entrada,
+  Inventario, Caja, Devoluciones, Usuarios, Configuración, Asistente de
+  IA), cargado por `FaqContent` (`ia/FaqContent.kt`, mismo patrón de
+  `Context` inyectado que `TicketManager`/`InventarioExportManager`) vía
+  `context.resources.openRawResource(R.raw.faq)` — es un recurso empaquetado
+  en el APK, sin red ni base de datos de por medio, disponible sin
+  conexión por construcción. Integrado dos veces: como fallback automático
+  del sub-paso 3 (`sinConexion`) y como acceso manual independiente de la
+  conectividad — botón "Ayuda" en el header del panel de chat (diseño
+  aprobado del sub-paso 1), que llama a `ChatViewModel.mostrarFaq()`/
+  `ocultarFaq()`. `ChatViewModelTest."mostrarFaq y ocultarFaq..."` cubre el
+  toggle (15 pruebas en `ChatViewModelTest` en total tras el sub-paso 3+4).
+  `./gradlew build`: `BUILD SUCCESSFUL`.
 
-**5. Verificación**
-- [ ] Instalado y verificado en el Xiaomi los tres escenarios de
+**5. Verificación** (POS-73)
+- [x] Instalado y verificado en el Xiaomi los tres escenarios de
   conectividad/modo, más un comando de voz de cada uno de los 4 ejemplos
   dados por el usuario ("agrega N artículos e actualiza costo", "corte
   parcial con retiro", "registra devolución", "sincroniza inventario") —
-  `needs-device`
+  `needs-device` Confirmado por el usuario el 2026-08-23, tras 3 rondas de
+  pruebas directas en el dispositivo durante el desarrollo (widget sin
+  aparecer en modo LOCAL, formato de acciones inválido, artículos
+  duplicados, búsqueda de artículo existente y de venta desconectadas del
+  inventario real — las 5 corregidas; ver hallazgos abajo). Los tres modos
+  de conectividad y los 4 comandos de voz de ejemplo (incluido
+  "sincroniza inventario", que explica que no puede hacerlo en vez de
+  ejecutar nada, per Parte 15 Decisión 1) verificados explícitamente.
+
+**Gaps encontrados en la primera ronda de pruebas en el Xiaomi (2026-08-22),
+corregidos, pendientes de re-verificación en el dispositivo:**
+1. El widget no aparecía en modo LOCAL (ni en modo avión, si el dispositivo
+   quedaba en LOCAL): `RolDao.insertIfEmpty` solo siembra los roles de
+   sistema una vez, con la tabla vacía — un dispositivo con `roles` ya
+   sembrada en Room desde antes de que la Parte 14 agregara `"ia"` al seed
+   se quedaba con el catálogo viejo para siempre (sin equivalente Android
+   de la migración de backend `0010_add_ia_modulo_roles`, que sí corrigió
+   los roles ya sembrados). Corregido:
+   `LocalRolRepository.sincronizarModulosDeRolesDeSistema` reconcilia el
+   `modulosPermitidos` de los roles de sistema contra el seed actual en
+   cada lectura — seguro sin excepción porque `actualizarRol`/`eliminarRol`
+   ya rechazan modificar un rol `esSistema`, así que nunca hay una
+   personalización real que pisar. Prueba de regresión agregada
+   (`LocalRolRepositoryTest."observeRoles corrige el modulosPermitidos..."`).
+2. Cualquier acción (no las consultas simples) devolvía "La IA devolvió una
+   respuesta con formato inválido" en modo REMOTO: el prompt de sistema
+   aprobado (Parte 15) describe las acciones en prosa pero nunca especifica
+   el JSON exacto que `RespuestaIaDto`/`AccionIaDto` y los DTOs de
+   parámetros de `EjecutorAccionesIa.kt` esperan — cada proveedor
+   improvisaba nombres de campo distintos y `Json.decodeFromString` fallaba
+   con `SerializationException`. Corregido: nueva constante
+   `FORMATO_SALIDA_ACCIONES` (`ia/EjecutorAccionesIa.kt`, junto a los DTOs
+   privados que describe — deben mantenerse en sync) con el JSON exacto y
+   las claves de `parametros` por cada uno de los 4 tipos de acción;
+   `ChatViewModel.obtenerRespuesta` la concatena al prompt editable en
+   tiempo de ejecución, sin tocar el texto aprobado por el usuario. Prueba
+   de regresión agregada (`ChatViewModelTest."el mensaje de sistema incluye
+   el formato exacto..."`, captura el mensaje real enviado a `LlmClient`).
+
+`./gradlew build` tras ambas correcciones: `BUILD SUCCESSFUL` (16 pruebas en
+`ChatViewModelTest`, 10 en `LocalRolRepositoryTest`, resto del proyecto sin
+regresiones).
+
+**Segunda ronda de pruebas en el Xiaomi (2026-08-22), con el widget ya
+funcionando en modo LOCAL — 4 hallazgos más, 3 corregidos, 1 documentado
+como pendiente aparte:**
+1. Dictar la misma alta de artículo dos veces ("coca de 2L") creaba dos
+   filas de catálogo en vez de sumar cantidad: `EjecutorAccionesIa.
+   ejecutarAltaArticulo` siempre creaba `Entrada.DeArticuloNuevo`, sin
+   buscar si ya existía un artículo con ese nombre/sku/código de barras.
+   Corregido: `buscarArticuloExistente` consulta
+   `InventarioRepository.observarInventario` (misma consulta real que ya
+   usa Inventario y el contexto de la IA) por nombre exacto, luego por sku
+   exacto, luego por código de barras exacto — en 3 consultas separadas,
+   no reutilizando los candidatos de la búsqueda por nombre para el
+   fallback (hallazgo de `code-reviewer`: con una sola consulta por
+   nombre, el fallback por sku/código nunca se alcanzaba si el nombre
+   dictado difería del guardado — típico del reconocimiento de voz —
+   porque el artículo existente ni aparecía como candidato). Si encuentra,
+   ejecuta `Entrada.DeArticuloExistente` (suma cantidad) en vez de crear
+   uno nuevo. Pruebas de regresión agregadas (dedup por nombre exacto, y
+   dedup por sku con nombre distinto — el caso que expuso el hallazgo).
+2. Cortes de caja registrados vía IA no aparecían en la lista de Caja:
+   **no corregido en esta Parte, documentado como hallazgo** — decisión
+   explícita del usuario de tratarlo aparte, ver nota debajo del checklist
+   y Backlog.
+3. Buscar "coca" en Entrada → "Artículo existente" no encontraba nada,
+   aunque el artículo ya existiera en el catálogo real: gap preexistente
+   de la Parte 8/9 (no de esta Parte) — `EntradaViewModel.
+   buscarArticuloExistente()` todavía buscaba en un catálogo estático de 5
+   artículos de ejemplo (`CATALOGO_EJEMPLO`), nunca migrado a un
+   repositorio real pese a que el propio comentario del código lo daba por
+   hecho desde la Parte 8. Corregido: ahora consulta
+   `InventarioRepository.observarInventario(sucursalId, busqueda =
+   termino, ...)` de forma asíncrona (`viewModelScope.launch`), misma
+   infraestructura que el punto 1. `CATALOGO_EJEMPLO` se sigue usando
+   (fuera de este fix) para sembrar `categoriasDisponibles`/
+   `unidadesMedidaDisponibles`. Prueba de regresión agregada (búsqueda sin
+   coincidencias reales).
+4. El chat "se perdía" — la lista de mensajes no bajaba sola al llegar
+   contenido nuevo, el usuario tenía que desplazarse a mano cada vez.
+   Corregido: `AsistenteIaWidget` usa `rememberLazyListState()` +
+   `LaunchedEffect(totalItems) { listState.animateScrollToItem(...) }`
+   (incluye el indicador "Escribiendo..." en el conteo). Pedido adicional
+   del usuario en la misma ronda: botón "Borrar" en el header del panel
+   (`ChatViewModel.limpiarHistorial()`, vacía la conversación sin tocar
+   sesión/permiso ni cerrar el panel). Prueba de regresión agregada.
+
+`./gradlew build` tras las 3 correcciones: `BUILD SUCCESSFUL` (17 pruebas en
+`ChatViewModelTest`, 13 en `EjecutorAccionesIaIntegrationTest`, 6 en
+`EntradaViewModelTest`, resto del proyecto sin regresiones).
+
+**Tercera ronda de pruebas en el Xiaomi (2026-08-23), tras confirmar los 3
+fixes anteriores — 1 hallazgo más, corregido, mismo patrón que el punto 3
+de la ronda anterior:**
+5. Venta de mostrador también estaba desconectada del inventario real:
+   `VentaViewModel.buscar()` (el buscador principal de la pantalla de
+   Venta) todavía buscaba en `CATALOGO_EJEMPLO`, el mismo tipo de catálogo
+   estático de 5 artículos que tenía `EntradaViewModel` antes del punto 3 —
+   nunca migrado a un repositorio real desde la Parte 7, pese a que el
+   comentario original del código también lo daba por hecho. Toda venta
+   registrada hasta ahora se hizo contra estos artículos de demostración,
+   no contra el catálogo/inventario real. Corregido con el mismo patrón
+   exacto ya aplicado y revisado en `EntradaViewModel`: `buscar()` pasa a
+   `viewModelScope.launch`, consulta
+   `InventarioRepository.observarInventario(sucursalId, busqueda =
+   termino, pagina = 1, tamanioPagina = 1)`; `CATALOGO_EJEMPLO` se eliminó
+   por completo (a diferencia de `EntradaViewModel`, en Venta no se usaba
+   para nada más). `code-reviewer` no encontró hallazgos — confirmó que no
+   hay condición de carrera real entre `buscar()` y `agregarAlCarrito()`
+   (el botón "Agregar" solo se renderiza cuando `articuloEncontrado` ya no
+   es nulo, así que no puede tocarse mientras la búsqueda está en vuelo).
+   Prueba de regresión agregada (búsqueda sin coincidencias reales).
+
+`./gradlew build` tras esta corrección: `BUILD SUCCESSFUL` (6 pruebas en
+`VentaViewModelTest`, resto del proyecto sin regresiones).
+
+**Punto 2 (cortes/retiros de caja sin lista reactiva real) — hallazgo
+documentado, resuelto aparte por decisión del usuario (2026-08-22):**
+`CajaRepository`/`RetiroEfectivoRepository` no tienen ningún método para
+*leer* cortes/retiros persistidos — el "historial" de `CajaScreen` es una
+lista puramente en memoria de `CajaViewModel`
+(`CajaUiState.historialCortes`/`historialRetiros`), que solo crece cuando
+se guarda un corte/retiro *desde esa misma pantalla*
+(`onGuardarClick`/`onConfirmarRetiroClick` hacen `listOf(nuevo) +
+historialActual`). El corte/retiro sí se guarda en la base real (mismo
+repositorio que la pantalla manual) — el gap es que nada lo vuelve a leer.
+Esto ya pasaría con un corte manual si se cierra y reabre la pantalla de
+Caja (reinicia `historialCortes` vacío); es un gap preexistente de la
+Parte 10 que la IA solo expuso al escribir desde otro ViewModel
+(`ChatViewModel`, vía `EjecutorAccionesIa`). Esto además significa que la
+verificación previa del ítem "La UI se actualiza automáticamente cuando la
+IA modifica el punto de venta" (sub-paso 1 de esta Parte) fue incompleta
+para el módulo Caja específicamente — se asumió sin comprobar que existía
+un Flow reactivo ahí, como en Inventario. Propuesta ya evaluada, pendiente
+de implementación en una sesión/Parte dedicada: agregar
+`observeCortes(sucursalId)`/`observeRetiros(sucursalId)` reales (Room Flow
+local + contraparte remota, patrón `ModeAware*`), y que `CajaViewModel`
+los observe en vez de mantener listas locales. Ver también Backlog.
+
+### Decisiones abiertas
+
+- [x] Prompt de sistema editable desde Configuración (gate bloqueante
+  dejado pendiente en la Parte 15, Decisión 3: solo se aprobó el texto y su
+  valor por defecto en código, la UI editable con reautenticación quedó
+  para cuando el chat se volviera operativo). **Decidido** (2026-08-22): se
+  implementa en esta Parte, no se difiere — es la Parte que activa el chat
+  operativamente, así que es el punto natural para cerrar ese gate. Ítem
+  agregado al sub-paso 1 del checklist.
+- [x] Modo LOCAL + conexión: ¿la IA puede ejecutar acciones sobre el punto
+  de venta (igual que remoto/local-con-sincronización), o queda restringida
+  a solo responder dudas con el FAQ como contexto, sin tocar la base de
+  datos local? La redacción original de esta Parte (antes de empezar a
+  implementarse) elegía la segunda opción. **Decidido** (2026-08-22): se
+  permite también en LOCAL — el administrador acepta el riesgo al activar
+  la IA (Parte 14) y al poder modificar el prompt de sistema (decisión
+  anterior); modo local ya permite escritura sin restricción para toda
+  acción manual de los demás módulos (Partes 6-13), así que la IA deja de
+  ser una excepción. Un solo modo de llamada (`chatEstructurado`, con
+  `EstadoPuntoVenta` + esquema de acciones) para los tres modos de backend
+  con conexión, en vez de un camino aparte de solo texto para LOCAL. La
+  sección "Comportamiento por modo y conectividad" y el ítem 3 del
+  checklist se actualizaron para reflejar esta decisión.
+- [x] Detección de "sin conexión a internet" para activar el fallback de
+  FAQ: chequeo proactivo (`ConnectivityManager`, permiso `ACCESS_NETWORK_STATE`
+  nuevo) o reactivo (intentar la llamada real y usar el `IOException` que
+  `LlmClient` ya distingue). **Decidido** (2026-08-22): reactivo — sin
+  permiso nuevo ni polling, mismo patrón de manejo de errores que
+  `LlmClient`/`RemoteVentaRepository` ya usan.
 
 ---
 
@@ -2297,6 +2583,18 @@ reimpresión opcional para el cliente. No toca `docs/api-contract.md` ni
   fase.
 - **Panel de revisión manual de conflictos de sincronización** (mencionado
   en la Parte 6, módulo Configuración).
+- **Lista reactiva de cortes/retiros de caja**: `CajaRepository`/
+  `RetiroEfectivoRepository` no exponen ninguna consulta para leer
+  cortes/retiros ya persistidos — `CajaScreen` muestra un historial que
+  vive solo en memoria de `CajaViewModel` (crece únicamente con lo
+  guardado desde esa misma sesión de pantalla). Hallazgo de pruebas en el
+  Xiaomi de la Parte 16 (un corte hecho vía IA, desde `ChatViewModel`,
+  nunca aparecía en `CajaScreen`), pero es un gap preexistente de la Parte
+  10 — ya pasaría con un corte manual si se cierra y reabre la pantalla.
+  Propuesta: `observeCortes(sucursalId)`/`observeRetiros(sucursalId)`
+  reales (Room Flow local + contraparte remota, patrón `ModeAware*`),
+  `CajaViewModel` los observa en vez de mantener listas locales. Detalle
+  completo en Parte 16, sub-paso 5.
 
 ---
 

@@ -93,6 +93,17 @@ fun ConfiguracionScreen(
                 onGuardar = viewModel::onGuardarIa,
                 onProbarConexion = viewModel::onProbarConexionIa,
             )
+            if (uiState.iaActivo) {
+                PromptIaSection(
+                    prompt = uiState.promptIa,
+                    passwordInput = uiState.promptIaPasswordInput,
+                    error = uiState.promptIaError,
+                    guardando = uiState.promptIaGuardando,
+                    onPromptChange = viewModel::onPromptIaChange,
+                    onPasswordChange = viewModel::onPromptIaPasswordChange,
+                    onGuardar = viewModel::onGuardarPromptIa,
+                )
+            }
             Button(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
                 Text("Cerrar sesión")
             }
@@ -320,6 +331,46 @@ private fun ModeloIaField(
                     },
                 )
             }
+        }
+    }
+}
+
+// Prompt de sistema editable (PLAN.md Parte 16, sub-paso 1, cierra el gate
+// bloqueante de la Parte 15 Decision 3): guardar un cambio exige reingresar
+// la contrasena del usuario de la sesion activa - el campo de contrasena
+// vive junto al de texto, no en un dialogo aparte, para que el costo de
+// editar el prompt sea visible en la misma pantalla.
+@Composable
+private fun PromptIaSection(
+    prompt: String,
+    passwordInput: String,
+    error: String?,
+    guardando: Boolean,
+    onPromptChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onGuardar: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Prompt de sistema de la IA", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            value = prompt,
+            onValueChange = onPromptChange,
+            label = { Text("Prompt") },
+            minLines = 6,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = passwordInput,
+            onValueChange = onPasswordChange,
+            label = { Text("Contraseña (para confirmar el cambio)") },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (error != null) {
+            Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        }
+        Button(onClick = onGuardar, enabled = !guardando && passwordInput.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+            Text(if (guardando) "Guardando..." else "Guardar prompt")
         }
     }
 }

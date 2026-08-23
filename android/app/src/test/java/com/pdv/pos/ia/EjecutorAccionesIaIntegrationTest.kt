@@ -1,15 +1,21 @@
 package com.pdv.pos.ia
 
+import com.pdv.pos.domain.model.Articulo
 import com.pdv.pos.domain.model.Entrada
+import com.pdv.pos.domain.model.InventarioItem
+import com.pdv.pos.domain.model.PaginaInventario
 import com.pdv.pos.domain.model.TotalesCorte
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.DevolucionRepository
 import com.pdv.pos.domain.repository.EntradaRepository
+import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -32,13 +38,56 @@ class EjecutorAccionesIaIntegrationTest {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    // Vacio por defecto: la mayoria de los tests de este archivo asumen
+    // "articulo nuevo, sin coincidencia previa" - la busqueda de duplicados
+    // (hallazgo de pruebas en el Xiaomi) solo se ejercita explicitamente en
+    // los tests que le pasan un inventarioRepository con candidatos.
+    private fun inventarioRepositorySinCoincidencias(): InventarioRepository =
+        inventarioRepositoryConArticulos(emptyList())
+
+    // Filtra por nombre/sku/codigoBarras segun el termino real recibido,
+    // mismo criterio LIKE que InventarioDao.observarPagina - respeta el
+    // argumento de busqueda en vez de ignorarlo con any(), para que la
+    // prueba ejerza el mismo contrato que buscarArticuloExistente() usa en
+    // produccion (una consulta por termino, no un unico candidato reusado
+    // entre nombre/sku/codigo).
+    private fun inventarioRepositoryConArticulos(articulos: List<Articulo>): InventarioRepository {
+        val repo = mockk<InventarioRepository>()
+        every { repo.observarInventario(any(), any(), any(), any()) } answers {
+            val termino = secondArg<String>()
+            val encontrados = articulos.filter {
+                it.nombre.contains(termino, ignoreCase = true) ||
+                    it.sku.contains(termino, ignoreCase = true) ||
+                    (it.codigoBarras?.contains(termino, ignoreCase = true) == true)
+            }
+            flowOf(
+                PaginaInventario(
+                    items = encontrados.map { InventarioItem(it, BigDecimal.ZERO, null) },
+                    pagina = 1,
+                    tamanioPagina = 20,
+                    total = encontrados.size,
+                ),
+            )
+        }
+        return repo
+    }
+
     private fun ejecutor(
         entradaRepository: EntradaRepository = mockk(relaxed = true),
         cajaRepository: CajaRepository = mockk(relaxed = true),
         retiroEfectivoRepository: RetiroEfectivoRepository = mockk(relaxed = true),
         devolucionRepository: DevolucionRepository = mockk(relaxed = true),
+        inventarioRepository: InventarioRepository = inventarioRepositorySinCoincidencias(),
         appLogger: AppLogger,
-    ) = EjecutorAccionesIa(entradaRepository, cajaRepository, retiroEfectivoRepository, devolucionRepository, appLogger, json)
+    ) = EjecutorAccionesIa(
+        entradaRepository,
+        cajaRepository,
+        retiroEfectivoRepository,
+        devolucionRepository,
+        inventarioRepository,
+        appLogger,
+        json,
+    )
 
     @Test
     fun `rechazo selectivo - una accion se ejecuta y otra de la misma respuesta se rechaza por falta de permiso`(
@@ -295,6 +344,98 @@ class EjecutorAccionesIaIntegrationTest {
                         entrada.articulo.precioVenta == BigDecimal("50.00") &&
                         entrada.articulo.costo == BigDecimal("30.00")
                 },
+            )
+        }
+    }
+
+    // Hallazgo de pruebas en el Xiaomi: dictar la misma alta dos veces
+    // (misma descripcion) creaba dos filas de catalogo en vez de sumar
+    // cantidad a la ya existente.
+    @Test
+    fun `alta_articulo con un nombre ya existente en el catalogo suma cantidad en vez de duplicar`(@TempDir tempDir: File) = runTest {
+        val entradaRepository = mockk<EntradaRepository>()
+        coEvery { entradaRepository.registrarEntrada(any()) } returns Unit
+        val articuloExistente = Articulo(
+            id = "art-existente",
+            sku = "COCA-2L",
+            nombre = "Coca de 2L",
+            unidadMedida = "pieza",
+            precioVenta = BigDecimal("50.00"),
+        )
+        val ejecutor = ejecutor(
+            entradaRepository = entradaRepository,
+            inventarioRepository = inventarioRepositoryConArticulos(listOf(articuloExistente)),
+            appLogger = AppLogger(tempDir),
+        )
+        val accion = AccionIaDto(
+            modulo = "entrada",
+            tipo = "alta_articulo",
+            parametros = buildJsonObject {
+                put("sku", "COCA-2L-OTRO")
+                put("nombre", "Coca de 2L")
+                put("unidadMedida", "pieza")
+                put("cantidad", "5")
+                put("precioVenta", "50.00")
+            },
+        )
+
+        val resultado = ejecutor.ejecutar(accion, setOf("entrada"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        assertTrue((resultado as ResultadoAccionIa.Ejecutada).mensaje.contains("ya existía"))
+        coVerify {
+            entradaRepository.registrarEntrada(
+                match { entrada ->
+                    entrada is Entrada.DeArticuloExistente &&
+                        entrada.articuloId == "art-existente" &&
+                        entrada.cantidad == BigDecimal("5")
+                },
+            )
+        }
+    }
+
+    // Hallazgo de code-reviewer sobre el fix anterior: el fallback por sku
+    // reusaba los candidatos de la busqueda POR NOMBRE, que ya vienen
+    // filtrados por "nombre LIKE %nombre_dictado%" - si el nombre dictado
+    // difiere del guardado (tipico del reconocimiento de voz), el articulo
+    // existente ni aparecia como candidato y el fallback quedaba
+    // inalcanzable. Este test dicta un nombre DISTINTO al guardado pero con
+    // el mismo sku, y confirma que igual lo encuentra (consulta separada por
+    // sku, no reusa los candidatos de la busqueda por nombre).
+    @Test
+    fun `alta_articulo con un nombre distinto pero el mismo sku suma cantidad via el fallback por sku`(@TempDir tempDir: File) = runTest {
+        val entradaRepository = mockk<EntradaRepository>()
+        coEvery { entradaRepository.registrarEntrada(any()) } returns Unit
+        val articuloExistente = Articulo(
+            id = "art-existente",
+            sku = "COCA-2L",
+            nombre = "Coca de 2 litros",
+            unidadMedida = "pieza",
+            precioVenta = BigDecimal("50.00"),
+        )
+        val ejecutor = ejecutor(
+            entradaRepository = entradaRepository,
+            inventarioRepository = inventarioRepositoryConArticulos(listOf(articuloExistente)),
+            appLogger = AppLogger(tempDir),
+        )
+        val accion = AccionIaDto(
+            modulo = "entrada",
+            tipo = "alta_articulo",
+            parametros = buildJsonObject {
+                put("sku", "COCA-2L")
+                put("nombre", "Coca cola dos litros")
+                put("unidadMedida", "pieza")
+                put("cantidad", "5")
+                put("precioVenta", "50.00")
+            },
+        )
+
+        val resultado = ejecutor.ejecutar(accion, setOf("entrada"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        coVerify {
+            entradaRepository.registrarEntrada(
+                match { entrada -> entrada is Entrada.DeArticuloExistente && entrada.articuloId == "art-existente" },
             )
         }
     }
