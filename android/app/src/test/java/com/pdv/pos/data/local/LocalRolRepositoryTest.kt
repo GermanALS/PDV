@@ -61,6 +61,49 @@ class LocalRolRepositoryTest {
         assertTrue("ia" in encargadoTurno.modulosPermitidos)
     }
 
+    // Hallazgo de pruebas en el Xiaomi (Parte 16, sub-paso 5): un
+    // dispositivo con `roles` sembrada ANTES de que la Parte 14 agregara
+    // "ia" al seed se quedaba con el catalogo viejo para siempre -
+    // insertIfEmpty no vuelve a correr con la tabla no vacia. Reproduce esa
+    // condicion insertando los dos roles de sistema con el modulosPermitidos
+    // pre-Parte-14 (sin "ia") directo en el DAO, como si vinieran de antes.
+    @Test
+    fun `observeRoles corrige el modulosPermitidos de los roles de sistema si quedo desactualizado`() = runTest {
+        val dao = FakeRolDao()
+        dao.insert(
+            RolEntity(
+                localId = "admin-viejo",
+                remoteId = null,
+                nombre = "administrador",
+                modulosPermitidos = listOf("venta", "entrada", "inventario", "caja", "devoluciones", "usuarios", "configuracion"),
+                esSistema = true,
+                updatedAt = 0,
+                isSynced = false,
+                deletedAt = null,
+            ),
+        )
+        dao.insert(
+            RolEntity(
+                localId = "encargado-viejo",
+                remoteId = null,
+                nombre = "encargado_turno",
+                modulosPermitidos = listOf("venta", "entrada", "inventario", "caja", "devoluciones"),
+                esSistema = true,
+                updatedAt = 0,
+                isSynced = false,
+                deletedAt = null,
+            ),
+        )
+        val repository = LocalRolRepository(dao, mockk())
+
+        val result = repository.observeRoles().first()
+
+        assertEquals(2, result.size)
+        assertTrue(result.all { "ia" in it.modulosPermitidos })
+        // Se corrige el rol ya existente (mismo localId), no se duplica.
+        assertEquals(setOf("admin-viejo", "encargado-viejo"), result.map { it.id }.toSet())
+    }
+
     @Test
     fun `observeRoles does not duplicate the seed when roles already exist`() = runTest {
         val dao = FakeRolDao()

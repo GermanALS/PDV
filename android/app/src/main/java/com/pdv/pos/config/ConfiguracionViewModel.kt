@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Sucursal
+import com.pdv.pos.domain.repository.AuthRepository
+import com.pdv.pos.domain.repository.LoginResultado
 import com.pdv.pos.domain.repository.SucursalRepository
 import com.pdv.pos.ia.LlmClient
 import com.pdv.pos.ia.LlmProvider
@@ -35,6 +37,8 @@ class ConfiguracionViewModel @Inject constructor(
     private val sucursalRepository: SucursalRepository,
     private val iaPreferences: IaPreferences,
     private val llmClient: LlmClient,
+    private val promptIaPreferences: PromptIaPreferences,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConfiguracionUiState(permisosSimulados = permisosSimuladosDeEjemplo))
@@ -66,6 +70,14 @@ class ConfiguracionViewModel @Inject constructor(
                     )
                 }
             }
+        }
+        // Igual criterio que ip/puerto/nombreBaseDatos: se siembra una sola
+        // vez, de ahi en mas es un borrador local hasta onGuardarPromptIa()
+        // (evita pisar una edicion en curso, mismo hallazgo de code-reviewer
+        // que motivo el mismo patron en la seccion de Conexion, PLAN.md
+        // Parte 6 sub-paso 5).
+        viewModelScope.launch {
+            _uiState.update { it.copy(promptIa = promptIaPreferences.prompt.first()) }
         }
         viewModelScope.launch {
             iaPreferences.config.collect { config ->
@@ -155,6 +167,43 @@ class ConfiguracionViewModel @Inject constructor(
             val modelo = estado.iaModelo.ifBlank { estado.iaProveedor.modeloPorDefecto }
             val resultado = llmClient.probarConectividad(estado.iaProveedor, token, modelo)
             _uiState.update { it.copy(iaProbandoConexion = false, iaResultadoPrueba = resultado) }
+        }
+    }
+
+    fun onPromptIaChange(value: String) {
+        _uiState.update { it.copy(promptIa = value, promptIaError = null) }
+    }
+
+    fun onPromptIaPasswordChange(value: String) {
+        _uiState.update { it.copy(promptIaPasswordInput = value, promptIaError = null) }
+    }
+
+    // Reautenticacion antes de persistir un cambio al prompt (PLAN.md
+    // Parte 16, sub-paso 1, cierra el gate bloqueante de la Parte 15
+    // Decision 3): un dispositivo desatendido y ya logueado no alcanza para
+    // alterar los limites de la IA, hace falta reingresar la contrasena del
+    // usuario de la sesion activa. Reusa AuthRepository.login existente, sin
+    // endpoint ni camino de escritura nuevo.
+    fun onGuardarPromptIa() {
+        val estado = _uiState.value
+        val username = sessionManager.session.value?.username
+        if (username == null) {
+            _uiState.update { it.copy(promptIaError = "No hay sesión activa.") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(promptIaGuardando = true, promptIaError = null) }
+            when (authRepository.login(username, estado.promptIaPasswordInput)) {
+                is LoginResultado.Exitoso -> {
+                    promptIaPreferences.setPrompt(estado.promptIa)
+                    _uiState.update { it.copy(promptIaGuardando = false, promptIaPasswordInput = "") }
+                }
+                LoginResultado.CredencialesInvalidas -> {
+                    _uiState.update {
+                        it.copy(promptIaGuardando = false, promptIaError = "Contraseña incorrecta, cambio no guardado.")
+                    }
+                }
+            }
         }
     }
 

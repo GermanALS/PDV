@@ -1,5 +1,6 @@
 package com.pdv.pos.ia
 
+import com.pdv.pos.domain.model.Articulo
 import com.pdv.pos.domain.model.ArticuloNuevo
 import com.pdv.pos.domain.model.CorteCaja
 import com.pdv.pos.domain.model.Devolucion
@@ -9,9 +10,11 @@ import com.pdv.pos.domain.model.RetiroEfectivo
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.DevolucionRepository
 import com.pdv.pos.domain.repository.EntradaRepository
+import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -65,6 +68,45 @@ private data class ParametrosDevolucionDto(
     val ventaId: String? = null,
 )
 
+// Instruccion tecnica de formato (PLAN.md Parte 16, sub-paso 5, hallazgo de
+// pruebas en el Xiaomi): el prompt de sistema aprobado (Parte 15) describe
+// las acciones en prosa pero nunca especifica el JSON exacto que
+// RespuestaIaDto/AccionIaDto y los DTOs de parametros de arriba esperan -
+// sin esto, cada proveedor improvisaba nombres de campo distintos y
+// Json.decodeFromString fallaba con SerializationException ("La IA devolvio
+// una respuesta con formato invalido") en cualquier pedido de accion. Se
+// concatena al prompt de sistema en tiempo de ejecucion (ChatViewModel), sin
+// tocar el texto editable/aprobado por el usuario. Las claves de
+// "parametros" de abajo DEBEN coincidir exactamente con los DTOs privados
+// de esta misma clase (ParametrosAltaArticuloDto/ParametrosRetiroEfectivoDto/
+// ParametrosDevolucionDto) - si cambian ahi, hay que actualizar esto tambien.
+val FORMATO_SALIDA_ACCIONES = """
+Formato de salida obligatorio (JSON, nada de texto fuera del JSON):
+{
+  "respuesta_usuario": "texto en español, siempre presente",
+  "acciones": []
+}
+
+Si no proponés ninguna acción, "acciones" debe ser un array vacío: [].
+Cuando proponés una acción, cada elemento de "acciones" es un objeto con
+exactamente estas 3 claves: "modulo", "tipo", "parametros". Usá el "tipo"
+exacto y las claves de "parametros" exactas de una de estas 4 opciones (no
+inventes ni renombres claves; todo valor numérico va como texto, ej. "10",
+no 10):
+
+- tipo "alta_articulo" (modulo "entrada"): "parametros" = {"sku": string,
+  "nombre": string, "unidadMedida": string, "cantidad": "10", "precioVenta":
+  "50.00", "costo": "30.00" (opcional), "descripcion": string (opcional),
+  "categoria": string (opcional), "ubicacion": string (opcional),
+  "codigoBarras": string (opcional)}
+- tipo "corte_parcial" (modulo "caja"): "parametros" = {} (sin campos)
+- tipo "retiro_efectivo" (modulo "caja"): "parametros" = {"monto": "500.00",
+  "motivo": string (opcional)}
+- tipo "registrar_devolucion" (modulo "devoluciones"): "parametros" =
+  {"articuloId": string, "cantidad": "2", "motivo": string (opcional),
+  "condicion": string (opcional), "ventaId": string (opcional)}
+""".trimIndent()
+
 // Valida permisos y ejecuta las acciones que la IA propone (PLAN.md
 // Parte 15, sub-paso 3): cada tipo de accion llama exactamente al mismo
 // repositorio real que su pantalla manual (EntradaRepository,
@@ -78,6 +120,7 @@ class EjecutorAccionesIa @Inject constructor(
     private val cajaRepository: CajaRepository,
     private val retiroEfectivoRepository: RetiroEfectivoRepository,
     private val devolucionRepository: DevolucionRepository,
+    private val inventarioRepository: InventarioRepository,
     private val appLogger: AppLogger,
     private val json: Json,
 ) {
@@ -141,6 +184,25 @@ class EjecutorAccionesIa @Inject constructor(
         if (cantidad <= BigDecimal.ZERO) {
             return ResultadoAccionIa.Fallida("La cantidad debe ser mayor a 0 para \"${accion.tipo}\".")
         }
+
+        val existente = buscarArticuloExistente(sucursalId, p)
+        if (existente != null) {
+            entradaRepository.registrarEntrada(
+                Entrada.DeArticuloExistente(
+                    id = UUID.randomUUID().toString(),
+                    sucursalId = sucursalId,
+                    usuarioId = usuarioId,
+                    fecha = System.currentTimeMillis(),
+                    cantidad = cantidad,
+                    ubicacion = p.ubicacion,
+                    articuloId = existente.id,
+                ),
+            )
+            return ResultadoAccionIa.Ejecutada(
+                "Se sumaron ${p.cantidad} ${p.unidadMedida} a \"${existente.nombre}\" (ya existía en el catálogo).",
+            )
+        }
+
         val entrada = Entrada.DeArticuloNuevo(
             id = UUID.randomUUID().toString(),
             sucursalId = sucursalId,
@@ -163,6 +225,40 @@ class EjecutorAccionesIa @Inject constructor(
         entradaRepository.registrarEntrada(entrada)
         return ResultadoAccionIa.Ejecutada("Alta registrada: ${p.nombre} (${p.cantidad} ${p.unidadMedida}).")
     }
+
+    // Evita crear un articulo de catalogo duplicado cuando el usuario dicta
+    // la misma alta dos veces (hallazgo de pruebas en el Xiaomi): busca por
+    // nombre exacto, luego por sku exacto, luego por codigo de barras
+    // exacto. Solo coincidencia exacta - un match parcial (ej. "coca"
+    // encontrando "cocacola light") podria fusionar indebidamente dos
+    // articulos distintos. Una consulta separada por termino (no reusar los
+    // candidatos de la busqueda por nombre para el fallback de sku/codigo):
+    // InventarioDao.observarPagina filtra por
+    // "nombre LIKE %termino% OR sku LIKE %termino% OR codigoBarras LIKE
+    // %termino%", asi que si el nombre dictado difiere del guardado (ej. el
+    // reconocimiento de voz transcribe distinto cada vez) el articulo
+    // existente ni siquiera aparece como candidato en una busqueda por
+    // nombre - el fallback por sku/codigo quedaria inalcanzable si
+    // dependiera de esos mismos candidatos (hallazgo de code-reviewer).
+    private suspend fun buscarArticuloExistente(sucursalId: String, p: ParametrosAltaArticuloDto): Articulo? {
+        buscarCoincidenciaExacta(sucursalId, p.nombre) { it.nombre.trim().equals(p.nombre.trim(), ignoreCase = true) }
+            ?.let { return it }
+        buscarCoincidenciaExacta(sucursalId, p.sku) { it.sku.equals(p.sku, ignoreCase = true) }
+            ?.let { return it }
+        val codigo = p.codigoBarras ?: return null
+        return buscarCoincidenciaExacta(sucursalId, codigo) { it.codigoBarras == codigo }
+    }
+
+    private suspend fun buscarCoincidenciaExacta(
+        sucursalId: String,
+        termino: String,
+        coincide: (Articulo) -> Boolean,
+    ): Articulo? = inventarioRepository
+        .observarInventario(sucursalId, busqueda = termino, pagina = 1, tamanioPagina = 20)
+        .first()
+        .items
+        .map { it.articulo }
+        .find(coincide)
 
     private suspend fun ejecutarCorteParcial(sucursalId: String, usuarioId: String): ResultadoAccionIa {
         val ahora = System.currentTimeMillis()

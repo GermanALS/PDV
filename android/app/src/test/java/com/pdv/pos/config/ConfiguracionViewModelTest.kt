@@ -3,15 +3,21 @@ package com.pdv.pos.config
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Sucursal
+import com.pdv.pos.domain.repository.AuthRepository
+import com.pdv.pos.domain.repository.LoginResultado
 import com.pdv.pos.domain.repository.SucursalRepository
+import com.pdv.pos.domain.model.Usuario
 import com.pdv.pos.ia.LlmClient
 import com.pdv.pos.ia.LlmProvider
+import com.pdv.pos.ia.PROMPT_SISTEMA_DEFAULT
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +25,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -77,6 +85,7 @@ class ConfiguracionViewModelTest {
         tempDir: File,
         sessionManager: SessionManager = mockk(relaxed = true),
         llmClient: LlmClient = mockk(relaxed = true),
+        authRepository: AuthRepository = mockk(relaxed = true),
     ): ConfiguracionViewModel {
         val dataStore = dataStore(tempDir)
         return ConfiguracionViewModel(
@@ -85,6 +94,8 @@ class ConfiguracionViewModelTest {
             fakeSucursalRepository,
             fakeIaPreferences(dataStore),
             llmClient,
+            PromptIaPreferences(dataStore),
+            authRepository,
         )
     }
 
@@ -92,7 +103,15 @@ class ConfiguracionViewModelTest {
     fun `selecting a mode from the UI persists it to DataStore and updates uiState`(@TempDir tempDir: File) = runTest(dispatcher) {
         val dataStore = dataStore(tempDir)
         val preferences = ConfiguracionPreferences(dataStore)
-        val viewModel = ConfiguracionViewModel(mockk(relaxed = true), preferences, fakeSucursalRepository, fakeIaPreferences(dataStore), mockk(relaxed = true))
+        val viewModel = ConfiguracionViewModel(
+            mockk(relaxed = true),
+            preferences,
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            mockk(relaxed = true),
+            PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+        )
         assertEquals(BackendMode.LOCAL, viewModel.uiState.value.modo)
 
         viewModel.onModoSelected(BackendMode.REMOTO)
@@ -125,7 +144,15 @@ class ConfiguracionViewModelTest {
     fun `saving an ia token persists it, clears the draft and never re-exposes it`(@TempDir tempDir: File) = runTest(dispatcher) {
         val dataStore = dataStore(tempDir)
         val iaPreferences = fakeIaPreferences(dataStore)
-        val viewModel = ConfiguracionViewModel(mockk(relaxed = true), ConfiguracionPreferences(dataStore), fakeSucursalRepository, iaPreferences, mockk(relaxed = true))
+        val viewModel = ConfiguracionViewModel(
+            mockk(relaxed = true),
+            ConfiguracionPreferences(dataStore),
+            fakeSucursalRepository,
+            iaPreferences,
+            mockk(relaxed = true),
+            PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+        )
 
         viewModel.onIaTokenInputChange("token-secreto")
         viewModel.onGuardarIa()
@@ -140,7 +167,15 @@ class ConfiguracionViewModelTest {
         val dataStore = dataStore(tempDir)
         val iaPreferences = fakeIaPreferences(dataStore)
         iaPreferences.setToken("token-existente")
-        val viewModel = ConfiguracionViewModel(mockk(relaxed = true), ConfiguracionPreferences(dataStore), fakeSucursalRepository, iaPreferences, mockk(relaxed = true))
+        val viewModel = ConfiguracionViewModel(
+            mockk(relaxed = true),
+            ConfiguracionPreferences(dataStore),
+            fakeSucursalRepository,
+            iaPreferences,
+            mockk(relaxed = true),
+            PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+        )
 
         viewModel.onIaActivoChange(true)
         viewModel.onGuardarIa()
@@ -224,5 +259,65 @@ class ConfiguracionViewModelTest {
             ApiResult.Error("Token invalido o sin permiso para el proveedor seleccionado"),
             viewModel.uiState.value.iaResultadoPrueba,
         )
+    }
+
+    @Test
+    fun `a fresh install seeds the prompt field with the approved default text`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val viewModel = viewModel(tempDir)
+
+        assertEquals(PROMPT_SISTEMA_DEFAULT, viewModel.uiState.value.promptIa)
+    }
+
+    @Test
+    fun `saving the prompt after successful reauthentication persists the new text`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val promptIaPreferences = PromptIaPreferences(dataStore)
+        val sessionManager = mockk<SessionManager>(relaxed = true)
+        every { sessionManager.session } returns MutableStateFlow(Session(username = "admin", usuarioId = "u1", rolId = "r1")).asStateFlow()
+        val authRepository = mockk<AuthRepository>()
+        coEvery { authRepository.login("admin", "password") } returns
+            LoginResultado.Exitoso(Usuario(id = "u1", username = "admin", nombreCompleto = "Admin", rolId = "r1"), accessToken = null)
+        val viewModel = ConfiguracionViewModel(
+            sessionManager,
+            ConfiguracionPreferences(dataStore),
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            mockk(relaxed = true),
+            promptIaPreferences,
+            authRepository,
+        )
+
+        viewModel.onPromptIaChange("Prompt nuevo")
+        viewModel.onPromptIaPasswordChange("password")
+        viewModel.onGuardarPromptIa()
+
+        assertEquals("Prompt nuevo", promptIaPreferences.prompt.first())
+        assertEquals("", viewModel.uiState.value.promptIaPasswordInput)
+    }
+
+    @Test
+    fun `saving the prompt with the wrong password rejects the change and reports an error`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val promptIaPreferences = PromptIaPreferences(dataStore)
+        val sessionManager = mockk<SessionManager>(relaxed = true)
+        every { sessionManager.session } returns MutableStateFlow(Session(username = "admin", usuarioId = "u1", rolId = "r1")).asStateFlow()
+        val authRepository = mockk<AuthRepository>()
+        coEvery { authRepository.login("admin", "incorrecta") } returns LoginResultado.CredencialesInvalidas
+        val viewModel = ConfiguracionViewModel(
+            sessionManager,
+            ConfiguracionPreferences(dataStore),
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            mockk(relaxed = true),
+            promptIaPreferences,
+            authRepository,
+        )
+
+        viewModel.onPromptIaChange("Prompt nuevo")
+        viewModel.onPromptIaPasswordChange("incorrecta")
+        viewModel.onGuardarPromptIa()
+
+        assertEquals(PROMPT_SISTEMA_DEFAULT, promptIaPreferences.prompt.first())
+        assertEquals("Contraseña incorrecta, cambio no guardado.", viewModel.uiState.value.promptIaError)
     }
 }

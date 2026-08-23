@@ -4,9 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
-import com.pdv.pos.domain.model.Articulo
 import com.pdv.pos.domain.model.Venta
 import com.pdv.pos.domain.model.VentaLinea
+import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.SucursalRepository
 import com.pdv.pos.domain.repository.VentaRepository
 import com.pdv.pos.venta.ticket.TicketFormatter
@@ -24,59 +24,10 @@ import java.math.BigDecimal
 import java.util.UUID
 import javax.inject.Inject
 
-// Catalogo estatico de ejemplo del sub-paso 1 (UI) de la Parte 7 - se
-// reemplaza por LocalArticuloRepository/RemoteArticuloRepository reales en
-// el sub-paso 2 (docs/PLAN.md Parte 7, checklist "Repositorio local"). Los
-// id son UUID (no "art-1") porque desde el sub-paso 4 (Wiring) fluyen tal
-// cual a VentaLinea.articuloId, y el backend valida articulo_id como UUID
-// (backend/app/schemas/venta.py) - un id no-UUID rompe toda venta en modo
-// REMOTO con 422 (hallazgo de code-reviewer).
-private val CATALOGO_EJEMPLO = listOf(
-    Articulo(
-        id = "11111111-1111-4111-8111-111111111111",
-        codigoBarras = "7501234567890",
-        sku = "REF-001",
-        nombre = "Refresco de cola 600ml",
-        unidadMedida = "pieza",
-        precioVenta = BigDecimal("18.50"),
-    ),
-    Articulo(
-        id = "22222222-2222-4222-8222-222222222222",
-        codigoBarras = "7501234567906",
-        sku = "PAN-002",
-        nombre = "Pan de caja integral",
-        unidadMedida = "pieza",
-        precioVenta = BigDecimal("42.00"),
-    ),
-    Articulo(
-        id = "33333333-3333-4333-8333-333333333333",
-        codigoBarras = "7501234567913",
-        sku = "LEC-003",
-        nombre = "Leche entera 1L",
-        unidadMedida = "pieza",
-        precioVenta = BigDecimal("27.90"),
-    ),
-    Articulo(
-        id = "44444444-4444-4444-8444-444444444444",
-        codigoBarras = "7501234567920",
-        sku = "HUE-004",
-        nombre = "Huevo blanco 12 pzas",
-        unidadMedida = "paquete",
-        precioVenta = BigDecimal("55.00"),
-    ),
-    Articulo(
-        id = "55555555-5555-4555-8555-555555555555",
-        codigoBarras = "7501234567937",
-        sku = "ARR-005",
-        nombre = "Arroz 1kg",
-        unidadMedida = "kg",
-        precioVenta = BigDecimal("31.75"),
-    ),
-)
-
 @HiltViewModel
 class VentaViewModel @Inject constructor(
     private val ventaRepository: VentaRepository,
+    private val inventarioRepository: InventarioRepository,
     private val preferences: ConfiguracionPreferences,
     private val sessionManager: SessionManager,
     private val sucursalRepository: SucursalRepository,
@@ -90,21 +41,39 @@ class VentaViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(busqueda = valor)
     }
 
+    // Busqueda real contra InventarioRepository (hallazgo de pruebas en el
+    // Xiaomi, Parte 16): antes buscaba en CATALOGO_EJEMPLO, un catalogo
+    // estatico de 5 articulos que nunca se reemplazo por el repositorio real
+    // pese a que el propio comentario original lo daba por hecho desde la
+    // Parte 7 - toda venta de mostrador se hacia contra articulos de
+    // demostracion, no contra el inventario real. Mismo fix ya aplicado a
+    // EntradaViewModel.buscarArticuloExistente().
     fun buscar() {
         val termino = _uiState.value.busqueda.trim()
-        val encontrado = if (termino.isEmpty()) {
-            null
-        } else {
-            CATALOGO_EJEMPLO.firstOrNull {
-                it.codigoBarras == termino ||
-                    it.sku.equals(termino, ignoreCase = true) ||
-                    it.nombre.contains(termino, ignoreCase = true)
-            }
+        if (termino.isEmpty()) {
+            _uiState.value = _uiState.value.copy(articuloEncontrado = null, errorBusqueda = null)
+            return
         }
-        _uiState.value = _uiState.value.copy(
-            articuloEncontrado = encontrado,
-            errorBusqueda = if (encontrado == null && termino.isNotEmpty()) "Artículo no encontrado" else null,
-        )
+        viewModelScope.launch {
+            val sucursalId = preferences.deviceConfig.first().sucursalIdSeleccionada
+            if (sucursalId == null) {
+                _uiState.value = _uiState.value.copy(
+                    articuloEncontrado = null,
+                    errorBusqueda = "Selecciona una sucursal en Configuración",
+                )
+                return@launch
+            }
+            val encontrado = inventarioRepository
+                .observarInventario(sucursalId, busqueda = termino, pagina = 1, tamanioPagina = 1)
+                .first()
+                .items
+                .firstOrNull()
+                ?.articulo
+            _uiState.value = _uiState.value.copy(
+                articuloEncontrado = encontrado,
+                errorBusqueda = if (encontrado == null) "Artículo no encontrado" else null,
+            )
+        }
     }
 
     fun onEscanearClick() {
