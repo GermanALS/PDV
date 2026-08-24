@@ -1,0 +1,116 @@
+﻿SKU,Nombre,Categoria,Unidad de medida,Cantidad,Ubicacion,Precio de venta,Costo
+SKU-021801,Gatorade Ponche de Frutas,Bebidas,pieza,28,Refrigerador 1,30,27
+SKU-102011,kimbies,Cuidado Personal,paquete,48,Estante B2,40,35
+SKU-120122,Marias,Galletas,paquete,19,Estante B2,12,10
+SKU-5ISDT7,Coca-Cola Original 600 ml,Bebidas,Pieza,13,REFRI_COCACOLA,22,19.8
+SKU-TJYB2U,Coca-Cola Original 2 L,Bebidas,Pieza,5,REFRI_COCACOLA,38,34.2
+SKU-LZ5I48,Coca-Cola Original 3 L,Bebidas,Pieza,11,REFRI_COCACOLA,50,45
+SKU-530CHO,Coca-Cola Sin Azucar 600 ml,Bebidas,Pieza,8,REFRI_COCACOLA,20,18
+SKU-DEOSEE,Coca-Cola Original lata 355 ml,Bebidas,Pieza,8,REFRI_COCACOLA,22,19.8
+SKU-WI9ROW,Coca-Cola Light lata 355 ml,Bebidas,Pieza,15,REFRI_COCACOLA,18,16.2
+SKU-Y077B8,Sprite Lima-Limon 600 ml,Bebidas,Pieza,16,REFRI_COCACOLA,20,18
+SKU-A3XYZ5,Sprite Lima-Limon 2 L,Bebidas,Pieza,20,REFRI_COCACOLA,33,29.7
+SKU-JZUJPA,Fanta Naranja 600 ml,Bebidas,Pieza,6,REFRI_COCACOLA,20,18
+SKU-XRF1P7,Fresca Toronja 600 ml,Bebidas,Pieza,8,REFRI_COCACOLA,20,18
+SKU-XR4LU0,Sidral Mundet Manzana 600 ml,Bebidas,Pieza,10,REFRI_COCACOLA,20,18
+SKU-XOPNA2,Delaware Punch 600 ml,Bebidas,Pieza,19,REFRI_COCACOLA,20,18
+SKU-5FMYNJ,Agua Ciel Natural 1 L,Bebidas,Pieza,15,REFRI_COCACOLA,12,10.8
+SKU-8RFK61,Powerade Mora Azul 600 ml,Bebidas,Pieza,11,REFRI_COCACOLA,21,18.9
+SKU-M4MMPJ,Fuze Tea Durazno 600 ml,Bebidas,Pieza,15,REFRI_COCACOLA,19,17.1
+SKU-7G4VC6,Pepsi Regular 600 ml,Bebidas,Pieza,14,REFRI_PEPSI,19,17.1
+SKU-7XOB89,Pepsi Regular 2 L,Bebidas,Pieza,20,REFRI_PEPSI,32,28.8
+SKU-86YBM6,Pepsi Regular lata 355 ml,Bebidas,Pieza,11,REFRI_PEPSI,18,16.2
+SKU-YJ075C,Pepsi Black Sin Azucar 355 ml,Bebidas,Pieza,20,REFRI_PEPSI,19,17.1
+SKU-KPK3E9,7UP Lima-Limon 600 ml,Bebidas,Pieza,17,REFRI_PEPSI,18,16.2
+SKU-S9VN5X,7UP Lima-Limon 2 L,Bebidas,Pieza,10,REFRI_PEPSI,25,22.5
+SKU-73JV4D,Mirinda Naranja 600 ml,Bebidas,Pieza,6,REFRI_PEPSI,18,16.2
+SKU-SNEYF4,Mirinda Naranja 2 L,Bebidas,Pieza,12,REFRI_PEPSI,25,22.5
+SKU-UPR5E0,Manzanita Sol 600 ml,Bebidas,Pieza,20,REFRI_PEPSI,18,16.2
+SKU-PC6PAQ,Manzanita Sol 2 L,Bebidas,Pieza,15,REFRI_PEPSI,25,22.5
+SKU-L0CAUY,Squirt Toronja 600 ml,Bebidas,Pieza,17,REFRI_PEPSI,17,15.3
+SKU-F8FHQ1,Squirt Toronja 2 L,Bebidas,Pieza,15,REFRI_PEPSI,36.5,32.85
+SKU-B7HY0G,Gatorade Ponche de Frutas 600 ml,Bebidas,Pieza,5,REFRI_PEPSI,24,21.6
+SKU-DUW1IJ,Agua Epura Natural 1 L,Bebidas,Pieza,7,REFRI_PEPSI,12,10.8
+SKU-JFEZ85,Canada Dry Agua Mineral 600 ml,Bebidas,Pieza,15,REFRI_PEPSI,17.5,15.75
+SKU-GO2E7N,Sabritas Adobadas 42 g,Botanas,Bolsa,16,ESTANTE_SABRITAS,20,18
+SKU-MHHGFT,Sabritas Originales sal 42 g,Botanas,Bolsa,15,ESTANTE_SABRITAS,20,18
+SKU-NCA8JL,Ruffles Queso 45 g,Botanas,Bolsa,16,ESTANTE_SABRITAS,20,18
+SKU-SCX1D1,Doritos Nacho 62 g,Botanas,Bolsa,12,ESTANTE_SABRITAS,22,19.8
+SKU-MAJMUV,Doritos Dinamita Flamin Hot 65 g,Botanas,Bolsa,13,ESTANTE_SABRITAS,22,19.8
+SKU-5ITP2O,Cheetos Torciditos 82 g,Botanas,Bolsa,18,ESTANTE_SABRITAS,22,19.8
+SKU-FYNLRH,Cheetos Bolitas 34 g,Botanas,Bolsa,18,ESTANTE_SABRITAS,10,9
+SKU-DBBA2D,Rancheritos 58 g,Botanas,Bolsa,20,ESTANTE_SABRITAS,16,14.4
+SKU-YR53QR,Churrumais limon y chile 36 g,Botanas,Bolsa,17,ESTANTE_SABRITAS,16,14.4
+SKU-00X3I8,Fritos sal y limon 55 g,Botanas,Bolsa,13,ESTANTE_SABRITAS,16,14.4
+SKU-E3S12K,Takis Fuego 62 g,Botanas,Bolsa,18,ESTANTE_BARCEL,20,18
+SKU-O5QM3F,Takis Original 62 g,Botanas,Bolsa,5,ESTANTE_BARCEL,20,18
+SKU-FUMJZC,Takis Huakamole 62 g,Botanas,Bolsa,15,ESTANTE_BARCEL,20,18
+SKU-52E9VB,Barcel Chips Fuego 62 g,Botanas,Bolsa,17,ESTANTE_BARCEL,18,16.2
+SKU-OCLE5W,Barcel Chips Sal de Mar 60 g,Botanas,Bolsa,6,ESTANTE_BARCEL,18,16.2
+SKU-DSI03Z,Runners Fuego 68 g,Botanas,Bolsa,19,ESTANTE_BARCEL,18,16.2
+SKU-ABX8AM,Golden Nuts Salado 60 g,Botanas,Bolsa,12,ESTANTE_BARCEL,17,15.3
+SKU-9ERDR6,Hot Nuts Original 60 g,Botanas,Bolsa,11,ESTANTE_BARCEL,17,15.3
+SKU-NLMVHR,Chicharron de Cerdo Barcel 40 g,Botanas,Bolsa,8,ESTANTE_BARCEL,16,14.4
+SKU-K7FQYD,Toreadas Habanero 58 g,Botanas,Bolsa,10,ESTANTE_BARCEL,17,15.3
+SKU-Y2P06U,Pan Blanco Bimbo Grande 680 g,Panaderia,Paquete,14,ESTANTE_BIMBO,58,52.2
+SKU-W0SWA3,Pan Integral Bimbo 680 g,Panaderia,Paquete,5,ESTANTE_BIMBO,62,55.8
+SKU-S4TB70,Pan Bimbo Doble Fibra 680 g,Panaderia,Paquete,9,ESTANTE_BIMBO,65,58.5
+SKU-JLDX0F,Bimbollos Bimbo 8 pzas,Panaderia,Paquete,11,ESTANTE_BIMBO,38,34.2
+SKU-BYGJUE,Medias Noches Bimbo 8 pzas,Panaderia,Paquete,17,ESTANTE_BIMBO,35,31.5
+SKU-04NL8I,Pan Tostado Bimbo 210 g,Panaderia,Paquete,12,ESTANTE_BIMBO,40,36
+SKU-XSNGA1,Mantecadas Bimbo vainilla 4 pzas,Panaderia,Paquete,20,ESTANTE_BIMBO,35,31.5
+SKU-CCRMQR,Donas Bimbo azucaradas 158 g,Panaderia,Paquete,9,ESTANTE_BIMBO,36.5,32.85
+SKU-C9XI2U,Nito Bimbo 62 g,Panaderia,Pieza,17,ESTANTE_BIMBO,19.5,17.55
+SKU-EW7FQQ,Roles de Canela Bimbo 6 pzas,Panaderia,Paquete,9,ESTANTE_BIMBO,51.9,46.71
+SKU-39QSZB,Bimbo Lunch multipack 6 paquetes,Panaderia,Paquete,18,ESTANTE_BIMBO,61.9,55.71
+SKU-FLEQ5B,Panque Bimbo con nuez 240 g,Panaderia,Paquete,15,ESTANTE_BIMBO,45,40.5
+SKU-MPKITC,Gansito Marinela 50 g,Pastelitos,Pieza,9,ESTANTE_MARINELA,15.5,13.95
+SKU-RPKIBJ,Pinguinos Marinela 80 g,Pastelitos,Paquete,15,ESTANTE_MARINELA,15.5,13.95
+SKU-IDG3IT,Chocoroles Marinela 4 pzas,Pastelitos,Paquete,7,ESTANTE_MARINELA,41,36.9
+SKU-0Q5RNV,Submarinos Marinela 4 pzas,Pastelitos,Paquete,12,ESTANTE_MARINELA,40,36
+SKU-U8JGNX,Barritas Marinela fresa 268 g,Pastelitos,Paquete,12,ESTANTE_MARINELA,40,36
+SKU-JUPG96,Barritas Marinela pina 268 g,Pastelitos,Paquete,10,ESTANTE_MARINELA,40,36
+SKU-B0VSKH,Principe Marinela chocolate 252 g,Galletas,Paquete,13,ESTANTE_MARINELA,40,36
+SKU-XFHUAN,Mini Gansito Marinela 192 g,Pastelitos,Paquete,6,ESTANTE_MARINELA,52.9,47.61
+SKU-FRU8YK,Mini Pinguinos Marinela 200 g,Pastelitos,Paquete,17,ESTANTE_MARINELA,52.9,47.61
+SKU-2KUFA3,Mini Chocoroles Marinela 224 g,Pastelitos,Paquete,9,ESTANTE_MARINELA,66.5,59.85
+SKU-0ZNH7Z,Bocadin Marinela 4 pzas,Pastelitos,Paquete,17,ESTANTE_MARINELA,25,22.5
+SKU-M3ALHJ,Negrito Marinela 4 pzas,Pastelitos,Paquete,16,ESTANTE_MARINELA,30,27
+SKU-1KT5L4,Sponch Marinela 4 pzas,Pastelitos,Paquete,6,ESTANTE_MARINELA,30,27
+SKU-C2OBKN,Canelitas Marinela 4 pzas,Galletas,Paquete,18,ESTANTE_MARINELA,28,25.2
+SKU-ZQ0ZKU,Galletas Gansito Marinela tubo 215 g,Galletas,Paquete,6,ESTANTE_MARINELA,44.9,40.41
+SKU-SQJZKZ,Rockaleta paleta 20 g,Dulces,Pieza,13,ESTANTE_SONRICS,15,13.5
+SKU-RM28SO,Rockaleta Mancha-T gomitas 50 g,Dulces,Bolsa,17,ESTANTE_SONRICS,17,15.3
+SKU-PDH64F,Rocka-Bola chicle,Dulces,Pieza,6,ESTANTE_SONRICS,3,2.7
+SKU-DMSBWV,Tix Tix Sonrics,Dulces,Pieza,11,ESTANTE_SONRICS,12,10.8
+SKU-MFZ2BR,Gudupop Sonrics,Dulces,Pieza,9,ESTANTE_SONRICS,12,10.8
+SKU-L719XA,Bombiux bombones 100 g,Dulces,Bolsa,18,ESTANTE_SONRICS,20,18
+SKU-LWOJL6,Paletiux Sonrics,Dulces,Pieza,6,ESTANTE_SONRICS,10,9
+SKU-6CGUDM,Milch chocolate con avellana 40 g,Dulces,Pieza,20,ESTANTE_SONRICS,16.5,14.85
+SKU-5B3JUY,Inspireka Pinta Frut 20.4 g,Dulces,Pieza,5,ESTANTE_SONRICS,21.5,19.35
+SKU-VPPMJ0,Inspireka Arena Magica 30 g,Dulces,Pieza,16,ESTANTE_SONRICS,28,25.2
+SKU-WCRB1N,Inspireka Armables 32 g,Dulces,Pieza,9,ESTANTE_SONRICS,25,22.5
+SKU-ZWN7OL,Inspireka Konstru-Y 49 g,Dulces,Pieza,9,ESTANTE_SONRICS,25,22.5
+SKU-L7FJFY,Candy Rolls Sonrics,Dulces,Pieza,12,ESTANTE_SONRICS,3,2.7
+SKU-CND95L,Cajita Sorpresa Sonrics,Dulces,Pieza,8,ESTANTE_SONRICS,35,31.5
+SKU-NVP89J,Inspireka caramelo suave Moldeable 45 g,Dulces,Pieza,5,ESTANTE_SONRICS,22,19.8
+SKU-JNG9MC,Jarritos Mandarina 600 ml,Bebidas,Pieza,9,REFRI_JARRITOS,18,16.2
+SKU-T54VVL,Jarritos Tamarindo 600 ml,Bebidas,Pieza,17,REFRI_JARRITOS,18,16.2
+SKU-DO9CJN,Jarritos Jamaica 600 ml,Bebidas,Pieza,20,REFRI_JARRITOS,18,16.2
+SKU-T9YI8S,Jarritos Fresa 600 ml,Bebidas,Pieza,6,REFRI_JARRITOS,18,16.2
+SKU-8ZCAIX,Jarritos Lima-Limon 1.5 L,Bebidas,Pieza,20,REFRI_JARRITOS,30,27
+SKU-GKX1G0,Marias Gamesa 170 g,Galletas,Paquete,16,ESTANTE_GAMESA,22,19.8
+SKU-I9VRPV,Marias Doradas Gamesa 128 g,Galletas,Paquete,12,ESTANTE_GAMESA,20,18
+SKU-P60GZ8,Emperador chocolate 91 g,Galletas,Paquete,8,ESTANTE_GAMESA,15,13.5
+SKU-O7XAD7,Emperador vainilla 218 g,Galletas,Paquete,9,ESTANTE_GAMESA,28,25.2
+SKU-QYG94P,Emperador nuez 109 g,Galletas,Paquete,20,ESTANTE_GAMESA,15,13.5
+SKU-SZ0G0P,Emperador Senzo chocolate 117 g,Galletas,Paquete,19,ESTANTE_GAMESA,10,9
+SKU-70U7NO,Chokis clasica 76 g,Galletas,Paquete,6,ESTANTE_GAMESA,15,13.5
+SKU-784IMV,Chokis Choco Max 300 g,Galletas,Paquete,12,ESTANTE_GAMESA,45,40.5
+SKU-DMYCZB,Arcoiris Gamesa 282 g,Galletas,Paquete,10,ESTANTE_GAMESA,40,36
+SKU-O5C09D,Arcoiris Gamesa fresa 37 g,Galletas,Paquete,10,ESTANTE_GAMESA,8.5,7.65
+SKU-IU1Z4G,Mamut Gamesa 30 g,Galletas,Pieza,7,ESTANTE_GAMESA,12,10.8
+SKU-42PSUH,Saladitas Gamesa 240 g,Galletas,Paquete,16,ESTANTE_GAMESA,35,31.5
+SKU-2GFDI0,Crackets Gamesa 267 g,Galletas,Paquete,12,ESTANTE_GAMESA,38,34.2
+SKU-LFTVAJ,Maravillas Gamesa nuez 116 g,Galletas,Paquete,12,ESTANTE_GAMESA,20,18
+SKU-DFQZWM,Cremax Gamesa chocolate 322 g,Galletas,Paquete,16,ESTANTE_GAMESA,42,37.8

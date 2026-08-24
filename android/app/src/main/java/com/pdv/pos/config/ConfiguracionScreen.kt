@@ -42,6 +42,7 @@ import com.pdv.pos.ia.LlmProvider
 @Composable
 fun ConfiguracionScreen(
     onBack: () -> Unit,
+    onNavigateToImportarCatalogo: () -> Unit,
     viewModel: ConfiguracionViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -103,6 +104,9 @@ fun ConfiguracionScreen(
                     onPasswordChange = viewModel::onPromptIaPasswordChange,
                     onGuardar = viewModel::onGuardarPromptIa,
                 )
+            }
+            Button(onClick = onNavigateToImportarCatalogo, modifier = Modifier.fillMaxWidth()) {
+                Text("Importar catálogo")
             }
             Button(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
                 Text("Cerrar sesión")

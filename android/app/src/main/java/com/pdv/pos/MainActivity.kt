@@ -19,6 +19,7 @@ import com.pdv.pos.devolucion.DevolucionScreen
 import com.pdv.pos.entrada.EntradaScreen
 import com.pdv.pos.ia.AsistenteIaWidget
 import com.pdv.pos.inventario.InventarioScreen
+import com.pdv.pos.inventario.importacion.ImportarCatalogoScreen
 import com.pdv.pos.rol.RolScreen
 import com.pdv.pos.ui.HelloScreen
 import com.pdv.pos.ui.theme.PdvTheme
@@ -27,7 +28,9 @@ import com.pdv.pos.venta.VentaScreen
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
-private enum class Pantalla { HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO, CAJA, DEVOLUCIONES, USUARIOS, ROLES }
+private enum class Pantalla {
+    HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO, CAJA, DEVOLUCIONES, USUARIOS, ROLES, IMPORTAR_CATALOGO,
+}
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -59,7 +62,10 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToDevoluciones = { pantalla = Pantalla.DEVOLUCIONES },
                                 onNavigateToUsuarios = { pantalla = Pantalla.USUARIOS },
                             )
-                            Pantalla.CONFIGURACION -> ConfiguracionScreen(onBack = { pantalla = Pantalla.HELLO })
+                            Pantalla.CONFIGURACION -> ConfiguracionScreen(
+                                onBack = { pantalla = Pantalla.HELLO },
+                                onNavigateToImportarCatalogo = { pantalla = Pantalla.IMPORTAR_CATALOGO },
+                            )
                             Pantalla.VENTA -> VentaScreen(onBack = { pantalla = Pantalla.HELLO })
                             Pantalla.ENTRADA -> EntradaScreen(onBack = { pantalla = Pantalla.HELLO })
                             Pantalla.INVENTARIO -> InventarioScreen(onBack = { pantalla = Pantalla.HELLO })
@@ -70,6 +76,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToRoles = { pantalla = Pantalla.ROLES },
                             )
                             Pantalla.ROLES -> RolScreen(onBack = { pantalla = Pantalla.USUARIOS })
+                            Pantalla.IMPORTAR_CATALOGO -> ImportarCatalogoScreen(onBack = { pantalla = Pantalla.CONFIGURACION })
                         }
                         AsistenteIaWidget()
                     }

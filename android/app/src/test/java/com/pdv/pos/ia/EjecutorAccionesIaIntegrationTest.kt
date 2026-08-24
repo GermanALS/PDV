@@ -10,6 +10,7 @@ import com.pdv.pos.domain.repository.DevolucionRepository
 import com.pdv.pos.domain.repository.EntradaRepository
 import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
+import com.pdv.pos.inventario.BuscadorArticuloExistente
 import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -84,7 +85,7 @@ class EjecutorAccionesIaIntegrationTest {
         cajaRepository,
         retiroEfectivoRepository,
         devolucionRepository,
-        inventarioRepository,
+        BuscadorArticuloExistente(inventarioRepository),
         appLogger,
         json,
     )

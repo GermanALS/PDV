@@ -1,6 +1,7 @@
 package com.pdv.pos.venta
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,9 +28,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.domain.model.Articulo
+import com.pdv.pos.ui.MonedaVisualTransformation
 import java.io.File
 import java.math.BigDecimal
 
@@ -210,6 +213,8 @@ private fun EfectivoRecibidoDialog(
                     value = efectivoIngresado,
                     onValueChange = onEfectivoIngresadoChange,
                     label = { Text("Efectivo recibido") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    visualTransformation = MonedaVisualTransformation,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (cambio != null && cambio >= BigDecimal.ZERO) {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -33,9 +34,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.domain.model.CorteCaja
+import com.pdv.pos.ui.MonedaVisualTransformation
 import com.pdv.pos.ui.theme.success
 import java.math.BigDecimal
 import java.text.SimpleDateFormat
@@ -188,6 +191,8 @@ private fun ResultadoSection(
             value = uiState.montoContado,
             onValueChange = onMontoContadoChange,
             label = { Text("Monto contado") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            visualTransformation = MonedaVisualTransformation,
             modifier = Modifier.fillMaxWidth(),
         )
         uiState.diferencia?.let { diferencia ->
@@ -223,6 +228,8 @@ private fun RetiroDialog(
                     value = monto,
                     onValueChange = onMontoChange,
                     label = { Text("Monto") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    visualTransformation = MonedaVisualTransformation,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(

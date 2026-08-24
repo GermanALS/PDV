@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -38,11 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.domain.model.InventarioItem
 import com.pdv.pos.inventario.export.ArchivoExportado
 import com.pdv.pos.ui.EditableDropdownField
+import com.pdv.pos.ui.MonedaVisualTransformation
 import com.pdv.pos.venta.BarcodeScannerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -298,18 +301,23 @@ private fun EdicionArticuloDialog(
                     value = edicion.precioVenta,
                     onValueChange = viewModel::onEdicionPrecioVentaChange,
                     label = { Text("Precio de venta") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    visualTransformation = MonedaVisualTransformation,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = edicion.costo,
                     onValueChange = viewModel::onEdicionCostoChange,
                     label = { Text("Costo (opcional)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    visualTransformation = MonedaVisualTransformation,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = edicion.cantidad,
                     onValueChange = viewModel::onEdicionCantidadChange,
                     label = { Text("Cantidad en existencia (actual: ${edicion.cantidadActual.formatoCantidad()})") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 EditableDropdownField(

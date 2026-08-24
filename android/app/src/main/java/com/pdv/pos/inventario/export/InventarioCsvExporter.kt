@@ -8,7 +8,10 @@ import com.pdv.pos.inventario.formatoCantidad
 // terceros, RFC 4180 basico (comillas solo cuando el campo las necesita).
 object InventarioCsvExporter {
 
-    private val ENCABEZADOS = listOf(
+    // internal (no private): InventarioCsvImporter (PLAN.md Parte 18,
+    // sub-parte A) valida el encabezado del CSV importado contra esta misma
+    // lista, para que ambos lados del formato no puedan desalinearse.
+    internal val ENCABEZADOS = listOf(
         "SKU", "Nombre", "Categoria", "Unidad de medida", "Cantidad", "Ubicacion", "Precio de venta", "Costo",
     )
 

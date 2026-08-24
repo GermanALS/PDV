@@ -1,6 +1,5 @@
 package com.pdv.pos.ia
 
-import com.pdv.pos.domain.model.Articulo
 import com.pdv.pos.domain.model.ArticuloNuevo
 import com.pdv.pos.domain.model.CorteCaja
 import com.pdv.pos.domain.model.Devolucion
@@ -10,11 +9,10 @@ import com.pdv.pos.domain.model.RetiroEfectivo
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.DevolucionRepository
 import com.pdv.pos.domain.repository.EntradaRepository
-import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
+import com.pdv.pos.inventario.BuscadorArticuloExistente
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -120,7 +118,7 @@ class EjecutorAccionesIa @Inject constructor(
     private val cajaRepository: CajaRepository,
     private val retiroEfectivoRepository: RetiroEfectivoRepository,
     private val devolucionRepository: DevolucionRepository,
-    private val inventarioRepository: InventarioRepository,
+    private val buscadorArticuloExistente: BuscadorArticuloExistente,
     private val appLogger: AppLogger,
     private val json: Json,
 ) {
@@ -185,7 +183,7 @@ class EjecutorAccionesIa @Inject constructor(
             return ResultadoAccionIa.Fallida("La cantidad debe ser mayor a 0 para \"${accion.tipo}\".")
         }
 
-        val existente = buscarArticuloExistente(sucursalId, p)
+        val existente = buscadorArticuloExistente.buscar(sucursalId, p.nombre, p.sku, p.codigoBarras)
         if (existente != null) {
             entradaRepository.registrarEntrada(
                 Entrada.DeArticuloExistente(
@@ -225,40 +223,6 @@ class EjecutorAccionesIa @Inject constructor(
         entradaRepository.registrarEntrada(entrada)
         return ResultadoAccionIa.Ejecutada("Alta registrada: ${p.nombre} (${p.cantidad} ${p.unidadMedida}).")
     }
-
-    // Evita crear un articulo de catalogo duplicado cuando el usuario dicta
-    // la misma alta dos veces (hallazgo de pruebas en el Xiaomi): busca por
-    // nombre exacto, luego por sku exacto, luego por codigo de barras
-    // exacto. Solo coincidencia exacta - un match parcial (ej. "coca"
-    // encontrando "cocacola light") podria fusionar indebidamente dos
-    // articulos distintos. Una consulta separada por termino (no reusar los
-    // candidatos de la busqueda por nombre para el fallback de sku/codigo):
-    // InventarioDao.observarPagina filtra por
-    // "nombre LIKE %termino% OR sku LIKE %termino% OR codigoBarras LIKE
-    // %termino%", asi que si el nombre dictado difiere del guardado (ej. el
-    // reconocimiento de voz transcribe distinto cada vez) el articulo
-    // existente ni siquiera aparece como candidato en una busqueda por
-    // nombre - el fallback por sku/codigo quedaria inalcanzable si
-    // dependiera de esos mismos candidatos (hallazgo de code-reviewer).
-    private suspend fun buscarArticuloExistente(sucursalId: String, p: ParametrosAltaArticuloDto): Articulo? {
-        buscarCoincidenciaExacta(sucursalId, p.nombre) { it.nombre.trim().equals(p.nombre.trim(), ignoreCase = true) }
-            ?.let { return it }
-        buscarCoincidenciaExacta(sucursalId, p.sku) { it.sku.equals(p.sku, ignoreCase = true) }
-            ?.let { return it }
-        val codigo = p.codigoBarras ?: return null
-        return buscarCoincidenciaExacta(sucursalId, codigo) { it.codigoBarras == codigo }
-    }
-
-    private suspend fun buscarCoincidenciaExacta(
-        sucursalId: String,
-        termino: String,
-        coincide: (Articulo) -> Boolean,
-    ): Articulo? = inventarioRepository
-        .observarInventario(sucursalId, busqueda = termino, pagina = 1, tamanioPagina = 20)
-        .first()
-        .items
-        .map { it.articulo }
-        .find(coincide)
 
     private suspend fun ejecutarCorteParcial(sucursalId: String, usuarioId: String): ResultadoAccionIa {
         val ahora = System.currentTimeMillis()

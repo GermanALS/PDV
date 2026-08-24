@@ -2574,6 +2574,171 @@ reimpresión opcional para el cliente. No toca `docs/api-contract.md` ni
 
 ---
 
+## Parte 18: Datos de prueba y mejoras transversales
+
+Incorpora una función real de importación de catálogo desde CSV, agrega
+teclado numérico y máscara de moneda a los campos de monto/cantidad de toda
+la app, hace que la IA exporte CSV (o /calcule un total exacto) en vez de
+volcar el inventario en el chat, corrige el refresco de Inventario en modo
+remoto tras escrituras desde otras pantallas, y cierra el gap ya
+documentado en el Backlog de cortes/retiros de caja registrados por la IA.
+Seis mejoras/hallazgos reportados por el usuario tras revisión manual de la
+app, con el objetivo adicional de poder hacer pruebas exhaustivas con datos
+realistas (`docs/inventario-inicial.csv`, 115 artículos) en vez del
+catálogo de ejemplo.
+
+**Hallazgo de causa raíz (sub-parte E)**: el gap de refresco de Inventario
+en modo remoto no es exclusivo de Entrada de mercancía (como reportó el
+usuario) — el mismo problema afecta a Venta de mostrador, que también
+decrementa `inventario.cantidad` desde un repositorio distinto al de la
+pantalla de Inventario. La corrección se diseña a nivel de causa raíz
+(señal de invalidación compartida), no solo para el caso de Entrada.
+
+### Checklist
+
+**A. Importación de catálogo desde CSV**
+- [x] Propuesta de pantalla ("Importar catálogo" en Configuración, selector
+  de archivo vía `ACTION_OPEN_DOCUMENT`, formato esperado documentado en
+  pantalla: mismas columnas que `docs/inventario-inicial.csv`) presentada
+  y aprobada — criterio: aprobación explícita registrada antes de
+  implementar. `needs-approval` **Aprobado 2026-08-23.**
+- [x] Parsing valida encabezado y tipos de cada fila (cantidad/precio/costo
+  numéricos, resto de campos no vacíos), sin abortar la importación
+  completa por filas inválidas — criterio: prueba unitaria con un CSV que
+  mezcla filas válidas e inválidas verifica que las válidas se procesan y
+  las inválidas quedan listadas en el resumen de errores. `jvm-tests`
+  (`InventarioCsvImporterTest`)
+- [x] Cada fila se escribe reutilizando `EntradaRepository.registrarEntrada`
+  (sin endpoint ni tabla nueva), con el mismo criterio de deduplicación por
+  SKU/nombre/código de barras agregado en la Parte 16 (artículo existente
+  suma cantidad vía `Entrada.DeArticuloExistente`; artículo nuevo se da de
+  alta vía `Entrada.DeArticuloNuevo`) — criterio: prueba de integración
+  importa un CSV con un artículo repetido y confirma que la segunda
+  ocurrencia suma cantidad en vez de duplicar el artículo. `jvm-tests`
+  (`ImportadorCatalogoTest`; dedup extraído a `BuscadorArticuloExistente`,
+  compartido con `EjecutorAccionesIa`)
+- [x] UI de progreso (N de total) y resumen final (creados / actualizados /
+  con error) — criterio: `./gradlew build` en verde y la pantalla se ve
+  navegable con datos de ejemplo. (`./gradlew build` en verde)
+- [x] Instalado y verificado en el Xiaomi importando
+  `docs/inventario-inicial.csv` completo (115 artículos) en los tres modos
+  — `needs-device`. Hallazgo de pruebas: el resumen de la importación
+  anterior quedaba visible al reingresar a la pantalla (misma instancia de
+  ViewModel persistida a nivel Activity) — corregido limpiando el estado al
+  presionar "Atrás".
+
+**B. Teclado numérico automático**
+- [x] `KeyboardOptions(keyboardType = KeyboardType.Decimal)` aplicado a los
+  10 campos de monto/cantidad identificados: `VentaScreen.kt` (efectivo
+  recibido), `EntradaScreen.kt` (precio de venta, costo, cantidad),
+  `InventarioScreen.kt` diálogo de edición (precio de venta, costo,
+  cantidad en existencia), `CajaScreen.kt` (monto contado, monto de
+  retiro), `DevolucionScreen.kt` (cantidad a devolver) — sin cambios de
+  tipo de dato (siguen siendo `String` hasta la conversión a `BigDecimal`
+  ya existente). Criterio: `./gradlew build` (lint) en verde.
+- [x] Instalado y verificado en el Xiaomi: teclado numérico aparece en los
+  10 campos — `needs-device`.
+
+**C. Máscara de moneda `$`**
+- [x] `VisualTransformation` propio (prefijo `$ `, sin separador de miles
+  ni redondeo, consistente con que el resto de la app no formatea moneda
+  con locale) aplicado solo a los campos de **monto** (precio de venta,
+  costo, efectivo recibido, monto contado, monto de retiro) — nunca a los
+  de **cantidad** — criterio: prueba unitaria del mapeo de offsets
+  (`OffsetMapping`) para que el cursor no salte al escribir/borrar.
+  `jvm-tests`
+- [x] Instalado y verificado en el Xiaomi — `needs-device`.
+
+**D. IA: exportar CSV o calcular total exacto en vez de listar**
+- [ ] Texto exacto agregado a `PROMPT_SISTEMA_DEFAULT` (Parte 15)
+  describiendo las dos herramientas de solo lectura nuevas y cuándo
+  usarlas, presentado y aprobado explícitamente antes de activarse —
+  criterio: aprobación explícita registrada. `needs-approval`
+- [ ] Acción `exportar_inventario` (`parametros`: filtro de búsqueda
+  opcional) en `EjecutorAccionesIa`, de solo lectura (sin tarjeta de
+  confirmación, validada contra el permiso del módulo `"inventario"`):
+  reutiliza el mismo bucle de paginación que
+  `InventarioViewModel.obtenerTodosLosItemsFiltrados()` +
+  `InventarioExportManager.exportarCsv()`. Se activa cuando se pide el
+  inventario completo o cuando la respuesta listaría más de 20 artículos
+  — criterio: prueba unitaria de `EjecutorAccionesIa` cubre ambos
+  disparadores y el caso sin permiso. `jvm-tests`
+- [ ] Acción `consultar_stock` (`parametros`: artículo o categoría
+  opcionales; sin ninguno = total general), de solo lectura: suma
+  `cantidad` sobre todas las páginas que matchean el filtro (no solo los
+  50 artículos del contexto de chat) y devuelve el número exacto — nunca
+  calculado por el LLM — criterio: prueba unitaria con artículo
+  específico, categoría, y total general. `jvm-tests`
+- [ ] `ChatViewModel` enruta ambas acciones automáticamente (sin tarjeta de
+  confirmación, a diferencia de las 4 acciones de escritura existentes) —
+  criterio: prueba de integración confirma que se ejecutan sin pasar por
+  el flujo de confirmación. `jvm-tests`
+- [ ] Instalado y verificado en el Xiaomi: pedir el inventario completo,
+  pedir más de 20 artículos de una categoría, y preguntar el stock total y
+  el de un artículo/categoría específica — `needs-device`.
+
+**E. Corrección: Inventario no se refresca en modo remoto tras escrituras externas**
+- [ ] `InventarioRefreshSignal` (singleton Hilt, `MutableSharedFlow<Unit>`)
+  emitido tras cada escritura exitosa que afecta `inventario`/`articulos`
+  desde fuera de `InventarioViewModel`: `EntradaRepository.registrarEntrada`,
+  `VentaRepository.registrarVenta` (hallazgo adicional de causa raíz, ver
+  intro de esta Parte), y la acción `alta_articulo` de `EjecutorAccionesIa`
+  — criterio: prueba unitaria confirma la emisión en cada uno de los 3
+  puntos. `jvm-tests`
+- [ ] `InventarioViewModel` combina esta señal con su `flatMapLatest`
+  existente para forzar re-suscripción (no-op en modo local, donde Room ya
+  cubre el caso) — criterio: prueba de integración en modo REMOTO: escribir
+  una entrada (o venta) con la pantalla de Inventario "suscrita" refresca
+  la lista sin cambiar página ni buscar. `jvm-tests`
+- [ ] Instalado y verificado en el Xiaomi en modo REMOTO — `needs-device`.
+
+**F. Historial reactivo de cortes y retiros de caja**
+
+*(Cierra el ítem ya documentado en el Backlog de este plan; se elimina de
+ahí al cerrar esta sub-parte.)*
+
+- [ ] `docs/api-contract.md` actualizado con `GET /cortes-caja` y `GET
+  /retiros-efectivo` (listado paginado por `sucursal_id`, mismo shape que
+  el resto de endpoints de listado) — criterio: sección nueva, revisada
+  antes de tocar código (CLAUDE.md §9).
+- [ ] Rutas FastAPI (`app/routers/caja.py`) — criterio: `pytest
+  backend/tests/test_caja.py` en verde, happy path + 1 error por endpoint.
+- [ ] `CajaDao` gana una query de listado por sucursal que devuelve `Flow`
+  (análoga a `RetiroDao.getRetirosDelPeriodo`, ya existente) —
+  criterio: `./gradlew testDebugUnitTest` en verde. `jvm-tests`
+- [ ] `RemoteCajaRepository`/`RemoteRetiroEfectivoRepository` consumen los
+  endpoints nuevos; `CajaRepository`/`RetiroEfectivoRepository` (interfaz)
+  ganan `observeCortes(sucursalId)`/`observeRetiros(sucursalId)`;
+  `ModeAwareCajaRepository`/`ModeAwareRetiroEfectivoRepository` resuelven
+  según `BackendMode`, mismo patrón que el resto de módulos — criterio:
+  `./gradlew testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+- [ ] `CajaViewModel` reemplaza `historialCortes`/`historialRetiros` en
+  memoria por la observación reactiva de los repositorios reales —
+  criterio: prueba de integración confirma que un corte/retiro registrado
+  desde la IA (`ChatViewModel`/`EjecutorAccionesIa`) aparece en
+  `CajaScreen` sin reabrir la pantalla, repitiendo el escenario que expuso
+  el gap en la Parte 16. `jvm-tests`
+- [ ] Instalado y verificado en el Xiaomi en los tres modos — `needs-device`.
+
+### Decisiones abiertas
+
+- [x] Alcance de la importación CSV: ¿script de prueba de una sola vez, o
+  función real de la app reutilizable para altas masivas? **Decidido**
+  (2026-08-23): función real de la app, accesible desde Configuración —
+  ver sub-parte A.
+- [x] Disparador de exportación CSV vs. respuesta numérica de la IA en
+  consultas de inventario. **Decidido** (2026-08-23): pedido explícito de
+  inventario completo o una respuesta que listaría más de 20 artículos →
+  exportar CSV (compartir archivo); consulta parcial/agregada (total
+  general, de un artículo, o de una categoría) → la app calcula y devuelve
+  un número exacto, nunca el LLM — ver sub-parte D.
+- [x] Alcance del cierre del gap de cortes/retiros de caja por IA.
+  **Decidido** (2026-08-23): se implementa tal como estaba evaluado en el
+  Backlog (`observeCortes`/`observeRetiros`, patrón `ModeAware*`) — ver
+  sub-parte F.
+
+---
+
 ## Backlog (trabajo futuro, fuera del alcance actual)
 
 - **RAG para el chat de IA**: indexar `docs/` del proyecto más una fuente de
