@@ -1,5 +1,6 @@
 package com.pdv.pos.data
 
+import com.pdv.pos.caja.CajaRefreshSignal
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.data.local.LocalCajaRepository
 import com.pdv.pos.data.remote.RemoteCajaRepository
@@ -7,7 +8,12 @@ import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.CorteCaja
 import com.pdv.pos.domain.model.TotalesCorte
 import com.pdv.pos.domain.repository.CajaRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,6 +26,7 @@ class ModeAwareCajaRepository @Inject constructor(
     private val local: LocalCajaRepository,
     private val remote: RemoteCajaRepository,
     private val preferences: ConfiguracionPreferences,
+    private val cajaRefreshSignal: CajaRefreshSignal,
 ) : CajaRepository {
 
     override suspend fun calcularTotales(sucursalId: String, fechaInicio: Long, fechaFin: Long): TotalesCorte =
@@ -34,5 +41,24 @@ class ModeAwareCajaRepository @Inject constructor(
             BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION -> local.guardarCorte(corte)
             BackendMode.REMOTO -> remote.guardarCorte(corte)
         }
+        // Unico punto de escritura de Caja (pantalla manual y corte_parcial
+        // de la IA pasan ambos por aca) - PLAN.md Parte 18, sub-parte F.
+        cajaRefreshSignal.emitir()
     }
+
+    override suspend fun obtenerCortesDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<CorteCaja> =
+        when (preferences.deviceConfig.first().backendMode) {
+            BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION ->
+                local.obtenerCortesDelPeriodo(sucursalId, desde, hasta)
+            BackendMode.REMOTO -> remote.obtenerCortesDelPeriodo(sucursalId, desde, hasta)
+        }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun observeCortes(sucursalId: String): Flow<List<CorteCaja>> =
+        preferences.deviceConfig.map { it.backendMode }.distinctUntilChanged().flatMapLatest { modo ->
+            when (modo) {
+                BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION -> local.observeCortes(sucursalId)
+                BackendMode.REMOTO -> remote.observeCortes(sucursalId)
+            }
+        }
 }

@@ -2574,27 +2574,582 @@ reimpresión opcional para el cliente. No toca `docs/api-contract.md` ni
 
 ---
 
+## Parte 18: Datos de prueba y mejoras transversales  <!-- POS-74 -->
+
+Incorpora una función real de importación de catálogo desde CSV, agrega
+teclado numérico y máscara de moneda a los campos de monto/cantidad de toda
+la app, hace que la IA exporte CSV (o /calcule un total exacto) en vez de
+volcar el inventario en el chat, corrige el refresco de Inventario en modo
+remoto tras escrituras desde otras pantallas, y cierra el gap ya
+documentado en el Backlog de cortes/retiros de caja registrados por la IA.
+Seis mejoras/hallazgos reportados por el usuario tras revisión manual de la
+app, con el objetivo adicional de poder hacer pruebas exhaustivas con datos
+realistas (`docs/inventario-inicial.csv`, 115 artículos) en vez del
+catálogo de ejemplo.
+
+**Hallazgo de causa raíz (sub-parte E)**: el gap de refresco de Inventario
+en modo remoto no es exclusivo de Entrada de mercancía (como reportó el
+usuario) — el mismo problema afecta a Venta de mostrador, que también
+decrementa `inventario.cantidad` desde un repositorio distinto al de la
+pantalla de Inventario. La corrección se diseña a nivel de causa raíz
+(señal de invalidación compartida), no solo para el caso de Entrada.
+
+**Sub-parte G (agregada 2026-08-25)**: seis mejoras adicionales reportadas
+por el usuario tras revisión manual de Configuración y Catálogo. La
+investigación de código encontró dos discrepancias de causa raíz que
+cambian el alcance real de dos de los seis puntos: los campos de conexión
+(IP/Puerto/Nombre de base de datos) son cosméticos hoy (`NetworkModule`
+usa un `BASE_URL` hardcodeado, nunca lee `ConfiguracionPreferences`), y el
+modo `LOCAL_CON_SINCRONIZACION` no trae la lista de sucursales del backend
+pese a que el diseño ya aprobado en la Parte 3 dice que debería. Ambos se
+corrigen aquí como parte del mismo trabajo, no solo el renombrado de
+campos que se pidió originalmente.
+
+### Checklist
+
+**A. Importación de catálogo desde CSV** (POS-75)
+- [x] Propuesta de pantalla ("Importar catálogo" en Configuración, selector
+  de archivo vía `ACTION_OPEN_DOCUMENT`, formato esperado documentado en
+  pantalla: mismas columnas que `docs/inventario-inicial.csv`) presentada
+  y aprobada — criterio: aprobación explícita registrada antes de
+  implementar. `needs-approval` **Aprobado 2026-08-23.**
+- [x] Parsing valida encabezado y tipos de cada fila (cantidad/precio/costo
+  numéricos, resto de campos no vacíos), sin abortar la importación
+  completa por filas inválidas — criterio: prueba unitaria con un CSV que
+  mezcla filas válidas e inválidas verifica que las válidas se procesan y
+  las inválidas quedan listadas en el resumen de errores. `jvm-tests`
+  (`InventarioCsvImporterTest`)
+- [x] Cada fila se escribe reutilizando `EntradaRepository.registrarEntrada`
+  (sin endpoint ni tabla nueva), con el mismo criterio de deduplicación por
+  SKU/nombre/código de barras agregado en la Parte 16 (artículo existente
+  suma cantidad vía `Entrada.DeArticuloExistente`; artículo nuevo se da de
+  alta vía `Entrada.DeArticuloNuevo`) — criterio: prueba de integración
+  importa un CSV con un artículo repetido y confirma que la segunda
+  ocurrencia suma cantidad en vez de duplicar el artículo. `jvm-tests`
+  (`ImportadorCatalogoTest`; dedup extraído a `BuscadorArticuloExistente`,
+  compartido con `EjecutorAccionesIa`)
+- [x] UI de progreso (N de total) y resumen final (creados / actualizados /
+  con error) — criterio: `./gradlew build` en verde y la pantalla se ve
+  navegable con datos de ejemplo. (`./gradlew build` en verde)
+- [x] Instalado y verificado en el Xiaomi importando
+  `docs/inventario-inicial.csv` completo (115 artículos) en los tres modos
+  — `needs-device`. Hallazgo de pruebas: el resumen de la importación
+  anterior quedaba visible al reingresar a la pantalla (misma instancia de
+  ViewModel persistida a nivel Activity) — corregido limpiando el estado al
+  presionar "Atrás".
+
+**B. Teclado numérico automático** (POS-76)
+- [x] `KeyboardOptions(keyboardType = KeyboardType.Decimal)` aplicado a los
+  10 campos de monto/cantidad identificados: `VentaScreen.kt` (efectivo
+  recibido), `EntradaScreen.kt` (precio de venta, costo, cantidad),
+  `InventarioScreen.kt` diálogo de edición (precio de venta, costo,
+  cantidad en existencia), `CajaScreen.kt` (monto contado, monto de
+  retiro), `DevolucionScreen.kt` (cantidad a devolver) — sin cambios de
+  tipo de dato (siguen siendo `String` hasta la conversión a `BigDecimal`
+  ya existente). Criterio: `./gradlew build` (lint) en verde.
+- [x] Instalado y verificado en el Xiaomi: teclado numérico aparece en los
+  10 campos — `needs-device`.
+
+**C. Máscara de moneda `$`** (POS-77)
+- [x] `VisualTransformation` propio (prefijo `$ `, sin separador de miles
+  ni redondeo, consistente con que el resto de la app no formatea moneda
+  con locale) aplicado solo a los campos de **monto** (precio de venta,
+  costo, efectivo recibido, monto contado, monto de retiro) — nunca a los
+  de **cantidad** — criterio: prueba unitaria del mapeo de offsets
+  (`OffsetMapping`) para que el cursor no salte al escribir/borrar.
+  `jvm-tests`
+- [x] Instalado y verificado en el Xiaomi — `needs-device`.
+
+**D. IA: exportar CSV o calcular total exacto en vez de listar** (POS-78)
+- [x] Texto exacto agregado a `PROMPT_SISTEMA_DEFAULT` (Parte 15)
+  describiendo las dos herramientas de solo lectura nuevas y cuándo
+  usarlas, presentado y aprobado explícitamente antes de activarse —
+  criterio: aprobación explícita registrada. `needs-approval` **Aprobado
+  2026-08-25**: nueva sección "Consultas de solo lectura" en el prompt
+  (`exportar_inventario`, `consultar_stock`, ejecutan sin tarjeta de
+  confirmación) + dos líneas nuevas en `FORMATO_SALIDA_ACCIONES`.
+- [x] Acción `exportar_inventario` (`parametros`: filtro de búsqueda
+  opcional) en `EjecutorAccionesIa`, de solo lectura (sin tarjeta de
+  confirmación, validada contra el permiso del módulo `"inventario"`):
+  reutiliza el mismo bucle de paginación que
+  `InventarioViewModel.obtenerTodosLosItemsFiltrados()` +
+  `InventarioExportManager.exportarCsv()`. Se activa cuando se pide el
+  inventario completo o cuando la respuesta listaría más de 20 artículos
+  — criterio: prueba unitaria de `EjecutorAccionesIa` cubre ambos
+  disparadores y el caso sin permiso. `jvm-tests` Verificado: "filtro" es
+  ambiguo a propósito (categoría o texto de búsqueda) y se resuelve
+  contra `InventarioRepository.observarCategorias()`; 4 pruebas nuevas en
+  `EjecutorAccionesIaIntegrationTest` (sin filtro, filtro=categoría,
+  filtro=texto libre, sin permiso).
+- [x] Acción `consultar_stock` (`parametros`: artículo o categoría
+  opcionales; sin ninguno = total general), de solo lectura: suma
+  `cantidad` sobre todas las páginas que matchean el filtro (no solo los
+  50 artículos del contexto de chat) y devuelve el número exacto — nunca
+  calculado por el LLM — criterio: prueba unitaria con artículo
+  específico, categoría, y total general. `jvm-tests` Verificado: 4
+  pruebas nuevas en `EjecutorAccionesIaIntegrationTest` (total general,
+  artículo específico, categoría, sin permiso).
+- [x] `ChatViewModel` enruta ambas acciones automáticamente (sin tarjeta de
+  confirmación, a diferencia de las 4 acciones de escritura existentes) —
+  criterio: prueba de integración confirma que se ejecutan sin pasar por
+  el flujo de confirmación. `jvm-tests` Verificado: `tiposSoloLectura` en
+  `ChatViewModel.obtenerRespuesta()` ejecuta `exportar_inventario`/
+  `consultar_stock` de inmediato vía `ejecutarConsultaAutomatica` (mismo
+  resuelto de sesión/sucursal/permisos que `confirmarAccion`), sin crear
+  `ChatUiMessage.AccionPendiente`; 2 pruebas nuevas en `ChatViewModelTest`
+  (sin tarjeta pendiente; archivo para compartir expuesto y limpiado).
+  `./gradlew build` en verde (compila, lint y las 56 pruebas de
+  `com.pdv.pos.ia` en verde, incluidas las 8 nuevas).
+- [x] Instalado y verificado en el Xiaomi: pedir el inventario completo,
+  pedir más de 20 artículos de una categoría, y preguntar el stock total y
+  el de un artículo/categoría específica — `needs-device`. Confirmado por
+  el usuario el 2026-08-26: exportación de CSV (inventario completo y
+  categoría con más de 20 artículos) y respuesta con número exacto (total,
+  artículo puntual, categoría) verificados en el Xiaomi.
+
+**E. Corrección: Inventario no se refresca en modo remoto tras escrituras externas** (POS-79)
+- [x] `InventarioRefreshSignal` (singleton Hilt, `MutableSharedFlow<Unit>`)
+  emitido tras cada escritura exitosa que afecta `inventario`/`articulos`
+  desde fuera de `InventarioViewModel`: `EntradaRepository.registrarEntrada`,
+  `VentaRepository.registrarVenta` (hallazgo adicional de causa raíz, ver
+  intro de esta Parte), y la acción `alta_articulo` de `EjecutorAccionesIa`
+  — criterio: prueba unitaria confirma la emisión en cada uno de los 3
+  puntos. `jvm-tests` Verificado: emisión centralizada en
+  `ModeAwareEntradaRepository.registrarEntrada` y
+  `ModeAwareVentaRepository.registrarVenta` (único punto de escritura de
+  cada uno; `alta_articulo` llama al mismo `registrarEntrada`, sin emisión
+  propia). `replay = 1` (no solo `extraBufferCapacity`) para que un
+  colector que se suscribe después del emit igual lo reciba — hallazgo de
+  pruebas: con solo `extraBufferCapacity` las 3 pruebas nuevas colgaban
+  (`TimeoutCancellationException`), porque ese buffer no retiene valores
+  para colectores que aún no estaban suscritos en el momento del emit.
+  3 pruebas nuevas confirman los 3 puntos (`ModeAwareEntradaRepositoryTest`,
+  `ModeAwareVentaRepositoryTest`, `EjecutorAccionesIaIntegrationTest` con un
+  `ModeAwareEntradaRepository` real).
+- [x] `InventarioViewModel` combina esta señal con su `flatMapLatest`
+  existente para forzar re-suscripción (no-op en modo local, donde Room ya
+  cubre el caso) — criterio: prueba de integración en modo REMOTO: escribir
+  una entrada (o venta) con la pantalla de Inventario "suscrita" refresca
+  la lista sin cambiar página ni buscar. `jvm-tests` Verificado:
+  `combine(sucursalId, parametros, inventarioRefreshSignal.refrescos.onStart
+  { emit(Unit) })` reemplaza el `combine` de 2 flows anterior;
+  `InventarioViewModelTest` nueva prueba simula el comportamiento de un solo
+  disparo de `RemoteInventarioRepository` y confirma que `emitir()` fuerza
+  un nuevo fetch sin cambiar `paginaMostrada` ni `busqueda`. `./gradlew
+  build` en verde (compila, lint, todas las pruebas).
+- [x] Instalado y verificado en el Xiaomi en modo REMOTO — `needs-device`.
+  Confirmado por el usuario el 2026-08-26 y cruzado contra Postgres
+  directamente: con Inventario abierto en modo Remoto, entradas de un
+  artículo nuevo y de un artículo ya existente (verificado
+  `inventario.cantidad = 54` en el backend tras 4 entradas acumuladas)
+  se reflejan solas, sin recargar ni reabrir la pantalla. La primera
+  corrida de esta verificación dio un falso negativo (aparente "no se
+  actualiza" en artículo existente) causado por un filtro de búsqueda
+  (`q=SKU`) + tamaño de página 1 que dejaba fuera de vista la fila
+  correcta — no por el mecanismo de refresco en sí.
+
+**F. Historial reactivo de cortes y retiros de caja** (POS-80)
+
+*(Cierra el ítem ya documentado en el Backlog de este plan; se elimina de
+ahí al cerrar esta sub-parte.)*
+
+- [x] `docs/api-contract.md` actualizado con `GET /cortes-caja` y `GET
+  /retiros-efectivo` (listado paginado por `sucursal_id`, mismo shape que
+  el resto de endpoints de listado) — criterio: sección nueva, revisada
+  antes de tocar código (CLAUDE.md §9). Verificado: secciones 8.4/8.5,
+  mismo estilo que `GET /inventario` (sección 7.1).
+- [x] Rutas FastAPI (`app/routers/caja.py`) — criterio: `pytest
+  backend/tests/test_caja.py` en verde, happy path + 1 error por endpoint.
+  Verificado: 4 pruebas nuevas (happy path + 422 por `sucursal_id`
+  faltante, por endpoint); `pytest` completo del backend en verde (58
+  pruebas).
+- [x] `CajaDao` gana una query de listado por sucursal que devuelve `Flow`
+  (análoga a `RetiroDao.getRetirosDelPeriodo`, ya existente) —
+  criterio: `./gradlew testDebugUnitTest` en verde. `jvm-tests` Nota: la
+  plantilla real de un `Flow` reactivo es `InventarioDao.observarPagina`
+  (`getRetirosDelPeriodo` es `suspend`, de un solo disparo) — `CajaDao`
+  gana `observarCortes(sucursalId): Flow<List<CorteCajaEntity>>` y
+  `RetiroDao` gana `observarRetiros(sucursalId): Flow<List<RetiroEfectivoEntity>>`
+  (nueva, sin tocar `getRetirosDelPeriodo`), ambas ordenadas por fecha
+  descendente.
+- [x] `RemoteCajaRepository`/`RemoteRetiroEfectivoRepository` consumen los
+  endpoints nuevos; `CajaRepository`/`RetiroEfectivoRepository` (interfaz)
+  ganan `observeCortes(sucursalId)`/`observeRetiros(sucursalId)`;
+  `ModeAwareCajaRepository`/`ModeAwareRetiroEfectivoRepository` resuelven
+  según `BackendMode`, mismo patrón que el resto de módulos — criterio:
+  `./gradlew testDebugUnitTest` pasa mockeando Retrofit. `jvm-tests`
+  Verificado: mismo patrón `flatMapLatest` sobre `BackendMode` que
+  `ModeAwareInventarioRepository`; pruebas nuevas de dispatch en
+  `ModeAwareCajaRepositoryTest`/`ModeAwareRetiroEfectivoRepositoryTest`.
+- [x] `CajaViewModel` reemplaza `historialCortes`/`historialRetiros` en
+  memoria por la observación reactiva de los repositorios reales —
+  criterio: prueba de integración confirma que un corte/retiro registrado
+  desde la IA (`ChatViewModel`/`EjecutorAccionesIa`) aparece en
+  `CajaScreen` sin reabrir la pantalla, repitiendo el escenario que expuso
+  el gap en la Parte 16. `jvm-tests` **Hallazgo de causa raíz (mismo
+  patrón que sub-parte E)**: para que el escenario funcione también en
+  modo REMOTO (el `needs-device` de abajo pide los tres modos), se agregó
+  `CajaRefreshSignal` (idéntico a `InventarioRefreshSignal`) emitido desde
+  el único punto de escritura de cada repositorio
+  (`ModeAwareCajaRepository.guardarCorte`/
+  `ModeAwareRetiroEfectivoRepository.registrarRetiro`) y combinado en el
+  `init{}` de `CajaViewModel` — sin esto, `RemoteCajaRepository.observeCortes`
+  (un solo disparo, igual que `RemoteInventarioRepository`) nunca se habría
+  refrescado tras una escritura externa en REMOTO. Verificado: pruebas de
+  emisión en `ModeAwareCajaRepositoryTest`/`ModeAwareRetiroEfectivoRepositoryTest`,
+  prueba de `EjecutorAccionesIaIntegrationTest` con un `ModeAwareCajaRepository`
+  real confirma que `corte_parcial` dispara la señal, y pruebas de
+  `CajaViewModelTest` confirman que el historial se actualiza sin llamar a
+  ningún método del ViewModel. `./gradlew build` en verde (compila, lint,
+  todas las pruebas).
+- [x] Instalado y verificado en el Xiaomi en los tres modos — `needs-device`.
+  Confirmado por el usuario el 2026-08-26: un corte/retiro registrado
+  desde la IA, con la pantalla Caja abierta, aparece en el historial sin
+  reabrirla, en los tres modos (Local, Remoto, Local con sincronización).
+  En Remoto se cruzó además contra Postgres directamente (`cortes_caja`/
+  `retiros_efectivo` con el `sucursal_id` correcto). Durante esta
+  verificación se encontró y documentó por separado en el Backlog un bug
+  de la Parte 6 (reconciliación de `sucursalIdSeleccionada` al cambiar de
+  modo) que bloqueaba las escrituras remotas hasta reseleccionar la
+  sucursal manualmente — no forma parte del alcance de esta Parte 18.
+
+**G. Configuración: orden condicional, conexión real y limpieza** (POS-81)
+- [x] Propuesta de la nueva estructura de `ConfiguracionScreen` presentada y
+  aprobada — orden: `ModoSection` primero; `ConexionSection` +
+  `SucursalSection` solo visibles si `backendMode != LOCAL`; sección
+  "Permisos (simulados)" eliminada; botón "Importar catálogo" movido antes
+  de `AsistenteIaSection`; botón "Cerrar sesión" eliminado de esta pantalla
+  (queda solo en `HelloScreen`) — criterio: aprobación explícita
+  registrada antes de implementar. `needs-approval` **Aprobado 2026-08-25.**
+- [x] `ModoSection` se renderiza primero y sin condición; `ConexionSection`
+  y `SucursalSection` solo se renderizan cuando el modo seleccionado no es
+  `LOCAL` — criterio: revisión de código + `./gradlew build` en verde.
+  Verificado: `if (uiState.modo != BackendMode.LOCAL) { ConexionSection(...);
+  SucursalSection(...) }` en `ConfiguracionScreen`, `ModoSection` fuera del
+  `if`. `./gradlew build` en verde.
+- [x] Campo "IP" renombrado a "IP / Servidor"; campo "Puerto" renombrado a
+  "Puerto del servidor"; campo "Nombre de base de datos" eliminado de la
+  UI, de `DeviceConfig`, `ConfiguracionPreferences`
+  (`KEY_NOMBRE_BASE_DATOS`, `setConexion`) y de `ConfiguracionUiState` —
+  criterio: `./gradlew testDebugUnitTest` en verde tras actualizar
+  `ConfiguracionPreferencesTest`. `jvm-tests` Verificado: `setConexion(ip,
+  puerto)` sin tercer parámetro; `ConfiguracionPreferencesTest` y
+  `ChatViewModelTest` actualizados; `./gradlew :app:testDebugUnitTest` en
+  verde.
+- [x] `NetworkModule` deja de usar un `BASE_URL` hardcodeado: el
+  `OkHttpClient`/`Retrofit` toman la IP/Puerto guardados en
+  `ConfiguracionPreferences` (mecanismo dinámico, ej. interceptor que
+  reescribe host/puerto desde el valor observado de `deviceConfig`, sin
+  requerir reiniciar la app) — criterio: prueba unitaria confirma que
+  cambiar la IP/Puerto guardado cambia el host efectivo de una llamada.
+  `jvm-tests` Verificado: `DynamicHostInterceptor` (`@Singleton`, lee
+  `deviceConfig.first()` vía `runBlocking` en el hilo de dispatch de OkHttp;
+  no-op si no hay IP/puerto guardados, deja el host del `BASE_URL` que ahora
+  solo aporta esquema y path base). `DynamicHostInterceptorTest`: 2 pruebas
+  (reescribe host/puerto guardados; passthrough sin conexión guardada).
+- [x] Sección "Permisos (simulados)" eliminada (`PermisosSection`,
+  `PermisoModulo`, `permisosSimuladosDeEjemplo` en
+  `ConfiguracionViewModel`/`ConfiguracionScreen`) — criterio: `./gradlew
+  build` en verde, sin referencias residuales. No requiere reemplazo: la
+  administración real de permisos ya es accesible desde la pantalla
+  principal (botón "Usuarios", Parte 13). Verificado: sin referencias
+  residuales a `PermisoModulo`/`permisosSimulados` en `app/src`; `./gradlew
+  build` en verde.
+- [x] Botón "Importar catálogo" movido antes de `AsistenteIaSection` —
+  criterio: revisión de código confirma el nuevo orden. Verificado: el
+  `Button` de "Importar catálogo" está entre el bloque condicional
+  Conexión/Sucursal y `AsistenteIaSection`.
+- [x] Botón "Cerrar sesión" eliminado de `ConfiguracionScreen` (duplicado
+  del de `HelloScreen`) — criterio: `./gradlew build` en verde; un solo
+  botón "Cerrar sesión" en toda la app. Verificado: `ConfiguracionViewModel
+  .logout()` y la prueba `logout delegates to the session manager`
+  eliminados; el único botón "Cerrar sesión" queda en `HelloScreen`.
+- [x] `ModeAwareSucursalRepository` usa `RemoteSucursalRepository` también
+  en `LOCAL_CON_SINCRONIZACION` (no solo en `REMOTO`), alineado con el
+  diseño ya aprobado en la Parte 3 ("en modo remoto o
+  local-con-sincronización la trae con `GET /sucursales`") — criterio:
+  prueba unitaria nueva en `ModeAwareSucursalRepositoryTest` cubre
+  `LOCAL_CON_SINCRONIZACION`. `jvm-tests` Verificado: `when` reagrupado a
+  `LOCAL -> local` / `REMOTO, LOCAL_CON_SINCRONIZACION -> remote`; prueba
+  nueva `LOCAL_CON_SINCRONIZACION also reads the sucursal catalog from the
+  backend`.
+- [x] Instalado y verificado en el Xiaomi en los tres modos — Modo aparece
+  primero; en LOCAL no se ven Conexión ni Sucursal; en REMOTO y
+  LOCAL_CON_SINCRONIZACION sí, y la lista de sucursales llega del backend
+  en ambos modos; cambiar IP/Puerto y guardar hace que la app hable
+  efectivamente con ese backend (probar apuntando a un puerto distinto al
+  hardcodeado); "Importar catálogo" aparece antes de "Asistente de IA"; no
+  hay sección Permisos ni botón "Cerrar sesión" en Configuración —
+  `needs-device`. Confirmado por el usuario el 2026-08-28: los tres modos
+  OK en el Xiaomi.
+
+**H. Corrección: sucursalIdSeleccionada no se reconcilia al cambiar de modo** (POS-82)
+
+*(Cierra el bug documentado en el Backlog de este plan, encontrado durante
+la verificación needs-device de las sub-partes E/F; se elimina de ahí al
+agregar esta sub-parte.)*
+
+- [x] Propuesta de fix presentada y aprobada — criterio: aprobación
+  explícita registrada antes de implementar. `needs-approval` Alcance: al
+  resolver la lista de sucursales en modo REMOTO o
+  LOCAL_CON_SINCRONIZACION (`ModeAwareSucursalRepository`), si
+  `sucursalIdSeleccionada` no aparece en esa lista, el fallback ya usado
+  para poblar el dropdown (`sucursales.firstOrNull()`) se persiste
+  automáticamente de vuelta en `ConfiguracionPreferences` — no solo se usa
+  para el estado en memoria de `ConfiguracionScreen`. **Aprobado
+  2026-08-28**: la reconciliación vive en el `combine(deviceConfig,
+  observeSucursales())` de `ConfiguracionViewModel` (que ya calcula ese
+  fallback), acotada a `modo != LOCAL`; sin loop porque al persistir el
+  `find` acierta y no reescribe.
+- [x] Persistencia automática implementada — criterio: prueba unitaria en
+  `ModeAwareSucursalRepositoryTest`/`ConfiguracionViewModelTest` simula un
+  `sucursalIdSeleccionada` local ausente en la lista remota tras un cambio
+  de modo y confirma que `ConfiguracionPreferences.deviceConfig
+  .sucursalIdSeleccionada` queda actualizado sin intervención manual del
+  usuario. `jvm-tests` Verificado: 2 pruebas nuevas en
+  `ConfiguracionViewModelTest` (non-LOCAL reconcilia al fallback; LOCAL deja
+  el id intacto); `./gradlew :app:testDebugUnitTest` en verde.
+- [x] Verificado en el Xiaomi: reproducir el escenario original (operar en
+  LOCAL, cambiar a REMOTO sin tocar el dropdown de sucursal) y confirmar
+  que una escritura remota (ej. un retiro) ya no falla con
+  `ForeignKeyViolationError`. `needs-device`. Confirmado por el usuario el
+  2026-08-28: retiro remoto OK sin error de FK tras cambiar de LOCAL a
+  REMOTO sin tocar el dropdown.
+
+**I. Caja: historial limitado a 7 días y exportación de cortes/retiros por periodo** (POS-83)
+
+- [x] Propuesta presentada y aprobada — criterio: aprobación explícita
+  registrada antes de implementar. `needs-approval` Contenido de la
+  propuesta:
+  - El historial de `CajaScreen` (cortes y retiros) se filtra a los
+    últimos 7 días (`fechaFin`/`fecha >= ahora - 7 días`) sobre el mismo
+    `observeCortes`/`observeRetiros` reactivo ya existente (sub-parte F) —
+    sin tocar `TAMANIO_PAGINA_HISTORIAL = 50` en `RemoteCajaRepository`,
+    que ya cubre holgadamente una semana de operación típica.
+  - Nuevo botón "Exportar cortes" en `CajaScreen` que abre un diálogo de
+    periodo (mismo date/time picker que ya usa el corte final), con
+    periodo por defecto = últimos 7 días, editable a cualquier rango.
+  - Al confirmar, genera un CSV con los cortes y los retiros de efectivo
+    del periodo elegido (no acotado a los 7 días de la vista) y lo
+    comparte vía el mismo share sheet que usa la exportación de
+    Inventario (`InventarioExportManager`, Parte 9).
+
+  **Aprobado 2026-08-28** con estas decisiones: (a) filtro de 7 días
+  client-side en el collector del `init{}` de `CajaViewModel` (cortes por
+  `fechaFin`, retiros por `fecha`), sin cambiar firmas de
+  `observeCortes`/`observeRetiros`; (b) CSV: **un solo archivo, dos
+  bloques** — `CORTES` (columnas: `id, tipo, fecha_inicio, fecha_fin,
+  total_ventas, total_efectivo, total_tarjeta, total_retiros,
+  monto_esperado, monto_contado, diferencia`), línea en blanco, `RETIROS`
+  (`id, fecha, monto, motivo`); (c) `CajaExportManager` nuevo que espeja
+  `InventarioExportManager` (FileProvider, `cacheDir/exports`, filename
+  `caja-cortes-<timestamp>.csv`), sin tocar el módulo de Inventario;
+  (d) implementación en 3 checkpoints: contrato+backend+pytest / repos
+  android+CSV+jvm-tests / UI wiring+build, luego el `needs-device`.
+- [x] `CajaRepository`/`RetiroEfectivoRepository` ganan
+  `obtenerCortesDelPeriodo`/`obtenerRetirosDelPeriodo` (suspend, un solo
+  disparo, por rango de fechas) — criterio: `./gradlew testDebugUnitTest`
+  en verde. `jvm-tests` `LocalCajaRepository`/`LocalRetiroEfectivoRepository`
+  implementan con una query Room nueva, mismo patrón que
+  `VentaDao.getVentasDelPeriodo`/`RetiroDao.getRetirosDelPeriodo` (ya
+  usadas por `calcularTotales`). Verificado: `CajaDao.getCortesDelPeriodo`
+  nueva (`fechaFin BETWEEN`, orden ascendente para el CSV cronológico);
+  `LocalRetiroEfectivoRepository` reutiliza la `RetiroDao.getRetirosDelPeriodo`
+  ya existente y la ordena por `fecha`. `./gradlew :app:testDebugUnitTest`
+  en verde.
+- [x] `docs/api-contract.md` actualizado: `GET /cortes-caja` y `GET
+  /retiros-efectivo` (secciones 8.4/8.5) ganan parámetros opcionales
+  `desde`/`hasta` — criterio: sección revisada antes de tocar código
+  (CLAUDE.md §9). Verificado: secciones 8.4/8.5 documentan `desde`/`hasta`
+  (ISO-8601, rango inclusivo sobre `fecha_fin` y `fecha` respectivamente;
+  omitidos = sin filtro, comportamiento previo).
+- [x] Rutas FastAPI filtran por `desde`/`hasta` cuando se envían —
+  criterio: `pytest backend/tests/test_caja.py` en verde, con casos con y
+  sin filtro de fecha. Verificado: `list_cortes_caja`/`list_retiros_efectivo`
+  agregan `CorteCaja.fecha_fin`/`RetiroEfectivo.fecha` a los filtros solo si
+  el parámetro llega; 2 pruebas nuevas (`test_list_cortes_caja_filtra_por
+  _rango_de_fechas`, `test_list_retiros_efectivo_filtra_por_rango_de_fechas`);
+  `pytest` completo del backend en verde (60 pruebas).
+- [x] `RemoteCajaRepository`/`RemoteRetiroEfectivoRepository` implementan
+  los métodos de periodo contra los parámetros nuevos — criterio:
+  `./gradlew testDebugUnitTest` mockeando Retrofit. `jvm-tests` Verificado:
+  `CajaApiService.getCortes`/`RetiroApiService.getRetiros` ganan
+  `@Query("desde")`/`@Query("hasta")` opcionales (`String? = null`, Retrofit
+  los omite si son null); los métodos de periodo recorren páginas de 100
+  hasta juntar `total` (patrón `InventarioViewModel
+  .obtenerTodosLosItemsFiltrados`, porque un mes puede exceder el
+  `TAMANIO_PAGINA_HISTORIAL = 50`) y ordenan ascendente igual que el local.
+- [x] `ModeAwareCajaRepository`/`ModeAwareRetiroEfectivoRepository`
+  exponen los métodos de periodo resolviendo local/remoto según
+  `BackendMode` — criterio: prueba unitaria confirma el dispatch correcto.
+  `jvm-tests` Verificado: mismo `when` sobre `deviceConfig.backendMode` que
+  el resto de métodos (`LOCAL`/`LOCAL_CON_SINCRONIZACION` → local, `REMOTO`
+  → remote); 1 prueba de dispatch nueva por repositorio en
+  `ModeAwareCajaRepositoryTest`/`ModeAwareRetiroEfectivoRepositoryTest`.
+- [x] Generador de CSV (nuevo, mismo patrón que `InventarioCsvExporter`)
+  produce un archivo con los cortes y los retiros del periodo — criterio:
+  prueba unitaria del formato exacto del CSV generado. `jvm-tests`
+  Verificado: `CajaCsvExporter` (objeto en `com.pdv.pos.caja.export`) —
+  un archivo, bloque `CORTES` (11 columnas) + línea en blanco + bloque
+  `RETIROS` (4 columnas), fechas ISO-8601 UTC, montos `toPlainString`,
+  nulos vacíos, escape RFC 4180 básico; `CajaExportManager` espeja
+  `InventarioExportManager` (FileProvider, `cacheDir/exports`,
+  `caja-cortes-<timestamp>.csv`). `CajaCsvExporterTest`: 2 pruebas (formato
+  exacto con corte sin contar / retiro con coma en el motivo; caso vacío
+  deja solo encabezados).
+- [x] `CajaViewModel`/`CajaScreen` conectan el botón "Exportar" al flujo
+  real (selección de periodo → fetch → generar CSV → compartir) —
+  criterio: `./gradlew build` en verde. Verificado: `CajaViewModel` filtra
+  `historialCortes`/`historialRetiros` a `DIAS_HISTORIAL_MS = 7 días` en los
+  dos collectors; `onExportarClick`/`onConfirmarExportarClick` (periodo por
+  defecto = últimos 7 días, editable) hacen fetch de ambos repos por periodo
+  → `CajaExportManager` → `archivoExportado`; `CajaScreen` gana botón
+  "Exportar cortes" + `ExportarDialog` (reusa `SelectorFechaHora`) y un
+  `LaunchedEffect` que abre el share sheet (`Intent.ACTION_SEND`, chooser
+  "Exportar cortes de caja"). 3 pruebas nuevas en `CajaViewModelTest`
+  (filtro de 7 días descarta cortes viejos; flujo de exportación expone el
+  archivo y cierra el diálogo). `./gradlew build` en verde (compila, lint,
+  pruebas debug y release).
+- [x] Instalado y verificado en el Xiaomi en los tres modos: el historial
+  muestra solo los últimos 7 días, y exportar un periodo distinto (ej. el
+  mes completo) genera un CSV correcto con cortes y retiros de ese rango
+  — `needs-device`. Confirmado por el usuario el 2026-08-28.
+
+### Decisiones abiertas
+
+- [x] Alcance de la importación CSV: ¿script de prueba de una sola vez, o
+  función real de la app reutilizable para altas masivas? **Decidido**
+  (2026-08-23): función real de la app, accesible desde Configuración —
+  ver sub-parte A.
+- [x] Disparador de exportación CSV vs. respuesta numérica de la IA en
+  consultas de inventario. **Decidido** (2026-08-23): pedido explícito de
+  inventario completo o una respuesta que listaría más de 20 artículos →
+  exportar CSV (compartir archivo); consulta parcial/agregada (total
+  general, de un artículo, o de una categoría) → la app calcula y devuelve
+  un número exacto, nunca el LLM — ver sub-parte D.
+- [x] Alcance del cierre del gap de cortes/retiros de caja por IA.
+  **Decidido** (2026-08-23): se implementa tal como estaba evaluado en el
+  Backlog (`observeCortes`/`observeRetiros`, patrón `ModeAware*`) — ver
+  sub-parte F.
+- [x] Multi-franquicia: ¿un backend por franquicia (deployment separado) o
+  un backend compartido multi-tenant? **Decidido** (2026-08-25): un backend
+  por franquicia — cada franquicia corre su propio stack Docker (backend +
+  Postgres propios); los dispositivos de cada franquicia apuntan su
+  IP/Puerto (sub-parte G) al backend correspondiente. Aislamiento total sin
+  cambio de esquema ni tabla de tenant. La alternativa (una sola Postgres
+  sirviendo varias franquicias vía `tenant_id`) se evaluó y no se elige por
+  ahora — ver Backlog. **Nota de concurrencia**: al ser procesos/contenedores
+  separados por franquicia, no hay estado compartido (threads, event loop,
+  pool de conexiones a BD) entre franquicias — nada nuevo que sincronizar
+  entre ellas. La concurrencia *dentro* de una franquicia sigue como ya está
+  documentado en `CLAUDE.md` §4 (Uvicorn en dev, Gunicorn+Uvicorn workers en
+  prod), sin cambios. Esto era justamente el riesgo de la alternativa
+  descartada (una sola Postgres/pool compartido entre tenants).
+
+---
+
+## Parte 19: Panel de revisión manual de conflictos de sincronización
+
+*(Cierra el punto ya mencionado en el Backlog de este plan desde la Parte
+6; se elimina de ahí al agregar esta Parte.)*
+
+Pantalla de administración (accesible desde Configuración, mismo criterio
+de acceso que "Usuarios") que lista los registros de `sync_conflicts`
+(Parte 3) generados por `LastWriteWinsSyncEngine`/`EventoAditivoCombiner`
+(Parte 6) — incluyendo los resueltos automáticamente — para que un
+administrador pueda auditar qué pasó durante la sincronización.
+
+### Checklist
+
+**1. UI** (POS-XX)
+- [ ] Propuesta de pantalla (lista de conflictos con entidad, valores
+  local/remoto/resuelto, política aplicada, si se resolvió
+  automáticamente) presentada y aprobada — criterio: aprobación explícita
+  registrada antes de implementar. `needs-approval`
+- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
+  `./gradlew build` en verde y la pantalla es navegable desde
+  Configuración.
+- [ ] Instalado y verificado en el Xiaomi — `needs-device`.
+
+**2. Repositorio local** (POS-XX)
+- [ ] `SyncConflictRepository` (interfaz) en `domain/repository/` —
+  criterio: compila sin Room ni Retrofit.
+- [ ] `LocalSyncConflictRepository` (Room, sobre `SyncConflictDao` ya
+  existente desde la Parte 6) — criterio: `./gradlew testDebugUnitTest`
+  en verde. `jvm-tests`
+
+**3. Repositorio remoto** (POS-XX)
+- [ ] `docs/api-contract.md` actualizado con el endpoint de listado de
+  conflictos — criterio: sección nueva, revisada antes de tocar código
+  (CLAUDE.md §9).
+- [ ] Ruta FastAPI + `RemoteSyncConflictRepository` (Retrofit) — criterio:
+  `pytest`/`./gradlew testDebugUnitTest` en verde. `jvm-tests`
+
+**4. Wiring** (POS-XX)
+- [ ] `ViewModel` conectado según `BackendMode` (Parte 6), mismo patrón
+  `ModeAware*` que el resto de módulos — criterio: prueba con estados
+  mockeados. `jvm-tests`
+- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`.
+
+### Decisiones abiertas
+
+- [ ] Alcance de la acción del administrador sobre un conflicto: ¿solo
+  visualizar (auditoría de solo lectura), o permitir revertir/forzar un
+  valor distinto al ya resuelto? Impacta si el módulo escribe algo además
+  de leer `sync_conflicts`.
+- [ ] Ubicación en la navegación: ¿pantalla propia accesible desde
+  Configuración, o sub-sección dentro de una pantalla existente?
+
+---
+
+## Parte 20: RAG para el chat de IA
+
+*(Cierra el punto ya mencionado en el Backlog de este plan desde la Parte
+16; se elimina de ahí al agregar esta Parte.)*
+
+Reemplaza el contexto de FAQ estático usado hoy por `ChatViewModel`/
+`PromptSistema` (Parte 16) por una indexación real de `docs/` del proyecto
+más una fuente de documentación externa combinada, para mejorar la calidad
+de las respuestas del asistente en modo local con conexión.
+
+Esta Parte tiene decisiones de arquitectura no resueltas (CLAUDE.md §9)
+que deben cerrarse antes de detallar el checklist de sub-pasos con el
+mismo nivel de concreción que el resto del documento — se detalla al
+retomar esta Parte vía `/parte 20`.
+
+### Decisiones abiertas
+
+- [ ] Almacén vectorial: ¿embeddings + índice on-device (sin dependencia de
+  red para la búsqueda), o un servicio remoto (pgvector en el Postgres ya
+  existente, u otro)? Condiciona si esta Parte funciona en modo LOCAL o
+  solo en modo REMOTO/LOCAL_CON_SINCRONIZACION.
+- [ ] Proveedor de embeddings: ¿el mismo proveedor de IA ya configurado
+  (Parte 14, DeepSeek u otro) si expone un endpoint de embeddings, o uno
+  dedicado? Impacta costo y si depende de conectividad.
+- [ ] Fuente de documentación externa a combinar con `docs/`: ¿cuál
+  fuente concretamente, y con qué frecuencia se re-indexa?
+- [ ] Alcance de la Parte: ¿reemplaza por completo el contexto de FAQ
+  estático de la Parte 16, o convive con él como fallback sin
+  conectividad/índice disponible?
+
+### Checklist
+
+- [ ] Pendiente de detallar — bloqueado por las decisiones abiertas de
+  arriba.
+
+---
+
 ## Backlog (trabajo futuro, fuera del alcance actual)
 
-- **RAG para el chat de IA**: indexar `docs/` del proyecto más una fuente de
-  documentación externa combinada, para mejorar las respuestas de
-  funcionalidad de la app en modo local con conexión, reemplazando el
-  contexto de FAQ estático usado en la Parte 16. No se implementa en esta
-  fase.
-- **Panel de revisión manual de conflictos de sincronización** (mencionado
-  en la Parte 6, módulo Configuración).
-- **Lista reactiva de cortes/retiros de caja**: `CajaRepository`/
-  `RetiroEfectivoRepository` no exponen ninguna consulta para leer
-  cortes/retiros ya persistidos — `CajaScreen` muestra un historial que
-  vive solo en memoria de `CajaViewModel` (crece únicamente con lo
-  guardado desde esa misma sesión de pantalla). Hallazgo de pruebas en el
-  Xiaomi de la Parte 16 (un corte hecho vía IA, desde `ChatViewModel`,
-  nunca aparecía en `CajaScreen`), pero es un gap preexistente de la Parte
-  10 — ya pasaría con un corte manual si se cierra y reabre la pantalla.
-  Propuesta: `observeCortes(sucursalId)`/`observeRetiros(sucursalId)`
-  reales (Room Flow local + contraparte remota, patrón `ModeAware*`),
-  `CajaViewModel` los observa en vez de mantener listas locales. Detalle
-  completo en Parte 16, sub-paso 5.
+- **Multi-tenancy compartido (alternativa no elegida)**: en vez de un
+  backend por franquicia, un solo backend/Postgres podría servir a varias
+  franquicias separadas lógicamente por un `tenant_id` en
+  `sucursales`/`articulos`/`ventas`/etc., con autenticación consciente de
+  tenant y filtrado por tenant en cada query. Evaluado el 2026-08-25 junto
+  con la Parte 18 sub-parte G y descartado por ahora en favor de un
+  deployment Docker separado por franquicia (más simple, aislamiento
+  total, sin migración de esquema). Reconsiderar solo si administrar N
+  deployments se vuelve operativamente costoso.
 
 ---
 

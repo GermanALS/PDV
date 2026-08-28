@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -23,10 +24,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.domain.model.Articulo
 import com.pdv.pos.ui.EditableDropdownField
+import com.pdv.pos.ui.MonedaVisualTransformation
 import com.pdv.pos.venta.BarcodeScannerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -206,12 +209,16 @@ private fun ArticuloNuevoSection(uiState: EntradaUiState, viewModel: EntradaView
             value = uiState.precioVenta,
             onValueChange = viewModel::onPrecioVentaChange,
             label = { Text("Precio de venta") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            visualTransformation = MonedaVisualTransformation,
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = uiState.costo,
             onValueChange = viewModel::onCostoChange,
             label = { Text("Costo (opcional)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            visualTransformation = MonedaVisualTransformation,
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -232,6 +239,7 @@ private fun DatosEntradaSection(
                 value = cantidad,
                 onValueChange = onCantidadChange,
                 label = { Text("Cantidad") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.weight(1f),
             )
             EditableDropdownField(

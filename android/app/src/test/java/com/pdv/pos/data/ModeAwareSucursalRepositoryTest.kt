@@ -81,4 +81,46 @@ class ModeAwareSucursalRepositoryTest {
 
         assertEquals("Sucursal Remota", repository.observeSucursales().first().single().nombre)
     }
+
+    @Test
+    fun `LOCAL_CON_SINCRONIZACION also reads the sucursal catalog from the backend`(@TempDir tempDir: File) = runTest {
+        val localDao = FakeSucursalDao(
+            listOf(
+                SucursalEntity(
+                    localId = "local-1",
+                    remoteId = null,
+                    nombre = "Sucursal Local",
+                    direccion = null,
+                    activa = true,
+                    updatedAt = 0,
+                    isSynced = false,
+                    deletedAt = null,
+                )
+            )
+        )
+        val api = mockk<SucursalApiService>()
+        coEvery { api.getSucursales() } returns SucursalListResponseDto(
+            items = listOf(
+                SucursalDto(
+                    id = "remote-1",
+                    nombre = "Sucursal Remota",
+                    activa = true,
+                    updatedAt = "2026-08-18T12:00:00Z",
+                )
+            ),
+            page = 1,
+            pageSize = 20,
+            total = 1,
+        )
+
+        val preferences = preferences(tempDir)
+        preferences.setBackendMode(BackendMode.LOCAL_CON_SINCRONIZACION)
+        val repository = ModeAwareSucursalRepository(
+            local = LocalSucursalRepository(localDao),
+            remote = RemoteSucursalRepository(api),
+            preferences = preferences,
+        )
+
+        assertEquals("Sucursal Remota", repository.observeSucursales().first().single().nombre)
+    }
 }

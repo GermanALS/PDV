@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -49,6 +50,7 @@ class InventarioViewModel @Inject constructor(
     private val preferences: ConfiguracionPreferences,
     private val sessionManager: SessionManager,
     private val exportManager: InventarioExportManager,
+    private val inventarioRefreshSignal: InventarioRefreshSignal,
 ) : ViewModel() {
 
     private val parametros = MutableStateFlow(ParametrosConsulta())
@@ -59,7 +61,11 @@ class InventarioViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            combine(sucursalId, parametros) { id, params -> id to params }
+            // onStart(emit Unit) siembra un primer valor para que combine()
+            // no espere una escritura externa antes de la primera consulta
+            // (PLAN.md Parte 18, sub-parte E) - no-op en modo LOCAL, donde el
+            // Flow de Room ya se refresca solo ante cualquier escritura.
+            combine(sucursalId, parametros, inventarioRefreshSignal.refrescos.onStart { emit(Unit) }) { id, params, _ -> id to params }
                 .flatMapLatest { (id, params) ->
                     if (id == null) {
                         flowOf(PaginaInventario(items = emptyList(), pagina = params.pagina, tamanioPagina = params.tamanioPagina, total = 0))

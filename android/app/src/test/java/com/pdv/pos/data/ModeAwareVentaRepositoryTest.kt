@@ -11,11 +11,14 @@ import com.pdv.pos.data.remote.dto.VentaDto
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Venta
 import com.pdv.pos.domain.model.VentaLinea
+import com.pdv.pos.inventario.InventarioRefreshSignal
 import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -85,7 +88,12 @@ class ModeAwareVentaRepositoryTest {
         val remote = RemoteVentaRepository(api, appLogger)
 
         val preferences = preferences(tempDir)
-        val repository = ModeAwareVentaRepository(local = local, remote = remote, preferences = preferences)
+        val repository = ModeAwareVentaRepository(
+            local = local,
+            remote = remote,
+            preferences = preferences,
+            inventarioRefreshSignal = InventarioRefreshSignal(),
+        )
 
         repository.registrarVenta(ventaDeEjemplo())
         coVerify(exactly = 1) { dao.insertVentaCompleta(any(), any(), any(), any()) }
@@ -96,5 +104,29 @@ class ModeAwareVentaRepositoryTest {
 
         coVerify(exactly = 1) { api.createVenta(any()) }
         coVerify(exactly = 1) { dao.insertVentaCompleta(any(), any(), any(), any()) }
+    }
+
+    // PLAN.md Parte 18, sub-parte E: hallazgo de causa raiz de esta misma
+    // sub-parte - el gap de refresco de Inventario no era exclusivo de
+    // Entrada, Venta tambien decrementa inventario.cantidad.
+    @Test
+    fun `registrarVenta exitoso emite la señal de refresco de inventario`(@TempDir tempDir: File) = runTest {
+        val dao = mockk<VentaDao>()
+        coEvery { dao.insertVentaCompleta(any(), any(), any(), any()) } returns Unit
+        val appLogger = mockk<AppLogger>()
+        coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
+        val local = LocalVentaRepository(dao, appLogger)
+        val remote = mockk<RemoteVentaRepository>(relaxed = true)
+        val signal = InventarioRefreshSignal()
+        val repository = ModeAwareVentaRepository(
+            local = local,
+            remote = remote,
+            preferences = preferences(tempDir),
+            inventarioRefreshSignal = signal,
+        )
+
+        repository.registrarVenta(ventaDeEjemplo())
+
+        withTimeout(1000) { signal.refrescos.first() }
     }
 }

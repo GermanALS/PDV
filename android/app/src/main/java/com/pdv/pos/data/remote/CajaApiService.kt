@@ -2,6 +2,7 @@ package com.pdv.pos.data.remote
 
 import com.pdv.pos.data.remote.dto.CorteCajaCreateRequestDto
 import com.pdv.pos.data.remote.dto.CorteCajaDto
+import com.pdv.pos.data.remote.dto.CorteCajaListResponseDto
 import com.pdv.pos.data.remote.dto.TotalesCorteDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -18,4 +19,13 @@ interface CajaApiService {
         @Query("fecha_inicio") fechaInicio: String,
         @Query("fecha_fin") fechaFin: String,
     ): TotalesCorteDto
+
+    @GET("cortes-caja")
+    suspend fun getCortes(
+        @Query("sucursal_id") sucursalId: String,
+        @Query("page") page: Int,
+        @Query("page_size") pageSize: Int,
+        @Query("desde") desde: String? = null,
+        @Query("hasta") hasta: String? = null,
+    ): CorteCajaListResponseDto
 }

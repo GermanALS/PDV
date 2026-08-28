@@ -1,5 +1,18 @@
 package com.pdv.pos.ia
 
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.pdv.pos.caja.CajaRefreshSignal
+import com.pdv.pos.config.ConfiguracionPreferences
+import com.pdv.pos.data.ModeAwareCajaRepository
+import com.pdv.pos.data.ModeAwareEntradaRepository
+import com.pdv.pos.data.local.CajaDao
+import com.pdv.pos.data.local.EntradaDao
+import com.pdv.pos.data.local.LocalCajaRepository
+import com.pdv.pos.data.local.LocalEntradaRepository
+import com.pdv.pos.data.local.RetiroDao
+import com.pdv.pos.data.local.VentaDao
+import com.pdv.pos.data.remote.RemoteCajaRepository
+import com.pdv.pos.data.remote.RemoteEntradaRepository
 import com.pdv.pos.domain.model.Articulo
 import com.pdv.pos.domain.model.Entrada
 import com.pdv.pos.domain.model.InventarioItem
@@ -10,13 +23,19 @@ import com.pdv.pos.domain.repository.DevolucionRepository
 import com.pdv.pos.domain.repository.EntradaRepository
 import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
+import com.pdv.pos.inventario.BuscadorArticuloExistente
+import com.pdv.pos.inventario.InventarioRefreshSignal
+import com.pdv.pos.inventario.export.ArchivoExportado
+import com.pdv.pos.inventario.export.InventarioExportManager
 import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -72,19 +91,50 @@ class EjecutorAccionesIaIntegrationTest {
         return repo
     }
 
+    // Repositorio de stock con categorias reales y busqueda LIKE sobre
+    // nombre/sku/codigoBarras (mismo contrato que
+    // inventarioRepositoryConArticulos, pero con cantidad e InventarioItem
+    // completos - las pruebas de exportar_inventario/consultar_stock
+    // necesitan sumar/filtrar por categoria real, no solo confirmar
+    // coincidencia).
+    private fun inventarioRepositoryDeStock(
+        items: List<InventarioItem>,
+        categorias: List<String> = items.mapNotNull { it.articulo.categoria }.distinct(),
+    ): InventarioRepository {
+        val repo = mockk<InventarioRepository>()
+        every { repo.observarCategorias() } returns flowOf(categorias)
+        every { repo.observarInventario(any(), any(), any(), any()) } answers {
+            val termino = secondArg<String>()
+            val filtrados = if (termino.isBlank()) {
+                items
+            } else {
+                items.filter {
+                    it.articulo.nombre.contains(termino, ignoreCase = true) ||
+                        it.articulo.sku.contains(termino, ignoreCase = true) ||
+                        (it.articulo.codigoBarras?.contains(termino, ignoreCase = true) == true)
+                }
+            }
+            flowOf(PaginaInventario(items = filtrados, pagina = 1, tamanioPagina = 100, total = filtrados.size))
+        }
+        return repo
+    }
+
     private fun ejecutor(
         entradaRepository: EntradaRepository = mockk(relaxed = true),
         cajaRepository: CajaRepository = mockk(relaxed = true),
         retiroEfectivoRepository: RetiroEfectivoRepository = mockk(relaxed = true),
         devolucionRepository: DevolucionRepository = mockk(relaxed = true),
         inventarioRepository: InventarioRepository = inventarioRepositorySinCoincidencias(),
+        inventarioExportManager: InventarioExportManager = mockk(relaxed = true),
         appLogger: AppLogger,
     ) = EjecutorAccionesIa(
         entradaRepository,
         cajaRepository,
         retiroEfectivoRepository,
         devolucionRepository,
+        BuscadorArticuloExistente(inventarioRepository),
         inventarioRepository,
+        inventarioExportManager,
         appLogger,
         json,
     )
@@ -474,5 +524,298 @@ class EjecutorAccionesIaIntegrationTest {
                 },
             )
         }
+    }
+
+    // PLAN.md Parte 18, sub-parte D: exportar_inventario/consultar_stock son
+    // de solo lectura (nunca requieren tarjeta de confirmacion, ver
+    // ChatViewModel) pero igual pasan por el mismo chequeo de permiso que el
+    // resto de las acciones, contra el modulo "inventario".
+    @Test
+    fun `exportar_inventario sin filtro exporta el catalogo completo y devuelve el archivo para compartir`(
+        @TempDir tempDir: File,
+    ) = runTest {
+        val coca = InventarioItem(
+            Articulo(id = "a1", sku = "SKU-1", nombre = "Coca 2L", unidadMedida = "pieza", precioVenta = BigDecimal("50.00"), categoria = "Bebidas"),
+            BigDecimal("10"),
+            null,
+        )
+        val papas = InventarioItem(
+            Articulo(id = "a2", sku = "SKU-2", nombre = "Papas fritas", unidadMedida = "pieza", precioVenta = BigDecimal("20.00"), categoria = "Snacks"),
+            BigDecimal("5"),
+            null,
+        )
+        val inventarioRepository = inventarioRepositoryDeStock(listOf(coca, papas))
+        val exportManager = mockk<InventarioExportManager>()
+        val archivo = ArchivoExportado(mockk(relaxed = true), "text/csv")
+        coEvery { exportManager.exportarCsv(listOf(coca, papas)) } returns archivo
+
+        val ejecutor = ejecutor(
+            inventarioRepository = inventarioRepository,
+            inventarioExportManager = exportManager,
+            appLogger = AppLogger(tempDir),
+        )
+        val accion = AccionIaDto(modulo = "inventario", tipo = "exportar_inventario", parametros = buildJsonObject { })
+
+        val resultado = ejecutor.ejecutar(accion, setOf("inventario"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        assertEquals(archivo, (resultado as ResultadoAccionIa.Ejecutada).archivoParaCompartir)
+        coVerify { exportManager.exportarCsv(listOf(coca, papas)) }
+    }
+
+    @Test
+    fun `exportar_inventario con filtro que coincide con una categoria exporta solo esa categoria`(
+        @TempDir tempDir: File,
+    ) = runTest {
+        val coca = InventarioItem(
+            Articulo(id = "a1", sku = "SKU-1", nombre = "Coca 2L", unidadMedida = "pieza", precioVenta = BigDecimal("50.00"), categoria = "Bebidas"),
+            BigDecimal("10"),
+            null,
+        )
+        val papas = InventarioItem(
+            Articulo(id = "a2", sku = "SKU-2", nombre = "Papas fritas", unidadMedida = "pieza", precioVenta = BigDecimal("20.00"), categoria = "Snacks"),
+            BigDecimal("5"),
+            null,
+        )
+        val inventarioRepository = inventarioRepositoryDeStock(listOf(coca, papas))
+        val exportManager = mockk<InventarioExportManager>()
+        val archivo = ArchivoExportado(mockk(relaxed = true), "text/csv")
+        coEvery { exportManager.exportarCsv(listOf(coca)) } returns archivo
+
+        val ejecutor = ejecutor(
+            inventarioRepository = inventarioRepository,
+            inventarioExportManager = exportManager,
+            appLogger = AppLogger(tempDir),
+        )
+        val accion = AccionIaDto(
+            modulo = "inventario",
+            tipo = "exportar_inventario",
+            parametros = buildJsonObject { put("filtro", "Bebidas") },
+        )
+
+        val resultado = ejecutor.ejecutar(accion, setOf("inventario"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        coVerify { exportManager.exportarCsv(listOf(coca)) }
+    }
+
+    @Test
+    fun `exportar_inventario con filtro que no coincide con ninguna categoria lo trata como texto de busqueda`(
+        @TempDir tempDir: File,
+    ) = runTest {
+        val coca = InventarioItem(
+            Articulo(id = "a1", sku = "SKU-1", nombre = "Coca 2L", unidadMedida = "pieza", precioVenta = BigDecimal("50.00"), categoria = "Bebidas"),
+            BigDecimal("10"),
+            null,
+        )
+        val papas = InventarioItem(
+            Articulo(id = "a2", sku = "SKU-2", nombre = "Papas fritas", unidadMedida = "pieza", precioVenta = BigDecimal("20.00"), categoria = "Snacks"),
+            BigDecimal("5"),
+            null,
+        )
+        val inventarioRepository = inventarioRepositoryDeStock(listOf(coca, papas))
+        val exportManager = mockk<InventarioExportManager>()
+        val archivo = ArchivoExportado(mockk(relaxed = true), "text/csv")
+        coEvery { exportManager.exportarCsv(listOf(coca)) } returns archivo
+
+        val ejecutor = ejecutor(
+            inventarioRepository = inventarioRepository,
+            inventarioExportManager = exportManager,
+            appLogger = AppLogger(tempDir),
+        )
+        val accion = AccionIaDto(
+            modulo = "inventario",
+            tipo = "exportar_inventario",
+            parametros = buildJsonObject { put("filtro", "Coca") },
+        )
+
+        val resultado = ejecutor.ejecutar(accion, setOf("inventario"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        coVerify { exportManager.exportarCsv(listOf(coca)) }
+    }
+
+    @Test
+    fun `exportar_inventario sin permiso de inventario se rechaza sin exportar nada`(@TempDir tempDir: File) = runTest {
+        val exportManager = mockk<InventarioExportManager>()
+        val ejecutor = ejecutor(inventarioExportManager = exportManager, appLogger = AppLogger(tempDir))
+        val accion = AccionIaDto(modulo = "inventario", tipo = "exportar_inventario", parametros = buildJsonObject { })
+
+        val resultado = ejecutor.ejecutar(accion, modulosPermitidos = emptySet(), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.RechazadaPorPermiso)
+        coVerify(exactly = 0) { exportManager.exportarCsv(any()) }
+    }
+
+    @Test
+    fun `consultar_stock sin parametros devuelve el total general de todo el inventario`(@TempDir tempDir: File) = runTest {
+        val items = listOf(
+            InventarioItem(
+                Articulo(id = "a1", sku = "SKU-1", nombre = "Coca 2L", unidadMedida = "pieza", precioVenta = BigDecimal("50.00"), categoria = "Bebidas"),
+                BigDecimal("10"),
+                null,
+            ),
+            InventarioItem(
+                Articulo(id = "a2", sku = "SKU-2", nombre = "Papas fritas", unidadMedida = "pieza", precioVenta = BigDecimal("20.00"), categoria = "Snacks"),
+                BigDecimal("5"),
+                null,
+            ),
+        )
+        val ejecutor = ejecutor(inventarioRepository = inventarioRepositoryDeStock(items), appLogger = AppLogger(tempDir))
+        val accion = AccionIaDto(modulo = "inventario", tipo = "consultar_stock", parametros = buildJsonObject { })
+
+        val resultado = ejecutor.ejecutar(accion, setOf("inventario"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        assertTrue((resultado as ResultadoAccionIa.Ejecutada).mensaje.contains("15"))
+    }
+
+    @Test
+    fun `consultar_stock con articulo especifico suma solo las coincidencias de la busqueda`(@TempDir tempDir: File) = runTest {
+        val items = listOf(
+            InventarioItem(
+                Articulo(id = "a1", sku = "SKU-1", nombre = "Coca 2L", unidadMedida = "pieza", precioVenta = BigDecimal("50.00"), categoria = "Bebidas"),
+                BigDecimal("10"),
+                null,
+            ),
+            InventarioItem(
+                Articulo(id = "a2", sku = "SKU-2", nombre = "Coca 600ml", unidadMedida = "pieza", precioVenta = BigDecimal("20.00"), categoria = "Bebidas"),
+                BigDecimal("7"),
+                null,
+            ),
+            InventarioItem(
+                Articulo(id = "a3", sku = "SKU-3", nombre = "Papas fritas", unidadMedida = "pieza", precioVenta = BigDecimal("20.00"), categoria = "Snacks"),
+                BigDecimal("5"),
+                null,
+            ),
+        )
+        val ejecutor = ejecutor(inventarioRepository = inventarioRepositoryDeStock(items), appLogger = AppLogger(tempDir))
+        val accion = AccionIaDto(
+            modulo = "inventario",
+            tipo = "consultar_stock",
+            parametros = buildJsonObject { put("articulo", "Coca") },
+        )
+
+        val resultado = ejecutor.ejecutar(accion, setOf("inventario"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        assertTrue((resultado as ResultadoAccionIa.Ejecutada).mensaje.contains("17"))
+    }
+
+    @Test
+    fun `consultar_stock con categoria suma solo los articulos de esa categoria`(@TempDir tempDir: File) = runTest {
+        val items = listOf(
+            InventarioItem(
+                Articulo(id = "a1", sku = "SKU-1", nombre = "Coca 2L", unidadMedida = "pieza", precioVenta = BigDecimal("50.00"), categoria = "Bebidas"),
+                BigDecimal("10"),
+                null,
+            ),
+            InventarioItem(
+                Articulo(id = "a2", sku = "SKU-2", nombre = "Agua", unidadMedida = "pieza", precioVenta = BigDecimal("15.00"), categoria = "Bebidas"),
+                BigDecimal("3"),
+                null,
+            ),
+            InventarioItem(
+                Articulo(id = "a3", sku = "SKU-3", nombre = "Papas fritas", unidadMedida = "pieza", precioVenta = BigDecimal("20.00"), categoria = "Snacks"),
+                BigDecimal("5"),
+                null,
+            ),
+        )
+        val ejecutor = ejecutor(inventarioRepository = inventarioRepositoryDeStock(items), appLogger = AppLogger(tempDir))
+        val accion = AccionIaDto(
+            modulo = "inventario",
+            tipo = "consultar_stock",
+            parametros = buildJsonObject { put("categoria", "Bebidas") },
+        )
+
+        val resultado = ejecutor.ejecutar(accion, setOf("inventario"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        assertTrue((resultado as ResultadoAccionIa.Ejecutada).mensaje.contains("13"))
+    }
+
+    @Test
+    fun `consultar_stock sin permiso de inventario se rechaza`(@TempDir tempDir: File) = runTest {
+        val ejecutor = ejecutor(appLogger = AppLogger(tempDir))
+        val accion = AccionIaDto(modulo = "inventario", tipo = "consultar_stock", parametros = buildJsonObject { })
+
+        val resultado = ejecutor.ejecutar(accion, modulosPermitidos = emptySet(), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.RechazadaPorPermiso)
+    }
+
+    // PLAN.md Parte 18, sub-parte E: alta_articulo llama a
+    // EntradaRepository.registrarEntrada igual que la pantalla manual de
+    // Entrada - con un ModeAwareEntradaRepository real (en vez del mock
+    // relajado del resto de este archivo), confirma que ese mismo camino
+    // tambien dispara InventarioRefreshSignal, sin necesitar una emision
+    // aparte dentro de EjecutorAccionesIa.
+    @Test
+    fun `alta_articulo via la IA tambien dispara la señal de refresco de inventario`(@TempDir tempDir: File) = runTest {
+        val dataStore = PreferenceDataStoreFactory.create(produceFile = { File(tempDir, "test.preferences_pb") })
+        val preferences = ConfiguracionPreferences(dataStore)
+        val appLogger = AppLogger(tempDir)
+        val dao = mockk<EntradaDao>()
+        coEvery { dao.insertEntradaCompleta(any(), any(), any(), any(), any(), any(), any()) } returns Unit
+        val local = LocalEntradaRepository(dao, appLogger)
+        val remote = mockk<RemoteEntradaRepository>(relaxed = true)
+        val signal = InventarioRefreshSignal()
+        val entradaRepository = ModeAwareEntradaRepository(
+            local = local,
+            remote = remote,
+            preferences = preferences,
+            inventarioRefreshSignal = signal,
+        )
+        val ejecutor = ejecutor(entradaRepository = entradaRepository, appLogger = appLogger)
+        val accion = AccionIaDto(
+            modulo = "entrada",
+            tipo = "alta_articulo",
+            parametros = buildJsonObject {
+                put("sku", "TOR-001")
+                put("nombre", "Tornillo")
+                put("unidadMedida", "pieza")
+                put("cantidad", "10")
+                put("precioVenta", "5.00")
+            },
+        )
+
+        val resultado = ejecutor.ejecutar(accion, setOf("entrada"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        withTimeout(1000) { signal.refrescos.first() }
+    }
+
+    // PLAN.md Parte 18, sub-parte F: corte_parcial llama a
+    // CajaRepository.guardarCorte igual que la pantalla manual de Caja -
+    // con un ModeAwareCajaRepository real, confirma que ese mismo camino
+    // dispara CajaRefreshSignal (mismo criterio que la prueba de
+    // alta_articulo/InventarioRefreshSignal de la sub-parte E).
+    @Test
+    fun `corte_parcial via la IA tambien dispara la señal de refresco de caja`(@TempDir tempDir: File) = runTest {
+        val dataStore = PreferenceDataStoreFactory.create(produceFile = { File(tempDir, "test.preferences_pb") })
+        val preferences = ConfiguracionPreferences(dataStore)
+        val appLogger = AppLogger(tempDir)
+        val cajaDao = mockk<CajaDao>()
+        coEvery { cajaDao.insertCorte(any()) } returns Unit
+        val ventaDao = mockk<VentaDao>()
+        coEvery { ventaDao.getVentasDelPeriodo(any(), any(), any()) } returns emptyList()
+        val retiroDao = mockk<RetiroDao>()
+        coEvery { retiroDao.getRetirosDelPeriodo(any(), any(), any()) } returns emptyList()
+        val local = LocalCajaRepository(cajaDao, ventaDao, retiroDao, appLogger)
+        val remote = mockk<RemoteCajaRepository>(relaxed = true)
+        val signal = CajaRefreshSignal()
+        val cajaRepository = ModeAwareCajaRepository(
+            local = local,
+            remote = remote,
+            preferences = preferences,
+            cajaRefreshSignal = signal,
+        )
+        val ejecutor = ejecutor(cajaRepository = cajaRepository, appLogger = appLogger)
+        val accion = AccionIaDto(modulo = "caja", tipo = "corte_parcial", parametros = buildJsonObject { })
+
+        val resultado = ejecutor.ejecutar(accion, setOf("caja"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        withTimeout(1000) { signal.refrescos.first() }
     }
 }

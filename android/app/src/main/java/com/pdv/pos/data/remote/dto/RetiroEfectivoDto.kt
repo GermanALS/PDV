@@ -26,3 +26,11 @@ data class RetiroEfectivoDto(
     @SerialName("is_synced") val isSynced: Boolean = true,
     @SerialName("deleted_at") val deletedAt: String? = null,
 )
+
+@Serializable
+data class RetiroEfectivoListResponseDto(
+    val items: List<RetiroEfectivoDto>,
+    val page: Int,
+    @SerialName("page_size") val pageSize: Int,
+    val total: Int,
+)

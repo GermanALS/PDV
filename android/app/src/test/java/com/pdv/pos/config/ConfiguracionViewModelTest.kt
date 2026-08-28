@@ -19,7 +19,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -121,16 +120,6 @@ class ConfiguracionViewModelTest {
     }
 
     @Test
-    fun `logout delegates to the session manager`(@TempDir tempDir: File) = runTest(dispatcher) {
-        val sessionManager = mockk<SessionManager>(relaxed = true)
-        val viewModel = viewModel(tempDir, sessionManager = sessionManager)
-
-        viewModel.logout()
-
-        verify { sessionManager.logout() }
-    }
-
-    @Test
     fun `switching sucursal does not clobber an unsaved connection field edit`(@TempDir tempDir: File) = runTest(dispatcher) {
         val viewModel = viewModel(tempDir)
 
@@ -138,6 +127,45 @@ class ConfiguracionViewModelTest {
         viewModel.onSucursalSelected(Sucursal(id = "s1", nombre = "Sucursal Test"))
 
         assertEquals("192.168.1.50", viewModel.uiState.value.ip)
+    }
+
+    @Test
+    fun `in a non-LOCAL mode a saved sucursal absent from the catalog is reconciled to the fallback`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val preferences = ConfiguracionPreferences(dataStore)
+        preferences.setSucursalSeleccionada("sucursal-local-vieja")
+        preferences.setBackendMode(BackendMode.REMOTO)
+
+        ConfiguracionViewModel(
+            mockk(relaxed = true),
+            preferences,
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            mockk(relaxed = true),
+            PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+        )
+
+        assertEquals("s1", preferences.deviceConfig.first().sucursalIdSeleccionada)
+    }
+
+    @Test
+    fun `in LOCAL mode the saved sucursal id is left untouched`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val preferences = ConfiguracionPreferences(dataStore)
+        preferences.setSucursalSeleccionada("sucursal-local-vieja")
+
+        ConfiguracionViewModel(
+            mockk(relaxed = true),
+            preferences,
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            mockk(relaxed = true),
+            PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+        )
+
+        assertEquals("sucursal-local-vieja", preferences.deviceConfig.first().sucursalIdSeleccionada)
     }
 
     @Test

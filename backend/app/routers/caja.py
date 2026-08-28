@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,8 +10,10 @@ from app.models.caja import CorteCaja, RetiroEfectivo
 from app.models.venta import Venta
 from app.schemas.caja import (
     CorteCajaCreateSchema,
+    CorteCajaListResponseSchema,
     CorteCajaResponseSchema,
     RetiroEfectivoCreateSchema,
+    RetiroEfectivoListResponseSchema,
     RetiroEfectivoResponseSchema,
     TotalesCorteResponseSchema,
 )
@@ -81,6 +83,38 @@ async def create_corte_caja(payload: CorteCajaCreateSchema, db: AsyncSession = D
     return _corte_to_response(corte)
 
 
+# Contraparte remota de CajaRepository.observeCortes (Android, PLAN.md
+# Parte 18, sub-parte F) - mismo estilo de paginacion que GET /inventario
+# (sucursal_id requerido, page/page_size), orden por fecha_fin descendente
+# (mas reciente primero) para que el historial de Caja muestre lo ultimo
+# arriba. desde/hasta (opcionales, PLAN.md sub-parte I) filtran por
+# fecha_fin dentro del rango inclusivo, para la exportacion por periodo.
+@router.get("/cortes-caja", response_model=CorteCajaListResponseSchema)
+async def list_cortes_caja(
+    sucursal_id: uuid.UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    desde: datetime | None = None,
+    hasta: datetime | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> CorteCajaListResponseSchema:
+    filtros = [CorteCaja.sucursal_id == sucursal_id, CorteCaja.deleted_at.is_(None)]
+    if desde is not None:
+        filtros.append(CorteCaja.fecha_fin >= desde)
+    if hasta is not None:
+        filtros.append(CorteCaja.fecha_fin <= hasta)
+    total = await db.scalar(select(func.count()).select_from(CorteCaja).where(*filtros))
+    resultado = await db.execute(
+        select(CorteCaja)
+        .where(*filtros)
+        .order_by(CorteCaja.fecha_fin.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = [_corte_to_response(corte) for corte in resultado.scalars().all()]
+    return CorteCajaListResponseSchema(items=items, page=page, page_size=page_size, total=total or 0)
+
+
 # Contraparte remota de LocalCajaRepository.calcularTotales (Android,
 # PLAN.md Parte 10): usada por RemoteCajaRepository cuando BackendMode es
 # remoto/local-con-sincronizacion. A diferencia de las rutas POST de este
@@ -143,3 +177,33 @@ async def create_retiro_efectivo(
     await db.commit()
     await db.refresh(retiro)
     return _retiro_to_response(retiro)
+
+
+# Contraparte remota de RetiroEfectivoRepository.observeRetiros (Android,
+# PLAN.md Parte 18, sub-parte F) - mismo criterio de paginacion que
+# GET /cortes-caja, orden por fecha descendente. desde/hasta (opcionales,
+# PLAN.md sub-parte I) filtran por fecha dentro del rango inclusivo.
+@router.get("/retiros-efectivo", response_model=RetiroEfectivoListResponseSchema)
+async def list_retiros_efectivo(
+    sucursal_id: uuid.UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    desde: datetime | None = None,
+    hasta: datetime | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> RetiroEfectivoListResponseSchema:
+    filtros = [RetiroEfectivo.sucursal_id == sucursal_id, RetiroEfectivo.deleted_at.is_(None)]
+    if desde is not None:
+        filtros.append(RetiroEfectivo.fecha >= desde)
+    if hasta is not None:
+        filtros.append(RetiroEfectivo.fecha <= hasta)
+    total = await db.scalar(select(func.count()).select_from(RetiroEfectivo).where(*filtros))
+    resultado = await db.execute(
+        select(RetiroEfectivo)
+        .where(*filtros)
+        .order_by(RetiroEfectivo.fecha.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = [_retiro_to_response(retiro) for retiro in resultado.scalars().all()]
+    return RetiroEfectivoListResponseSchema(items=items, page=page, page_size=page_size, total=total or 0)

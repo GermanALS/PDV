@@ -6,6 +6,5 @@ data class DeviceConfig(
     val backendMode: BackendMode = BackendMode.LOCAL,
     val ip: String = "",
     val puerto: String = "",
-    val nombreBaseDatos: String = "",
     val sucursalIdSeleccionada: String? = null,
 )

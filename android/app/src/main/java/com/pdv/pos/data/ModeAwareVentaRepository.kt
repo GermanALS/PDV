@@ -6,6 +6,7 @@ import com.pdv.pos.data.remote.RemoteVentaRepository
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Venta
 import com.pdv.pos.domain.repository.VentaRepository
+import com.pdv.pos.inventario.InventarioRefreshSignal
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,6 +20,7 @@ class ModeAwareVentaRepository @Inject constructor(
     private val local: LocalVentaRepository,
     private val remote: RemoteVentaRepository,
     private val preferences: ConfiguracionPreferences,
+    private val inventarioRefreshSignal: InventarioRefreshSignal,
 ) : VentaRepository {
 
     override suspend fun registrarVenta(venta: Venta) {
@@ -26,5 +28,9 @@ class ModeAwareVentaRepository @Inject constructor(
             BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION -> local.registrarVenta(venta)
             BackendMode.REMOTO -> remote.registrarVenta(venta)
         }
+        // Una venta tambien decrementa inventario.cantidad (Parte 7/9) -
+        // hallazgo de causa raiz de esta misma sub-parte E: el gap de
+        // refresco no era exclusivo de Entrada.
+        inventarioRefreshSignal.emitir()
     }
 }

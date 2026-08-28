@@ -20,16 +20,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-// Permisos por rol simulados hasta la Parte 13 (gestion de usuarios real).
-private val permisosSimuladosDeEjemplo = listOf(
-    PermisoModulo("Venta de mostrador", habilitado = true),
-    PermisoModulo("Entrada de mercancia", habilitado = true),
-    PermisoModulo("Inventario", habilitado = true),
-    PermisoModulo("Caja", habilitado = true),
-    PermisoModulo("Devoluciones", habilitado = true),
-    PermisoModulo("Administracion de usuarios", habilitado = true),
-)
-
 @HiltViewModel
 class ConfiguracionViewModel @Inject constructor(
     private val sessionManager: SessionManager,
@@ -41,38 +31,49 @@ class ConfiguracionViewModel @Inject constructor(
     private val authRepository: AuthRepository,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ConfiguracionUiState(permisosSimulados = permisosSimuladosDeEjemplo))
+    private val _uiState = MutableStateFlow(ConfiguracionUiState())
     val uiState: StateFlow<ConfiguracionUiState> = _uiState.asStateFlow()
 
     init {
-        // Los campos de conexion (ip/puerto/nombreBaseDatos) se siembran una
-        // sola vez desde el valor persistido y de ahi en mas son un borrador
-        // puramente local hasta onGuardarConexion(): son preferencia de
-        // dispositivo de un solo escritor (este ViewModel), asi que no hace
-        // falta mantenerlos sincronizados con cada emision de deviceConfig.
-        // Re-derivarlos en cada emision (como sucursal/modo) pisaria una
-        // edicion en curso del usuario cada vez que cambia la sucursal o el
-        // modo (hallazgo de code-reviewer).
+        // Los campos de conexion (ip/puerto) se siembran una sola vez desde el
+        // valor persistido y de ahi en mas son un borrador puramente local
+        // hasta onGuardarConexion(): son preferencia de dispositivo de un solo
+        // escritor (este ViewModel), asi que no hace falta mantenerlos
+        // sincronizados con cada emision de deviceConfig. Re-derivarlos en cada
+        // emision (como sucursal/modo) pisaria una edicion en curso del usuario
+        // cada vez que cambia la sucursal o el modo (hallazgo de code-reviewer).
         viewModelScope.launch {
             val inicial = preferences.deviceConfig.first()
-            _uiState.update { it.copy(ip = inicial.ip, puerto = inicial.puerto, nombreBaseDatos = inicial.nombreBaseDatos) }
+            _uiState.update { it.copy(ip = inicial.ip, puerto = inicial.puerto) }
         }
         viewModelScope.launch {
             combine(preferences.deviceConfig, sucursalRepository.observeSucursales()) { config, sucursales ->
                 config to sucursales
             }.collect { (config, sucursales) ->
+                val seleccionada = sucursales.find { sucursal -> sucursal.id == config.sucursalIdSeleccionada }
+                    ?: sucursales.firstOrNull()
+                // Si la sucursal persistida no existe en el catalogo del modo
+                // actual (tipico al pasar de LOCAL a REMOTO sin tocar el
+                // dropdown), persiste el fallback: sin esto el estado en memoria
+                // muestra la sucursal correcta pero la primera escritura remota
+                // falla con ForeignKeyViolationError contra el id local viejo.
+                if (config.backendMode != BackendMode.LOCAL &&
+                    seleccionada != null &&
+                    seleccionada.id != config.sucursalIdSeleccionada
+                ) {
+                    preferences.setSucursalSeleccionada(seleccionada.id)
+                }
                 _uiState.update {
                     it.copy(
                         sucursales = sucursales,
-                        sucursalSeleccionada = sucursales.find { sucursal -> sucursal.id == config.sucursalIdSeleccionada }
-                            ?: sucursales.firstOrNull(),
+                        sucursalSeleccionada = seleccionada,
                         modo = config.backendMode,
                     )
                 }
             }
         }
-        // Igual criterio que ip/puerto/nombreBaseDatos: se siembra una sola
-        // vez, de ahi en mas es un borrador local hasta onGuardarPromptIa()
+        // Igual criterio que ip/puerto: se siembra una sola vez, de ahi en
+        // mas es un borrador local hasta onGuardarPromptIa()
         // (evita pisar una edicion en curso, mismo hallazgo de code-reviewer
         // que motivo el mismo patron en la seccion de Conexion, PLAN.md
         // Parte 6 sub-paso 5).
@@ -103,14 +104,10 @@ class ConfiguracionViewModel @Inject constructor(
         _uiState.update { it.copy(puerto = value) }
     }
 
-    fun onNombreBaseDatosChange(value: String) {
-        _uiState.update { it.copy(nombreBaseDatos = value) }
-    }
-
     fun onGuardarConexion() {
         val estado = _uiState.value
         viewModelScope.launch {
-            preferences.setConexion(estado.ip, estado.puerto, estado.nombreBaseDatos)
+            preferences.setConexion(estado.ip, estado.puerto)
         }
     }
 
@@ -205,9 +202,5 @@ class ConfiguracionViewModel @Inject constructor(
                 }
             }
         }
-    }
-
-    fun logout() {
-        sessionManager.logout()
     }
 }

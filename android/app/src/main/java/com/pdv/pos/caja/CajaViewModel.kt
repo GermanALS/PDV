@@ -6,12 +6,21 @@ import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.model.CorteCaja
 import com.pdv.pos.domain.model.RetiroEfectivo
+import com.pdv.pos.caja.export.CajaExportManager
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.IOException
@@ -20,16 +29,46 @@ import java.util.Calendar
 import java.util.UUID
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CajaViewModel @Inject constructor(
     private val cajaRepository: CajaRepository,
     private val retiroRepository: RetiroEfectivoRepository,
     private val preferences: ConfiguracionPreferences,
     private val sessionManager: SessionManager,
+    private val cajaRefreshSignal: CajaRefreshSignal,
+    private val cajaExportManager: CajaExportManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(estadoInicial())
     val uiState = _uiState.asStateFlow()
+
+    // Historial reactivo (PLAN.md Parte 18, sub-parte F): reemplaza el
+    // "prepend a la lista en memoria" anterior - un corte/retiro registrado
+    // desde otra pantalla o desde la IA (EjecutorAccionesIa, mismo
+    // CajaRepository/RetiroEfectivoRepository) ahora aparece solo. onStart
+    // siembra un primer valor para no esperar una escritura antes de la
+    // consulta inicial; cajaRefreshSignal fuerza el resubscribe en modo
+    // REMOTO (no-op en LOCAL, donde Room ya se refresca solo).
+    init {
+        val sucursalId = preferences.deviceConfig.map { it.sucursalIdSeleccionada }.distinctUntilChanged()
+        viewModelScope.launch {
+            combine(sucursalId, cajaRefreshSignal.refrescos.onStart { emit(Unit) }) { id, _ -> id }
+                .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else cajaRepository.observeCortes(id) }
+                .collect { historial ->
+                    val limite = System.currentTimeMillis() - DIAS_HISTORIAL_MS
+                    _uiState.update { it.copy(historialCortes = historial.filter { corte -> corte.fechaFin >= limite }) }
+                }
+        }
+        viewModelScope.launch {
+            combine(sucursalId, cajaRefreshSignal.refrescos.onStart { emit(Unit) }) { id, _ -> id }
+                .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else retiroRepository.observeRetiros(id) }
+                .collect { historial ->
+                    val limite = System.currentTimeMillis() - DIAS_HISTORIAL_MS
+                    _uiState.update { it.copy(historialRetiros = historial.filter { retiro -> retiro.fecha >= limite }) }
+                }
+        }
+    }
 
     fun onTipoCorteChange(tipo: TipoCorte) {
         val estado = _uiState.value
@@ -133,12 +172,16 @@ class CajaViewModel @Inject constructor(
                 return@launch
             }
 
-            val nuevoHistorial = listOf(corte) + _uiState.value.historialCortes
-            val (inicio, fin) = periodoPorDefecto(estado.tipoCorte, nuevoHistorial)
+            // El historial real ahora lo mantiene el collector reactivo del
+            // init{} (CajaRepository.observeCortes) - este prepend es solo
+            // para calcular el proximo periodo por defecto sin esperar a que
+            // esa senial reactiva se propague, no para persistirlo en
+            // uiState (evita que esta escritura directa compita con la del
+            // collector).
+            val (inicio, fin) = periodoPorDefecto(estado.tipoCorte, listOf(corte) + estado.historialCortes)
             _uiState.value = _uiState.value.copy(
                 calculado = false,
                 montoContado = "",
-                historialCortes = nuevoHistorial,
                 fechaInicio = inicio,
                 fechaFin = fin,
                 mensajeConfirmacion = "Corte guardado",
@@ -204,12 +247,81 @@ class CajaViewModel @Inject constructor(
                 return@launch
             }
 
+            // Historial real a cargo del collector reactivo del init{}
+            // (RetiroEfectivoRepository.observeRetiros), igual que
+            // historialCortes en onGuardarClick.
             _uiState.value = _uiState.value.copy(
                 mostrarDialogoRetiro = false,
-                historialRetiros = listOf(retiro) + _uiState.value.historialRetiros,
                 mensajeConfirmacion = "Retiro registrado",
             )
         }
+    }
+
+    // Exportacion de cortes y retiros por periodo (PLAN.md Parte 18,
+    // sub-parte I): el rango arranca en los ultimos 7 dias (igual que el
+    // historial visible) pero el usuario puede editarlo a cualquier rango
+    // antes de confirmar; el fetch no esta acotado a esos 7 dias.
+    fun onExportarClick() {
+        val ahora = System.currentTimeMillis()
+        _uiState.value = _uiState.value.copy(
+            mostrarDialogoExportar = true,
+            exportarDesde = ahora - DIAS_HISTORIAL_MS,
+            exportarHasta = ahora,
+        )
+    }
+
+    fun onExportarDesdeChange(millis: Long) {
+        _uiState.value = _uiState.value.copy(exportarDesde = millis)
+    }
+
+    fun onExportarHastaChange(millis: Long) {
+        _uiState.value = _uiState.value.copy(exportarHasta = millis)
+    }
+
+    fun onCancelarExportarClick() {
+        _uiState.value = _uiState.value.copy(mostrarDialogoExportar = false)
+    }
+
+    fun onConfirmarExportarClick() {
+        val estado = _uiState.value
+        viewModelScope.launch {
+            val sucursalId = preferences.deviceConfig.first().sucursalIdSeleccionada
+            if (sucursalId == null) {
+                _uiState.value = _uiState.value.copy(
+                    mostrarDialogoExportar = false,
+                    mensajeConfirmacion = "No se pudo exportar: falta sucursal activa",
+                )
+                return@launch
+            }
+            _uiState.value = _uiState.value.copy(exportando = true)
+            try {
+                val cortes = cajaRepository.obtenerCortesDelPeriodo(sucursalId, estado.exportarDesde, estado.exportarHasta)
+                val retiros = retiroRepository.obtenerRetirosDelPeriodo(sucursalId, estado.exportarDesde, estado.exportarHasta)
+                val archivo = cajaExportManager.exportarCortesYRetiros(cortes, retiros)
+                _uiState.value = _uiState.value.copy(
+                    mostrarDialogoExportar = false,
+                    exportando = false,
+                    archivoExportado = archivo,
+                    mensajeConfirmacion = "Exportados ${cortes.size} cortes y ${retiros.size} retiros",
+                )
+            } catch (e: IOException) {
+                _uiState.value = _uiState.value.copy(
+                    mostrarDialogoExportar = false,
+                    exportando = false,
+                    mensajeConfirmacion = "No se pudo exportar: ${e.message}",
+                )
+            } catch (e: HttpException) {
+                _uiState.value = _uiState.value.copy(
+                    mostrarDialogoExportar = false,
+                    exportando = false,
+                    mensajeConfirmacion = "No se pudo exportar: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun onArchivoExportadoCompartido() {
+        _uiState.value = _uiState.value.copy(archivoExportado = null)
     }
 
     private suspend fun obtenerSucursalYUsuario(): Pair<String, String>? {
@@ -219,6 +331,11 @@ class CajaViewModel @Inject constructor(
     }
 
     private companion object {
+        // El historial visible de CajaScreen (cortes y retiros) se acota a
+        // esta ventana; la exportacion puede pedir cualquier rango (PLAN.md
+        // Parte 18, sub-parte I).
+        const val DIAS_HISTORIAL_MS = 7L * 24 * 60 * 60 * 1000
+
         fun estadoInicial(): CajaUiState {
             val (inicio, fin) = periodoPorDefecto(TipoCorte.PARCIAL, emptyList())
             return CajaUiState(tipoCorte = TipoCorte.PARCIAL, fechaInicio = inicio, fechaFin = fin)

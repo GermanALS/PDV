@@ -6,6 +6,7 @@ import com.pdv.pos.data.remote.RemoteEntradaRepository
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Entrada
 import com.pdv.pos.domain.repository.EntradaRepository
+import com.pdv.pos.inventario.InventarioRefreshSignal
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,6 +19,7 @@ class ModeAwareEntradaRepository @Inject constructor(
     private val local: LocalEntradaRepository,
     private val remote: RemoteEntradaRepository,
     private val preferences: ConfiguracionPreferences,
+    private val inventarioRefreshSignal: InventarioRefreshSignal,
 ) : EntradaRepository {
 
     override suspend fun registrarEntrada(entrada: Entrada) {
@@ -25,5 +27,9 @@ class ModeAwareEntradaRepository @Inject constructor(
             BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION -> local.registrarEntrada(entrada)
             BackendMode.REMOTO -> remote.registrarEntrada(entrada)
         }
+        // Unico punto de escritura de Entrada (pantalla manual y
+        // alta_articulo de la IA pasan ambos por aca) - PLAN.md Parte 18,
+        // sub-parte E.
+        inventarioRefreshSignal.emitir()
     }
 }

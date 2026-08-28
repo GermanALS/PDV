@@ -11,10 +11,13 @@ import com.pdv.pos.data.remote.dto.InventarioDto
 import com.pdv.pos.data.remote.dto.MovimientoDto
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Entrada
+import com.pdv.pos.inventario.InventarioRefreshSignal
 import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -69,7 +72,12 @@ class ModeAwareEntradaRepositoryTest {
         val remote = RemoteEntradaRepository(api, appLogger)
 
         val preferences = preferences(tempDir)
-        val repository = ModeAwareEntradaRepository(local = local, remote = remote, preferences = preferences)
+        val repository = ModeAwareEntradaRepository(
+            local = local,
+            remote = remote,
+            preferences = preferences,
+            inventarioRefreshSignal = InventarioRefreshSignal(),
+        )
 
         repository.registrarEntrada(entradaDeEjemplo())
         coVerify(exactly = 1) { dao.insertEntradaCompleta(any(), any(), any(), any(), any(), any(), any()) }
@@ -80,5 +88,29 @@ class ModeAwareEntradaRepositoryTest {
 
         coVerify(exactly = 1) { api.createEntrada(any()) }
         coVerify(exactly = 1) { dao.insertEntradaCompleta(any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    // PLAN.md Parte 18, sub-parte E: unico punto de emision de
+    // InventarioRefreshSignal para Entrada (cubre tanto la pantalla manual
+    // como alta_articulo de la IA, que llama a este mismo metodo).
+    @Test
+    fun `registrarEntrada exitoso emite la señal de refresco de inventario`(@TempDir tempDir: File) = runTest {
+        val dao = mockk<EntradaDao>()
+        coEvery { dao.insertEntradaCompleta(any(), any(), any(), any(), any(), any(), any()) } returns Unit
+        val appLogger = mockk<AppLogger>()
+        coEvery { appLogger.log(any(), any(), any(), any()) } returns Unit
+        val local = LocalEntradaRepository(dao, appLogger)
+        val remote = mockk<RemoteEntradaRepository>(relaxed = true)
+        val signal = InventarioRefreshSignal()
+        val repository = ModeAwareEntradaRepository(
+            local = local,
+            remote = remote,
+            preferences = preferences(tempDir),
+            inventarioRefreshSignal = signal,
+        )
+
+        repository.registrarEntrada(entradaDeEjemplo())
+
+        withTimeout(1000) { signal.refrescos.first() }
     }
 }

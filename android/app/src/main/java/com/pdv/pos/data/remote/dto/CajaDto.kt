@@ -45,6 +45,14 @@ data class CorteCajaDto(
 )
 
 @Serializable
+data class CorteCajaListResponseDto(
+    val items: List<CorteCajaDto>,
+    val page: Int,
+    @SerialName("page_size") val pageSize: Int,
+    val total: Int,
+)
+
+@Serializable
 data class TotalesCorteDto(
     @SerialName("total_ventas") val totalVentas: String,
     @SerialName("total_efectivo") val totalEfectivo: String,
