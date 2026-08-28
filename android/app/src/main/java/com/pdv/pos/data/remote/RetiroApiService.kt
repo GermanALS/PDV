@@ -17,5 +17,7 @@ interface RetiroApiService {
         @Query("sucursal_id") sucursalId: String,
         @Query("page") page: Int,
         @Query("page_size") pageSize: Int,
+        @Query("desde") desde: String? = null,
+        @Query("hasta") hasta: String? = null,
     ): RetiroEfectivoListResponseDto
 }

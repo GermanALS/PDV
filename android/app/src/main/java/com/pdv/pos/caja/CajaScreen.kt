@@ -1,5 +1,7 @@
 package com.pdv.pos.caja
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,16 +30,19 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.domain.model.CorteCaja
+import com.pdv.pos.inventario.export.ArchivoExportado
 import com.pdv.pos.ui.MonedaVisualTransformation
 import com.pdv.pos.ui.theme.success
 import java.math.BigDecimal
@@ -56,6 +61,13 @@ fun CajaScreen(
     viewModel: CajaViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    LaunchedEffect(uiState.archivoExportado) {
+        val archivo = uiState.archivoExportado ?: return@LaunchedEffect
+        context.compartirExportacion(archivo)
+        viewModel.onArchivoExportadoCompartido()
+    }
 
     if (uiState.mostrarDialogoRetiro) {
         RetiroDialog(
@@ -66,6 +78,18 @@ fun CajaScreen(
             onMotivoChange = viewModel::onMotivoRetiroChange,
             onConfirmar = viewModel::onConfirmarRetiroClick,
             onCancelar = viewModel::onCancelarRetiroClick,
+        )
+    }
+
+    if (uiState.mostrarDialogoExportar) {
+        ExportarDialog(
+            desde = uiState.exportarDesde,
+            hasta = uiState.exportarHasta,
+            exportando = uiState.exportando,
+            onDesdeChange = viewModel::onExportarDesdeChange,
+            onHastaChange = viewModel::onExportarHastaChange,
+            onConfirmar = viewModel::onConfirmarExportarClick,
+            onCancelar = viewModel::onCancelarExportarClick,
         )
     }
 
@@ -115,11 +139,16 @@ fun CajaScreen(
                     Text("Registrar retiro de efectivo")
                 }
             }
+            item {
+                OutlinedButton(onClick = viewModel::onExportarClick, modifier = Modifier.fillMaxWidth()) {
+                    Text("Exportar cortes")
+                }
+            }
             uiState.mensajeConfirmacion?.let { mensaje ->
                 item { Text(mensaje, style = MaterialTheme.typography.bodyMedium) }
             }
             item {
-                Text("Cortes anteriores", style = MaterialTheme.typography.titleMedium)
+                Text("Cortes de los últimos 7 días", style = MaterialTheme.typography.titleMedium)
             }
             items(uiState.historialCortes, key = { it.id }) { corte ->
                 CorteCajaCard(corte)
@@ -246,6 +275,41 @@ private fun RetiroDialog(
     )
 }
 
+// Reusa el mismo SelectorFechaHora del corte final (PLAN.md Parte 18,
+// sub-parte I). El rango arranca en los ultimos 7 dias y es editable a
+// cualquier periodo; el fetch no esta acotado a esa ventana.
+@Composable
+private fun ExportarDialog(
+    desde: Long,
+    hasta: Long,
+    exportando: Boolean,
+    onDesdeChange: (Long) -> Unit,
+    onHastaChange: (Long) -> Unit,
+    onConfirmar: () -> Unit,
+    onCancelar: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("Exportar cortes y retiros") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Se exportan los cortes y los retiros del periodo elegido (por defecto, los últimos 7 días).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                SelectorFechaHora(etiqueta = "Desde", valorMillis = desde, onValorChange = onDesdeChange)
+                SelectorFechaHora(etiqueta = "Hasta", valorMillis = hasta, onValorChange = onHastaChange)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirmar, enabled = !exportando) {
+                Text(if (exportando) "Exportando..." else "Exportar")
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },
+    )
+}
+
 @Composable
 private fun CorteCajaCard(corte: CorteCaja) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -325,6 +389,15 @@ private fun SelectorFechaHora(
             },
         )
     }
+}
+
+private fun Context.compartirExportacion(archivo: ArchivoExportado) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = archivo.mimeType
+        putExtra(Intent.EXTRA_STREAM, archivo.uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    startActivity(Intent.createChooser(intent, "Exportar cortes de caja"))
 }
 
 // DatePicker entrega la fecha elegida como medianoche UTC; se extraen

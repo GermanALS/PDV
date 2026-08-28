@@ -21,6 +21,12 @@ import javax.inject.Singleton
 // Inventario), asi que alcanza con traer la tanda mas reciente.
 private const val TAMANIO_PAGINA_HISTORIAL = 50
 
+// La exportacion por periodo (PLAN.md Parte 18, sub-parte I) puede abarcar
+// un mes entero, mas que TAMANIO_PAGINA_HISTORIAL - se recorren las paginas
+// (tope 100 por el backend) hasta juntar el total, mismo patron que
+// InventarioViewModel.obtenerTodosLosItemsFiltrados.
+private const val TAMANIO_PAGINA_PERIODO = 100
+
 @Singleton
 class RemoteCajaRepository @Inject constructor(
     private val api: CajaApiService,
@@ -73,6 +79,26 @@ class RemoteCajaRepository @Inject constructor(
     override fun observeCortes(sucursalId: String): Flow<List<CorteCaja>> = flow {
         val respuesta = api.getCortes(sucursalId = sucursalId, page = 1, pageSize = TAMANIO_PAGINA_HISTORIAL)
         emit(respuesta.items.map { it.toDomain() })
+    }
+
+    override suspend fun obtenerCortesDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<CorteCaja> {
+        val cortes = mutableListOf<CorteCaja>()
+        var pagina = 1
+        while (true) {
+            val respuesta = api.getCortes(
+                sucursalId = sucursalId,
+                page = pagina,
+                pageSize = TAMANIO_PAGINA_PERIODO,
+                desde = Instant.ofEpochMilli(desde).toString(),
+                hasta = Instant.ofEpochMilli(hasta).toString(),
+            )
+            cortes += respuesta.items.map { it.toDomain() }
+            if (respuesta.items.isEmpty() || cortes.size >= respuesta.total) break
+            pagina++
+        }
+        // El endpoint lista por fechaFin descendente; la exportacion los
+        // quiere en orden cronologico, igual que LocalCajaRepository.
+        return cortes.sortedBy { it.fechaFin }
     }
 }
 

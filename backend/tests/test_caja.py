@@ -233,3 +233,68 @@ async def test_list_retiros_efectivo_falta_sucursal_id_returns_422(client):
     response = await client.get("/api/v1/retiros-efectivo")
 
     assert response.status_code == 422
+
+
+async def test_list_cortes_caja_filtra_por_rango_de_fechas(client):
+    sucursal_id = await _seeded_sucursal_id(client)
+    for fecha_fin in ("2026-07-10T14:00:00Z", "2026-08-15T14:00:00Z"):
+        await client.post(
+            "/api/v1/cortes-caja",
+            json={
+                "sucursal_id": sucursal_id,
+                "usuario_id": "admin",
+                "tipo": "parcial",
+                "fecha_inicio": "2026-01-01T08:00:00Z",
+                "fecha_fin": fecha_fin,
+                "total_ventas": "100.00",
+                "total_efectivo": "100.00",
+                "total_tarjeta": "0",
+                "total_retiros": "0",
+                "monto_esperado": "100.00",
+            },
+        )
+
+    response = await client.get(
+        "/api/v1/cortes-caja",
+        params={
+            "sucursal_id": sucursal_id,
+            "desde": "2026-08-01T00:00:00Z",
+            "hasta": "2026-08-31T23:59:59Z",
+            "page_size": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    fechas_fin = [item["fecha_fin"] for item in response.json()["items"]]
+    assert all(f.startswith("2026-08") for f in fechas_fin)
+    assert any(f.startswith("2026-08-15") for f in fechas_fin)
+
+
+async def test_list_retiros_efectivo_filtra_por_rango_de_fechas(client):
+    sucursal_id = await _seeded_sucursal_id(client)
+    for fecha, motivo in (("2026-07-10T11:00:00Z", "fuera de rango"), ("2026-08-15T11:00:00Z", "dentro de rango")):
+        await client.post(
+            "/api/v1/retiros-efectivo",
+            json={
+                "sucursal_id": sucursal_id,
+                "usuario_id": "admin",
+                "monto": "25.00",
+                "motivo": motivo,
+                "fecha": fecha,
+            },
+        )
+
+    response = await client.get(
+        "/api/v1/retiros-efectivo",
+        params={
+            "sucursal_id": sucursal_id,
+            "desde": "2026-08-01T00:00:00Z",
+            "hasta": "2026-08-31T23:59:59Z",
+            "page_size": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    motivos = [item["motivo"] for item in response.json()["items"]]
+    assert "dentro de rango" in motivos
+    assert "fuera de rango" not in motivos

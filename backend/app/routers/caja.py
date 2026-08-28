@@ -87,15 +87,22 @@ async def create_corte_caja(payload: CorteCajaCreateSchema, db: AsyncSession = D
 # Parte 18, sub-parte F) - mismo estilo de paginacion que GET /inventario
 # (sucursal_id requerido, page/page_size), orden por fecha_fin descendente
 # (mas reciente primero) para que el historial de Caja muestre lo ultimo
-# arriba.
+# arriba. desde/hasta (opcionales, PLAN.md sub-parte I) filtran por
+# fecha_fin dentro del rango inclusivo, para la exportacion por periodo.
 @router.get("/cortes-caja", response_model=CorteCajaListResponseSchema)
 async def list_cortes_caja(
     sucursal_id: uuid.UUID,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    desde: datetime | None = None,
+    hasta: datetime | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> CorteCajaListResponseSchema:
     filtros = [CorteCaja.sucursal_id == sucursal_id, CorteCaja.deleted_at.is_(None)]
+    if desde is not None:
+        filtros.append(CorteCaja.fecha_fin >= desde)
+    if hasta is not None:
+        filtros.append(CorteCaja.fecha_fin <= hasta)
     total = await db.scalar(select(func.count()).select_from(CorteCaja).where(*filtros))
     resultado = await db.execute(
         select(CorteCaja)
@@ -174,15 +181,22 @@ async def create_retiro_efectivo(
 
 # Contraparte remota de RetiroEfectivoRepository.observeRetiros (Android,
 # PLAN.md Parte 18, sub-parte F) - mismo criterio de paginacion que
-# GET /cortes-caja, orden por fecha descendente.
+# GET /cortes-caja, orden por fecha descendente. desde/hasta (opcionales,
+# PLAN.md sub-parte I) filtran por fecha dentro del rango inclusivo.
 @router.get("/retiros-efectivo", response_model=RetiroEfectivoListResponseSchema)
 async def list_retiros_efectivo(
     sucursal_id: uuid.UUID,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    desde: datetime | None = None,
+    hasta: datetime | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> RetiroEfectivoListResponseSchema:
     filtros = [RetiroEfectivo.sucursal_id == sucursal_id, RetiroEfectivo.deleted_at.is_(None)]
+    if desde is not None:
+        filtros.append(RetiroEfectivo.fecha >= desde)
+    if hasta is not None:
+        filtros.append(RetiroEfectivo.fecha <= hasta)
     total = await db.scalar(select(func.count()).select_from(RetiroEfectivo).where(*filtros))
     resultado = await db.execute(
         select(RetiroEfectivo)

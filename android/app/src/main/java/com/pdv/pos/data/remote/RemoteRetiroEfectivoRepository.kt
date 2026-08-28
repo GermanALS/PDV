@@ -19,6 +19,10 @@ import javax.inject.Singleton
 // historial de retiros, alcanza con la tanda mas reciente.
 private const val TAMANIO_PAGINA_HISTORIAL = 50
 
+// Exportacion por periodo (PLAN.md Parte 18, sub-parte I) - ver comentario
+// en RemoteCajaRepository.
+private const val TAMANIO_PAGINA_PERIODO = 100
+
 @Singleton
 class RemoteRetiroEfectivoRepository @Inject constructor(
     private val api: RetiroApiService,
@@ -51,6 +55,26 @@ class RemoteRetiroEfectivoRepository @Inject constructor(
     override fun observeRetiros(sucursalId: String): Flow<List<RetiroEfectivo>> = flow {
         val respuesta = api.getRetiros(sucursalId = sucursalId, page = 1, pageSize = TAMANIO_PAGINA_HISTORIAL)
         emit(respuesta.items.map { it.toDomain() })
+    }
+
+    override suspend fun obtenerRetirosDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<RetiroEfectivo> {
+        val retiros = mutableListOf<RetiroEfectivo>()
+        var pagina = 1
+        while (true) {
+            val respuesta = api.getRetiros(
+                sucursalId = sucursalId,
+                page = pagina,
+                pageSize = TAMANIO_PAGINA_PERIODO,
+                desde = Instant.ofEpochMilli(desde).toString(),
+                hasta = Instant.ofEpochMilli(hasta).toString(),
+            )
+            retiros += respuesta.items.map { it.toDomain() }
+            if (respuesta.items.isEmpty() || retiros.size >= respuesta.total) break
+            pagina++
+        }
+        // El endpoint lista por fecha descendente; la exportacion los quiere
+        // en orden cronologico, igual que LocalRetiroEfectivoRepository.
+        return retiros.sortedBy { it.fecha }
     }
 }
 

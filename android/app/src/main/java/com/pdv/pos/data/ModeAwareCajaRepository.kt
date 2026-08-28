@@ -46,6 +46,13 @@ class ModeAwareCajaRepository @Inject constructor(
         cajaRefreshSignal.emitir()
     }
 
+    override suspend fun obtenerCortesDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<CorteCaja> =
+        when (preferences.deviceConfig.first().backendMode) {
+            BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION ->
+                local.obtenerCortesDelPeriodo(sucursalId, desde, hasta)
+            BackendMode.REMOTO -> remote.obtenerCortesDelPeriodo(sucursalId, desde, hasta)
+        }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeCortes(sucursalId: String): Flow<List<CorteCaja>> =
         preferences.deviceConfig.map { it.backendMode }.distinctUntilChanged().flatMapLatest { modo ->

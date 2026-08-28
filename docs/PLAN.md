@@ -2918,7 +2918,7 @@ agregar esta sub-parte.)*
 
 **I. Caja: historial limitado a 7 días y exportación de cortes/retiros por periodo**
 
-- [ ] Propuesta presentada y aprobada — criterio: aprobación explícita
+- [x] Propuesta presentada y aprobada — criterio: aprobación explícita
   registrada antes de implementar. `needs-approval` Contenido de la
   propuesta:
   - El historial de `CajaScreen` (cortes y retiros) se filtra a los
@@ -2933,37 +2933,87 @@ agregar esta sub-parte.)*
     del periodo elegido (no acotado a los 7 días de la vista) y lo
     comparte vía el mismo share sheet que usa la exportación de
     Inventario (`InventarioExportManager`, Parte 9).
-- [ ] `CajaRepository`/`RetiroEfectivoRepository` ganan
+
+  **Aprobado 2026-08-28** con estas decisiones: (a) filtro de 7 días
+  client-side en el collector del `init{}` de `CajaViewModel` (cortes por
+  `fechaFin`, retiros por `fecha`), sin cambiar firmas de
+  `observeCortes`/`observeRetiros`; (b) CSV: **un solo archivo, dos
+  bloques** — `CORTES` (columnas: `id, tipo, fecha_inicio, fecha_fin,
+  total_ventas, total_efectivo, total_tarjeta, total_retiros,
+  monto_esperado, monto_contado, diferencia`), línea en blanco, `RETIROS`
+  (`id, fecha, monto, motivo`); (c) `CajaExportManager` nuevo que espeja
+  `InventarioExportManager` (FileProvider, `cacheDir/exports`, filename
+  `caja-cortes-<timestamp>.csv`), sin tocar el módulo de Inventario;
+  (d) implementación en 3 checkpoints: contrato+backend+pytest / repos
+  android+CSV+jvm-tests / UI wiring+build, luego el `needs-device`.
+- [x] `CajaRepository`/`RetiroEfectivoRepository` ganan
   `obtenerCortesDelPeriodo`/`obtenerRetirosDelPeriodo` (suspend, un solo
   disparo, por rango de fechas) — criterio: `./gradlew testDebugUnitTest`
   en verde. `jvm-tests` `LocalCajaRepository`/`LocalRetiroEfectivoRepository`
   implementan con una query Room nueva, mismo patrón que
   `VentaDao.getVentasDelPeriodo`/`RetiroDao.getRetirosDelPeriodo` (ya
-  usadas por `calcularTotales`).
-- [ ] `docs/api-contract.md` actualizado: `GET /cortes-caja` y `GET
+  usadas por `calcularTotales`). Verificado: `CajaDao.getCortesDelPeriodo`
+  nueva (`fechaFin BETWEEN`, orden ascendente para el CSV cronológico);
+  `LocalRetiroEfectivoRepository` reutiliza la `RetiroDao.getRetirosDelPeriodo`
+  ya existente y la ordena por `fecha`. `./gradlew :app:testDebugUnitTest`
+  en verde.
+- [x] `docs/api-contract.md` actualizado: `GET /cortes-caja` y `GET
   /retiros-efectivo` (secciones 8.4/8.5) ganan parámetros opcionales
   `desde`/`hasta` — criterio: sección revisada antes de tocar código
-  (CLAUDE.md §9).
-- [ ] Rutas FastAPI filtran por `desde`/`hasta` cuando se envían —
+  (CLAUDE.md §9). Verificado: secciones 8.4/8.5 documentan `desde`/`hasta`
+  (ISO-8601, rango inclusivo sobre `fecha_fin` y `fecha` respectivamente;
+  omitidos = sin filtro, comportamiento previo).
+- [x] Rutas FastAPI filtran por `desde`/`hasta` cuando se envían —
   criterio: `pytest backend/tests/test_caja.py` en verde, con casos con y
-  sin filtro de fecha.
-- [ ] `RemoteCajaRepository`/`RemoteRetiroEfectivoRepository` implementan
+  sin filtro de fecha. Verificado: `list_cortes_caja`/`list_retiros_efectivo`
+  agregan `CorteCaja.fecha_fin`/`RetiroEfectivo.fecha` a los filtros solo si
+  el parámetro llega; 2 pruebas nuevas (`test_list_cortes_caja_filtra_por
+  _rango_de_fechas`, `test_list_retiros_efectivo_filtra_por_rango_de_fechas`);
+  `pytest` completo del backend en verde (60 pruebas).
+- [x] `RemoteCajaRepository`/`RemoteRetiroEfectivoRepository` implementan
   los métodos de periodo contra los parámetros nuevos — criterio:
-  `./gradlew testDebugUnitTest` mockeando Retrofit. `jvm-tests`
-- [ ] `ModeAwareCajaRepository`/`ModeAwareRetiroEfectivoRepository`
+  `./gradlew testDebugUnitTest` mockeando Retrofit. `jvm-tests` Verificado:
+  `CajaApiService.getCortes`/`RetiroApiService.getRetiros` ganan
+  `@Query("desde")`/`@Query("hasta")` opcionales (`String? = null`, Retrofit
+  los omite si son null); los métodos de periodo recorren páginas de 100
+  hasta juntar `total` (patrón `InventarioViewModel
+  .obtenerTodosLosItemsFiltrados`, porque un mes puede exceder el
+  `TAMANIO_PAGINA_HISTORIAL = 50`) y ordenan ascendente igual que el local.
+- [x] `ModeAwareCajaRepository`/`ModeAwareRetiroEfectivoRepository`
   exponen los métodos de periodo resolviendo local/remoto según
   `BackendMode` — criterio: prueba unitaria confirma el dispatch correcto.
-  `jvm-tests`
-- [ ] Generador de CSV (nuevo, mismo patrón que `InventarioCsvExporter`)
+  `jvm-tests` Verificado: mismo `when` sobre `deviceConfig.backendMode` que
+  el resto de métodos (`LOCAL`/`LOCAL_CON_SINCRONIZACION` → local, `REMOTO`
+  → remote); 1 prueba de dispatch nueva por repositorio en
+  `ModeAwareCajaRepositoryTest`/`ModeAwareRetiroEfectivoRepositoryTest`.
+- [x] Generador de CSV (nuevo, mismo patrón que `InventarioCsvExporter`)
   produce un archivo con los cortes y los retiros del periodo — criterio:
   prueba unitaria del formato exacto del CSV generado. `jvm-tests`
-- [ ] `CajaViewModel`/`CajaScreen` conectan el botón "Exportar" al flujo
+  Verificado: `CajaCsvExporter` (objeto en `com.pdv.pos.caja.export`) —
+  un archivo, bloque `CORTES` (11 columnas) + línea en blanco + bloque
+  `RETIROS` (4 columnas), fechas ISO-8601 UTC, montos `toPlainString`,
+  nulos vacíos, escape RFC 4180 básico; `CajaExportManager` espeja
+  `InventarioExportManager` (FileProvider, `cacheDir/exports`,
+  `caja-cortes-<timestamp>.csv`). `CajaCsvExporterTest`: 2 pruebas (formato
+  exacto con corte sin contar / retiro con coma en el motivo; caso vacío
+  deja solo encabezados).
+- [x] `CajaViewModel`/`CajaScreen` conectan el botón "Exportar" al flujo
   real (selección de periodo → fetch → generar CSV → compartir) —
-  criterio: `./gradlew build` en verde.
-- [ ] Instalado y verificado en el Xiaomi en los tres modos: el historial
+  criterio: `./gradlew build` en verde. Verificado: `CajaViewModel` filtra
+  `historialCortes`/`historialRetiros` a `DIAS_HISTORIAL_MS = 7 días` en los
+  dos collectors; `onExportarClick`/`onConfirmarExportarClick` (periodo por
+  defecto = últimos 7 días, editable) hacen fetch de ambos repos por periodo
+  → `CajaExportManager` → `archivoExportado`; `CajaScreen` gana botón
+  "Exportar cortes" + `ExportarDialog` (reusa `SelectorFechaHora`) y un
+  `LaunchedEffect` que abre el share sheet (`Intent.ACTION_SEND`, chooser
+  "Exportar cortes de caja"). 3 pruebas nuevas en `CajaViewModelTest`
+  (filtro de 7 días descarta cortes viejos; flujo de exportación expone el
+  archivo y cierra el diálogo). `./gradlew build` en verde (compila, lint,
+  pruebas debug y release).
+- [x] Instalado y verificado en el Xiaomi en los tres modos: el historial
   muestra solo los últimos 7 días, y exportar un periodo distinto (ej. el
   mes completo) genera un CSV correcto con cortes y retiros de ese rango
-  — `needs-device`.
+  — `needs-device`. Confirmado por el usuario el 2026-08-28.
 
 ### Decisiones abiertas
 

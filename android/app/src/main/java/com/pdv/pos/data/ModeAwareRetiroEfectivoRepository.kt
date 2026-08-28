@@ -37,6 +37,13 @@ class ModeAwareRetiroEfectivoRepository @Inject constructor(
         cajaRefreshSignal.emitir()
     }
 
+    override suspend fun obtenerRetirosDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<RetiroEfectivo> =
+        when (preferences.deviceConfig.first().backendMode) {
+            BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION ->
+                local.obtenerRetirosDelPeriodo(sucursalId, desde, hasta)
+            BackendMode.REMOTO -> remote.obtenerRetirosDelPeriodo(sucursalId, desde, hasta)
+        }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeRetiros(sucursalId: String): Flow<List<RetiroEfectivo>> =
         preferences.deviceConfig.map { it.backendMode }.distinctUntilChanged().flatMapLatest { modo ->

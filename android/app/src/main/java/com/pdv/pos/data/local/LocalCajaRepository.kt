@@ -56,6 +56,9 @@ class LocalCajaRepository @Inject constructor(
 
     override fun observeCortes(sucursalId: String): Flow<List<CorteCaja>> =
         cajaDao.observarCortes(sucursalId).map { entidades -> entidades.map { it.toDomain() } }
+
+    override suspend fun obtenerCortesDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<CorteCaja> =
+        cajaDao.getCortesDelPeriodo(sucursalId, desde, hasta).map { it.toDomain() }
 }
 
 private fun CorteCajaEntity.toDomain() = CorteCaja(

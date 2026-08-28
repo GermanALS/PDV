@@ -725,7 +725,16 @@ otra pantalla o desde la IA aparezca sin reabrir Caja. Mismo estilo de
 paginación que `GET /inventario` (sección 7.1): `sucursal_id` requerido,
 orden por `fecha_fin` descendente (más reciente primero).
 
+Parámetros opcionales `desde` / `hasta` (ISO-8601, PLAN.md Parte 18
+sub-parte I): filtran por `fecha_fin` dentro del rango `[desde, hasta]`
+(ambos límites inclusivos). Si se omiten, devuelve la página sin filtro de
+fecha (comportamiento previo). Los usa `RemoteCajaRepository
+.obtenerCortesDelPeriodo` para la exportación de cortes/retiros por
+periodo; el historial reactivo de `CajaScreen` sigue llamando sin ellos.
+
 **GET** `/cortes-caja?sucursal_id=uuid&page=1&page_size=20`
+
+**GET** `/cortes-caja?sucursal_id=uuid&desde=2026-08-01T00:00:00Z&hasta=2026-08-31T23:59:59Z&page=1&page_size=50`
 
 Response `200 OK`
 ```json
@@ -765,7 +774,14 @@ Contraparte remota de `RetiroEfectivoRepository.observeRetiros` (Android,
 PLAN.md Parte 18, sub-parte F). Mismo criterio de paginación que 8.4,
 orden por `fecha` descendente.
 
+Parámetros opcionales `desde` / `hasta` (ISO-8601, PLAN.md Parte 18
+sub-parte I): filtran por `fecha` dentro del rango `[desde, hasta]` (ambos
+límites inclusivos). Si se omiten, devuelve la página sin filtro de fecha.
+Los usa `RemoteRetiroEfectivoRepository.obtenerRetirosDelPeriodo`.
+
 **GET** `/retiros-efectivo?sucursal_id=uuid&page=1&page_size=20`
+
+**GET** `/retiros-efectivo?sucursal_id=uuid&desde=2026-08-01T00:00:00Z&hasta=2026-08-31T23:59:59Z&page=1&page_size=50`
 
 Response `200 OK`
 ```json

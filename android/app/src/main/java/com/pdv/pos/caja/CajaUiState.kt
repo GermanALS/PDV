@@ -2,6 +2,7 @@ package com.pdv.pos.caja
 
 import com.pdv.pos.domain.model.CorteCaja
 import com.pdv.pos.domain.model.RetiroEfectivo
+import com.pdv.pos.inventario.export.ArchivoExportado
 import java.math.BigDecimal
 
 enum class TipoCorte {
@@ -31,6 +32,15 @@ data class CajaUiState(
     val motivoRetiro: String = "",
     val errorRetiro: String? = null,
     val historialRetiros: List<RetiroEfectivo> = emptyList(),
+    // Exportacion de cortes y retiros por periodo (PLAN.md Parte 18,
+    // sub-parte I). El dialogo arranca con los ultimos 7 dias, editable a
+    // cualquier rango. archivoExportado se consume una sola vez desde
+    // CajaScreen para abrir el share sheet.
+    val mostrarDialogoExportar: Boolean = false,
+    val exportarDesde: Long = 0L,
+    val exportarHasta: Long = 0L,
+    val exportando: Boolean = false,
+    val archivoExportado: ArchivoExportado? = null,
 ) {
     // El periodo del corte parcial es de solo lectura (calculado); solo el
     // final admite modificar el horario (PLAN.md Parte 10).

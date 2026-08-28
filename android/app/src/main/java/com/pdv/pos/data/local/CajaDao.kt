@@ -17,4 +17,13 @@ interface CajaDao {
     // de la app.
     @Query("SELECT * FROM cortes_caja WHERE sucursalId = :sucursalId AND deletedAt IS NULL ORDER BY fechaFin DESC")
     fun observarCortes(sucursalId: String): Flow<List<CorteCajaEntity>>
+
+    // Rango por fechaFin para la exportacion por periodo (PLAN.md Parte 18,
+    // sub-parte I), mismo patron que RetiroDao.getRetirosDelPeriodo. Orden
+    // ascendente: el CSV se lee como una bitacora cronologica.
+    @Query(
+        "SELECT * FROM cortes_caja WHERE sucursalId = :sucursalId AND deletedAt IS NULL " +
+            "AND fechaFin BETWEEN :desde AND :hasta ORDER BY fechaFin ASC",
+    )
+    suspend fun getCortesDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<CorteCajaEntity>
 }

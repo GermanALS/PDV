@@ -135,4 +135,39 @@ class ModeAwareRetiroEfectivoRepositoryTest {
         assertEquals(emptyList<RetiroEfectivo>(), repository.observeRetiros("suc-1").first())
         coVerify(exactly = 1) { api.getRetiros("suc-1", 1, 50) }
     }
+
+    @Test
+    fun `switching BackendMode in DataStore switches which repository handles obtenerRetirosDelPeriodo`(@TempDir tempDir: File) = runTest {
+        val dao = mockk<RetiroDao>()
+        coEvery { dao.getRetirosDelPeriodo(any(), any(), any()) } returns emptyList()
+        val appLogger = mockk<AppLogger>()
+        val local = LocalRetiroEfectivoRepository(dao, appLogger)
+
+        val api = mockk<RetiroApiService>()
+        coEvery { api.getRetiros(any(), any(), any(), any(), any()) } returns RetiroEfectivoListResponseDto(
+            items = emptyList(),
+            page = 1,
+            pageSize = 100,
+            total = 0,
+        )
+        val remote = RemoteRetiroEfectivoRepository(api, appLogger)
+
+        val preferences = preferences(tempDir)
+        val repository = ModeAwareRetiroEfectivoRepository(
+            local = local,
+            remote = remote,
+            preferences = preferences,
+            cajaRefreshSignal = CajaRefreshSignal(),
+        )
+
+        repository.obtenerRetirosDelPeriodo("suc-1", 0L, 100L)
+        coVerify(exactly = 1) { dao.getRetirosDelPeriodo("suc-1", 0L, 100L) }
+        coVerify(exactly = 0) { api.getRetiros(any(), any(), any(), any(), any()) }
+
+        preferences.setBackendMode(BackendMode.REMOTO)
+        repository.obtenerRetirosDelPeriodo("suc-1", 0L, 100L)
+
+        coVerify(exactly = 1) { api.getRetiros(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { dao.getRetirosDelPeriodo("suc-1", 0L, 100L) }
+    }
 }

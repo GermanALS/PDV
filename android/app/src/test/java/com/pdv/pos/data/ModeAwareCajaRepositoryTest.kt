@@ -197,4 +197,41 @@ class ModeAwareCajaRepositoryTest {
         assertEquals(emptyList<CorteCaja>(), repository.observeCortes("suc-1").first())
         coVerify(exactly = 1) { api.getCortes("suc-1", 1, 50) }
     }
+
+    @Test
+    fun `switching BackendMode in DataStore switches which repository handles obtenerCortesDelPeriodo`(@TempDir tempDir: File) = runTest {
+        val cajaDao = mockk<CajaDao>()
+        coEvery { cajaDao.getCortesDelPeriodo(any(), any(), any()) } returns emptyList()
+        val ventaDao = mockk<VentaDao>()
+        val retiroDao = mockk<RetiroDao>()
+        val appLogger = mockk<AppLogger>()
+        val local = LocalCajaRepository(cajaDao, ventaDao, retiroDao, appLogger)
+
+        val api = mockk<CajaApiService>()
+        coEvery { api.getCortes(any(), any(), any(), any(), any()) } returns CorteCajaListResponseDto(
+            items = emptyList(),
+            page = 1,
+            pageSize = 100,
+            total = 0,
+        )
+        val remote = RemoteCajaRepository(api, appLogger)
+
+        val preferences = preferences(tempDir)
+        val repository = ModeAwareCajaRepository(
+            local = local,
+            remote = remote,
+            preferences = preferences,
+            cajaRefreshSignal = CajaRefreshSignal(),
+        )
+
+        repository.obtenerCortesDelPeriodo("suc-1", 0L, 100L)
+        coVerify(exactly = 1) { cajaDao.getCortesDelPeriodo("suc-1", 0L, 100L) }
+        coVerify(exactly = 0) { api.getCortes(any(), any(), any(), any(), any()) }
+
+        preferences.setBackendMode(BackendMode.REMOTO)
+        repository.obtenerCortesDelPeriodo("suc-1", 0L, 100L)
+
+        coVerify(exactly = 1) { api.getCortes(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { cajaDao.getCortesDelPeriodo("suc-1", 0L, 100L) }
+    }
 }

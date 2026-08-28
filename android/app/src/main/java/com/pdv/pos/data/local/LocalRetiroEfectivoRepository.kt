@@ -29,6 +29,12 @@ class LocalRetiroEfectivoRepository @Inject constructor(
 
     override fun observeRetiros(sucursalId: String): Flow<List<RetiroEfectivo>> =
         dao.observarRetiros(sucursalId).map { entidades -> entidades.map { it.toDomain() } }
+
+    // Reutiliza la query que ya usa calcularTotales (RetiroDao
+    // .getRetirosDelPeriodo); la ordena ascendente para el CSV cronologico
+    // de la exportacion por periodo (PLAN.md Parte 18, sub-parte I).
+    override suspend fun obtenerRetirosDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<RetiroEfectivo> =
+        dao.getRetirosDelPeriodo(sucursalId, desde, hasta).map { it.toDomain() }.sortedBy { it.fecha }
 }
 
 private fun RetiroEfectivoEntity.toDomain() = RetiroEfectivo(

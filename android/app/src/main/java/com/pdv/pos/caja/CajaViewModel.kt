@@ -6,6 +6,7 @@ import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.model.CorteCaja
 import com.pdv.pos.domain.model.RetiroEfectivo
+import com.pdv.pos.caja.export.CajaExportManager
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,6 +37,7 @@ class CajaViewModel @Inject constructor(
     private val preferences: ConfiguracionPreferences,
     private val sessionManager: SessionManager,
     private val cajaRefreshSignal: CajaRefreshSignal,
+    private val cajaExportManager: CajaExportManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(estadoInicial())
@@ -53,12 +55,18 @@ class CajaViewModel @Inject constructor(
         viewModelScope.launch {
             combine(sucursalId, cajaRefreshSignal.refrescos.onStart { emit(Unit) }) { id, _ -> id }
                 .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else cajaRepository.observeCortes(id) }
-                .collect { historial -> _uiState.update { it.copy(historialCortes = historial) } }
+                .collect { historial ->
+                    val limite = System.currentTimeMillis() - DIAS_HISTORIAL_MS
+                    _uiState.update { it.copy(historialCortes = historial.filter { corte -> corte.fechaFin >= limite }) }
+                }
         }
         viewModelScope.launch {
             combine(sucursalId, cajaRefreshSignal.refrescos.onStart { emit(Unit) }) { id, _ -> id }
                 .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else retiroRepository.observeRetiros(id) }
-                .collect { historial -> _uiState.update { it.copy(historialRetiros = historial) } }
+                .collect { historial ->
+                    val limite = System.currentTimeMillis() - DIAS_HISTORIAL_MS
+                    _uiState.update { it.copy(historialRetiros = historial.filter { retiro -> retiro.fecha >= limite }) }
+                }
         }
     }
 
@@ -249,6 +257,73 @@ class CajaViewModel @Inject constructor(
         }
     }
 
+    // Exportacion de cortes y retiros por periodo (PLAN.md Parte 18,
+    // sub-parte I): el rango arranca en los ultimos 7 dias (igual que el
+    // historial visible) pero el usuario puede editarlo a cualquier rango
+    // antes de confirmar; el fetch no esta acotado a esos 7 dias.
+    fun onExportarClick() {
+        val ahora = System.currentTimeMillis()
+        _uiState.value = _uiState.value.copy(
+            mostrarDialogoExportar = true,
+            exportarDesde = ahora - DIAS_HISTORIAL_MS,
+            exportarHasta = ahora,
+        )
+    }
+
+    fun onExportarDesdeChange(millis: Long) {
+        _uiState.value = _uiState.value.copy(exportarDesde = millis)
+    }
+
+    fun onExportarHastaChange(millis: Long) {
+        _uiState.value = _uiState.value.copy(exportarHasta = millis)
+    }
+
+    fun onCancelarExportarClick() {
+        _uiState.value = _uiState.value.copy(mostrarDialogoExportar = false)
+    }
+
+    fun onConfirmarExportarClick() {
+        val estado = _uiState.value
+        viewModelScope.launch {
+            val sucursalId = preferences.deviceConfig.first().sucursalIdSeleccionada
+            if (sucursalId == null) {
+                _uiState.value = _uiState.value.copy(
+                    mostrarDialogoExportar = false,
+                    mensajeConfirmacion = "No se pudo exportar: falta sucursal activa",
+                )
+                return@launch
+            }
+            _uiState.value = _uiState.value.copy(exportando = true)
+            try {
+                val cortes = cajaRepository.obtenerCortesDelPeriodo(sucursalId, estado.exportarDesde, estado.exportarHasta)
+                val retiros = retiroRepository.obtenerRetirosDelPeriodo(sucursalId, estado.exportarDesde, estado.exportarHasta)
+                val archivo = cajaExportManager.exportarCortesYRetiros(cortes, retiros)
+                _uiState.value = _uiState.value.copy(
+                    mostrarDialogoExportar = false,
+                    exportando = false,
+                    archivoExportado = archivo,
+                    mensajeConfirmacion = "Exportados ${cortes.size} cortes y ${retiros.size} retiros",
+                )
+            } catch (e: IOException) {
+                _uiState.value = _uiState.value.copy(
+                    mostrarDialogoExportar = false,
+                    exportando = false,
+                    mensajeConfirmacion = "No se pudo exportar: ${e.message}",
+                )
+            } catch (e: HttpException) {
+                _uiState.value = _uiState.value.copy(
+                    mostrarDialogoExportar = false,
+                    exportando = false,
+                    mensajeConfirmacion = "No se pudo exportar: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun onArchivoExportadoCompartido() {
+        _uiState.value = _uiState.value.copy(archivoExportado = null)
+    }
+
     private suspend fun obtenerSucursalYUsuario(): Pair<String, String>? {
         val sucursalId = preferences.deviceConfig.first().sucursalIdSeleccionada
         val usuarioId = sessionManager.session.value?.username
@@ -256,6 +331,11 @@ class CajaViewModel @Inject constructor(
     }
 
     private companion object {
+        // El historial visible de CajaScreen (cortes y retiros) se acota a
+        // esta ventana; la exportacion puede pedir cualquier rango (PLAN.md
+        // Parte 18, sub-parte I).
+        const val DIAS_HISTORIAL_MS = 7L * 24 * 60 * 60 * 1000
+
         fun estadoInicial(): CajaUiState {
             val (inicio, fin) = periodoPorDefecto(TipoCorte.PARCIAL, emptyList())
             return CajaUiState(tipoCorte = TipoCorte.PARCIAL, fechaInicio = inicio, fechaFin = fin)

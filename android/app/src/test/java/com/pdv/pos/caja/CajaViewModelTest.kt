@@ -3,12 +3,14 @@ package com.pdv.pos.caja
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
+import com.pdv.pos.caja.export.CajaExportManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.domain.model.CorteCaja
 import com.pdv.pos.domain.model.RetiroEfectivo
 import com.pdv.pos.domain.model.TotalesCorte
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
+import com.pdv.pos.inventario.export.ArchivoExportado
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -83,13 +85,15 @@ class CajaViewModelTest {
         montoEsperado = BigDecimal("800.00"),
     )
 
+    // fechaFin reciente: el historial de CajaViewModel se filtra a los
+    // ultimos 7 dias (PLAN.md Parte 18, sub-parte I).
     private fun corteDeEjemplo() = CorteCaja(
         id = "corte-1",
         sucursalId = "suc-1",
         usuarioId = "german",
         tipo = "parcial",
-        fechaInicio = 0L,
-        fechaFin = 100L,
+        fechaInicio = System.currentTimeMillis() - 3_600_000L,
+        fechaFin = System.currentTimeMillis(),
         totalVentas = BigDecimal("100.00"),
         totalEfectivo = BigDecimal("100.00"),
         totalTarjeta = BigDecimal.ZERO,
@@ -105,7 +109,7 @@ class CajaViewModelTest {
         preferences.setSucursalSeleccionada("suc-1")
         val cajaRepository = cajaRepository()
         coEvery { cajaRepository.calcularTotales("suc-1", any(), any()) } returns totalesDeEjemplo()
-        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, SessionManager(), CajaRefreshSignal())
+        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, SessionManager(), CajaRefreshSignal(), mockk(relaxed = true))
 
         viewModel.onCalcularClick()
 
@@ -130,7 +134,7 @@ class CajaViewModelTest {
         val cajaRepository = cajaRepository()
         val fechaFinCapturado = mutableListOf<Long>()
         coEvery { cajaRepository.calcularTotales("suc-1", any(), capture(fechaFinCapturado)) } returns totalesDeEjemplo()
-        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, SessionManager(), CajaRefreshSignal())
+        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, SessionManager(), CajaRefreshSignal(), mockk(relaxed = true))
 
         viewModel.onCalcularClick()
         Thread.sleep(5)
@@ -150,7 +154,7 @@ class CajaViewModelTest {
         coEvery {
             cajaRepository.calcularTotales("suc-1", capture(fechaInicioCapturado), capture(fechaFinCapturado))
         } returns totalesDeEjemplo()
-        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, SessionManager(), CajaRefreshSignal())
+        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, SessionManager(), CajaRefreshSignal(), mockk(relaxed = true))
         viewModel.onTipoCorteChange(TipoCorte.FINAL)
 
         viewModel.onCalcularClick()
@@ -166,7 +170,7 @@ class CajaViewModelTest {
     fun `onCalcularClick shows an error when there is no sucursal seleccionada`(@TempDir tempDir: File) = runTest(dispatcher) {
         val preferences = preferences(tempDir)
         val cajaRepository = cajaRepository()
-        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, SessionManager(), CajaRefreshSignal())
+        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, SessionManager(), CajaRefreshSignal(), mockk(relaxed = true))
 
         viewModel.onCalcularClick()
 
@@ -195,7 +199,7 @@ class CajaViewModelTest {
             val corte = firstArg<CorteCaja>()
             historialCortes.value = listOf(corte) + historialCortes.value
         }
-        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, sessionManager, CajaRefreshSignal())
+        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, sessionManager, CajaRefreshSignal(), mockk(relaxed = true))
         viewModel.onCalcularClick()
         viewModel.onMontoContadoChange("795.00")
 
@@ -221,7 +225,7 @@ class CajaViewModelTest {
         val cajaRepository = cajaRepository()
         coEvery { cajaRepository.calcularTotales("suc-1", any(), any()) } returns totalesDeEjemplo()
         coEvery { cajaRepository.guardarCorte(any()) } throws IOException("sin conexion")
-        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, sessionManager, CajaRefreshSignal())
+        val viewModel = CajaViewModel(cajaRepository, retiroRepository(), preferences, sessionManager, CajaRefreshSignal(), mockk(relaxed = true))
         viewModel.onCalcularClick()
 
         viewModel.onGuardarClick()
@@ -243,7 +247,7 @@ class CajaViewModelTest {
             val retiro = firstArg<RetiroEfectivo>()
             historialRetiros.value = listOf(retiro) + historialRetiros.value
         }
-        val viewModel = CajaViewModel(cajaRepository(), retiroRepository, preferences, sessionManager, CajaRefreshSignal())
+        val viewModel = CajaViewModel(cajaRepository(), retiroRepository, preferences, sessionManager, CajaRefreshSignal(), mockk(relaxed = true))
         viewModel.onRegistrarRetiroClick()
         viewModel.onMontoRetiroChange("100.00")
         viewModel.onMotivoRetiroChange("Pago a proveedor")
@@ -265,7 +269,7 @@ class CajaViewModelTest {
     fun `onConfirmarRetiroClick shows a validation error for an invalid monto without calling the repository`(@TempDir tempDir: File) = runTest(dispatcher) {
         val preferences = preferences(tempDir)
         val retiroRepository = retiroRepository()
-        val viewModel = CajaViewModel(cajaRepository(), retiroRepository, preferences, SessionManager(), CajaRefreshSignal())
+        val viewModel = CajaViewModel(cajaRepository(), retiroRepository, preferences, SessionManager(), CajaRefreshSignal(), mockk(relaxed = true))
         viewModel.onRegistrarRetiroClick()
         viewModel.onMontoRetiroChange("0")
 
@@ -294,6 +298,7 @@ class CajaViewModelTest {
             preferences,
             SessionManager(),
             CajaRefreshSignal(),
+            mockk(relaxed = true),
         )
         assertTrue(viewModel.uiState.value.historialCortes.isEmpty())
 
@@ -303,5 +308,59 @@ class CajaViewModelTest {
         historialCortes.value = listOf(corteDeEjemplo())
 
         assertEquals(1, viewModel.uiState.value.historialCortes.size)
+    }
+
+    @Test
+    fun `el historial visible descarta los cortes de mas de 7 dias`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val preferences = preferences(tempDir)
+        preferences.setSucursalSeleccionada("suc-1")
+        val historialCortes = MutableStateFlow<List<CorteCaja>>(emptyList())
+        val viewModel = CajaViewModel(
+            cajaRepository(historialCortes),
+            retiroRepository(),
+            preferences,
+            SessionManager(),
+            CajaRefreshSignal(),
+            mockk(relaxed = true),
+        )
+
+        val corteViejo = corteDeEjemplo().copy(id = "viejo", fechaFin = System.currentTimeMillis() - 10L * 24 * 60 * 60 * 1000)
+        historialCortes.value = listOf(corteDeEjemplo(), corteViejo)
+
+        assertEquals(listOf("corte-1"), viewModel.uiState.value.historialCortes.map { it.id })
+    }
+
+    @Test
+    fun `onConfirmarExportarClick trae el periodo, genera el csv y lo expone para compartir`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val preferences = preferences(tempDir)
+        preferences.setSucursalSeleccionada("suc-1")
+        val cajaRepository = cajaRepository()
+        val retiroRepository = retiroRepository()
+        val cortesDelPeriodo = listOf(corteDeEjemplo())
+        coEvery { cajaRepository.obtenerCortesDelPeriodo("suc-1", any(), any()) } returns cortesDelPeriodo
+        coEvery { retiroRepository.obtenerRetirosDelPeriodo("suc-1", any(), any()) } returns emptyList()
+        val exportManager = mockk<CajaExportManager>()
+        val archivo = mockk<ArchivoExportado>()
+        coEvery { exportManager.exportarCortesYRetiros(any(), any()) } returns archivo
+        val viewModel = CajaViewModel(
+            cajaRepository,
+            retiroRepository,
+            preferences,
+            SessionManager(),
+            CajaRefreshSignal(),
+            exportManager,
+        )
+
+        viewModel.onExportarClick()
+        assertTrue(viewModel.uiState.value.mostrarDialogoExportar)
+        viewModel.onConfirmarExportarClick()
+
+        coVerify { cajaRepository.obtenerCortesDelPeriodo("suc-1", any(), any()) }
+        coVerify { retiroRepository.obtenerRetirosDelPeriodo("suc-1", any(), any()) }
+        coVerify { exportManager.exportarCortesYRetiros(cortesDelPeriodo, emptyList()) }
+        val estado = viewModel.uiState.value
+        assertEquals(archivo, estado.archivoExportado)
+        assertFalse(estado.mostrarDialogoExportar)
+        assertFalse(estado.exportando)
     }
 }
