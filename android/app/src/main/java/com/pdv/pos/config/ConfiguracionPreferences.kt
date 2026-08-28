@@ -13,7 +13,6 @@ import javax.inject.Singleton
 private val KEY_BACKEND_MODE = stringPreferencesKey("backend_mode")
 private val KEY_IP = stringPreferencesKey("ip")
 private val KEY_PUERTO = stringPreferencesKey("puerto")
-private val KEY_NOMBRE_BASE_DATOS = stringPreferencesKey("nombre_base_datos")
 private val KEY_SUCURSAL_ID = stringPreferencesKey("sucursal_id_seleccionada")
 
 // Preferencia de dispositivo, sin Room (excepcion documentada en CLAUDE.md
@@ -28,7 +27,6 @@ class ConfiguracionPreferences @Inject constructor(
             backendMode = prefs[KEY_BACKEND_MODE]?.let { BackendMode.valueOf(it) } ?: BackendMode.LOCAL,
             ip = prefs[KEY_IP].orEmpty(),
             puerto = prefs[KEY_PUERTO].orEmpty(),
-            nombreBaseDatos = prefs[KEY_NOMBRE_BASE_DATOS].orEmpty(),
             sucursalIdSeleccionada = prefs[KEY_SUCURSAL_ID],
         )
     }
@@ -37,11 +35,10 @@ class ConfiguracionPreferences @Inject constructor(
         dataStore.edit { it[KEY_BACKEND_MODE] = mode.name }
     }
 
-    suspend fun setConexion(ip: String, puerto: String, nombreBaseDatos: String) {
+    suspend fun setConexion(ip: String, puerto: String) {
         dataStore.edit {
             it[KEY_IP] = ip
             it[KEY_PUERTO] = puerto
-            it[KEY_NOMBRE_BASE_DATOS] = nombreBaseDatos
         }
     }
 

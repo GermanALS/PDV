@@ -4,6 +4,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import com.pdv.pos.data.remote.AuthApiService
 import com.pdv.pos.data.remote.CajaApiService
 import com.pdv.pos.data.remote.DevolucionApiService
+import com.pdv.pos.data.remote.DynamicHostInterceptor
 import com.pdv.pos.data.remote.EntradaApiService
 import com.pdv.pos.data.remote.HealthApiService
 import com.pdv.pos.data.remote.InventarioApiService
@@ -23,8 +24,11 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import javax.inject.Singleton
 
-// Requiere `adb reverse tcp:8000 tcp:8000` para llegar al backend local desde
-// el dispositivo fisico por USB. En el emulador, reemplazar por 10.0.2.2.
+// Host por defecto cuando no hay IP/Puerto guardados en Configuracion:
+// requiere `adb reverse tcp:8000 tcp:8000` para llegar al backend local
+// desde el dispositivo fisico por USB (en el emulador, 10.0.2.2). Con
+// IP/Puerto guardados, DynamicHostInterceptor reescribe el host de cada
+// request y este valor solo aporta el esquema y el path base.
 private const val BASE_URL = "http://localhost:8000/api/v1/"
 
 @Module
@@ -37,8 +41,9 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient =
+    fun provideOkHttpClient(dynamicHostInterceptor: DynamicHostInterceptor): OkHttpClient =
         OkHttpClient.Builder()
+            .addInterceptor(dynamicHostInterceptor)
             .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
             .build()
 

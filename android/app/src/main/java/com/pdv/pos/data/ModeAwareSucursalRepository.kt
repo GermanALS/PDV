@@ -15,9 +15,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 // Resuelve local/remota segun BackendMode en DataStore (PLAN.md Parte 6,
-// sub-paso 5 "Wiring"; CLAUDE.md sec. 3). "Local con sincronizacion" lee
-// de Room igual que "local" - el disparo del sync en background hacia el
-// remoto es infraestructura aparte, fuera del alcance de este sub-paso.
+// sub-paso 5 "Wiring"; CLAUDE.md sec. 3). El catalogo de sucursales se
+// trae del backend tanto en REMOTO como en LOCAL_CON_SINCRONIZACION,
+// alineado con el diseno aprobado en la Parte 3 ("en modo remoto o
+// local-con-sincronizacion la trae con GET /sucursales"); solo el modo
+// LOCAL puro lee de Room.
 @Singleton
 class ModeAwareSucursalRepository @Inject constructor(
     private val local: LocalSucursalRepository,
@@ -32,8 +34,8 @@ class ModeAwareSucursalRepository @Inject constructor(
             .distinctUntilChanged()
             .flatMapLatest { modo ->
                 when (modo) {
-                    BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION -> local.observeSucursales()
-                    BackendMode.REMOTO -> remote.observeSucursales()
+                    BackendMode.LOCAL -> local.observeSucursales()
+                    BackendMode.REMOTO, BackendMode.LOCAL_CON_SINCRONIZACION -> remote.observeSucursales()
                 }
             }
 }

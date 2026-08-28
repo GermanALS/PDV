@@ -63,22 +63,27 @@ fun ConfiguracionScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            ConexionSection(
-                ip = uiState.ip,
-                puerto = uiState.puerto,
-                nombreBaseDatos = uiState.nombreBaseDatos,
-                onIpChange = viewModel::onIpChange,
-                onPuertoChange = viewModel::onPuertoChange,
-                onNombreBaseDatosChange = viewModel::onNombreBaseDatosChange,
-                onGuardarConexion = viewModel::onGuardarConexion,
-            )
-            SucursalSection(
-                sucursales = uiState.sucursales,
-                seleccionada = uiState.sucursalSeleccionada,
-                onSucursalSelected = viewModel::onSucursalSelected,
-            )
             ModoSection(modo = uiState.modo, onModoSelected = viewModel::onModoSelected)
-            PermisosSection(permisos = uiState.permisosSimulados)
+            // Conexion y Sucursal solo aplican cuando la app habla con un
+            // backend: en LOCAL puro no hay a donde conectarse ni catalogo
+            // remoto de sucursales que elegir.
+            if (uiState.modo != BackendMode.LOCAL) {
+                ConexionSection(
+                    ip = uiState.ip,
+                    puerto = uiState.puerto,
+                    onIpChange = viewModel::onIpChange,
+                    onPuertoChange = viewModel::onPuertoChange,
+                    onGuardarConexion = viewModel::onGuardarConexion,
+                )
+                SucursalSection(
+                    sucursales = uiState.sucursales,
+                    seleccionada = uiState.sucursalSeleccionada,
+                    onSucursalSelected = viewModel::onSucursalSelected,
+                )
+            }
+            Button(onClick = onNavigateToImportarCatalogo, modifier = Modifier.fillMaxWidth()) {
+                Text("Importar catálogo")
+            }
             AsistenteIaSection(
                 activo = uiState.iaActivo,
                 proveedor = uiState.iaProveedor,
@@ -105,12 +110,6 @@ fun ConfiguracionScreen(
                     onGuardar = viewModel::onGuardarPromptIa,
                 )
             }
-            Button(onClick = onNavigateToImportarCatalogo, modifier = Modifier.fillMaxWidth()) {
-                Text("Importar catálogo")
-            }
-            Button(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
-                Text("Cerrar sesión")
-            }
         }
     }
 }
@@ -119,10 +118,8 @@ fun ConfiguracionScreen(
 private fun ConexionSection(
     ip: String,
     puerto: String,
-    nombreBaseDatos: String,
     onIpChange: (String) -> Unit,
     onPuertoChange: (String) -> Unit,
-    onNombreBaseDatosChange: (String) -> Unit,
     onGuardarConexion: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -130,19 +127,13 @@ private fun ConexionSection(
         OutlinedTextField(
             value = ip,
             onValueChange = onIpChange,
-            label = { Text("IP") },
+            label = { Text("IP / Servidor") },
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = puerto,
             onValueChange = onPuertoChange,
-            label = { Text("Puerto") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = nombreBaseDatos,
-            onValueChange = onNombreBaseDatosChange,
-            label = { Text("Nombre de base de datos") },
+            label = { Text("Puerto del servidor") },
             modifier = Modifier.fillMaxWidth(),
         )
         Button(onClick = onGuardarConexion, modifier = Modifier.fillMaxWidth()) {
@@ -210,17 +201,6 @@ private fun BackendMode.etiqueta(): String = when (this) {
     BackendMode.LOCAL -> "Local"
     BackendMode.REMOTO -> "Remoto"
     BackendMode.LOCAL_CON_SINCRONIZACION -> "Local con sincronización"
-}
-
-@Composable
-private fun PermisosSection(permisos: List<PermisoModulo>) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Permisos (simulados)", style = MaterialTheme.typography.titleMedium)
-        permisos.forEach { permiso ->
-            val estado = if (permiso.habilitado) "habilitado" else "deshabilitado"
-            Text("${permiso.nombreModulo}: $estado", style = MaterialTheme.typography.bodyMedium)
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

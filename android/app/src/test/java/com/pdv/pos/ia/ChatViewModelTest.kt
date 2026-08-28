@@ -73,7 +73,7 @@ class ChatViewModelTest {
     private fun preferences(sucursalId: String? = "suc-1"): ConfiguracionPreferences {
         val preferences = mockk<ConfiguracionPreferences>()
         every { preferences.deviceConfig } returns flowOf(
-            DeviceConfig(backendMode = BackendMode.LOCAL, ip = "", puerto = "", nombreBaseDatos = "", sucursalIdSeleccionada = sucursalId),
+            DeviceConfig(backendMode = BackendMode.LOCAL, ip = "", puerto = "", sucursalIdSeleccionada = sucursalId),
         )
         return preferences
     }
@@ -351,7 +351,7 @@ class ChatViewModelTest {
             coEvery { ejecutor.ejecutar(any(), any(), any(), any()) } returns ResultadoAccionIa.Ejecutada("Corte parcial registrado.")
             val preferencesEnModo = mockk<ConfiguracionPreferences>()
             every { preferencesEnModo.deviceConfig } returns flowOf(
-                DeviceConfig(backendMode = modo, ip = "", puerto = "", nombreBaseDatos = "", sucursalIdSeleccionada = "suc-1"),
+                DeviceConfig(backendMode = modo, ip = "", puerto = "", sucursalIdSeleccionada = "suc-1"),
             )
             val viewModel = viewModel(preferences = preferencesEnModo, llmClient = llmClient, ejecutorAccionesIa = ejecutor)
             viewModel.onTextoChange("hace un corte parcial")

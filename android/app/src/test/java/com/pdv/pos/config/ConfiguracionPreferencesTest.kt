@@ -25,7 +25,6 @@ class ConfiguracionPreferencesTest {
         assertEquals(BackendMode.LOCAL, config.backendMode)
         assertEquals("", config.ip)
         assertEquals("", config.puerto)
-        assertEquals("", config.nombreBaseDatos)
     }
 
     @Test
@@ -41,12 +40,11 @@ class ConfiguracionPreferencesTest {
     fun `writes and rereads the connection params`(@TempDir tempDir: File) = runTest {
         val preferences = preferences(tempDir)
 
-        preferences.setConexion(ip = "192.168.1.10", puerto = "8000", nombreBaseDatos = "pdv")
+        preferences.setConexion(ip = "192.168.1.10", puerto = "8000")
 
         val config = preferences.deviceConfig.first()
         assertEquals("192.168.1.10", config.ip)
         assertEquals("8000", config.puerto)
-        assertEquals("pdv", config.nombreBaseDatos)
     }
 
     @Test

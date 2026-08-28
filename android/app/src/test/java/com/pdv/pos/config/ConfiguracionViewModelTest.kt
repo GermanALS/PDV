@@ -19,7 +19,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -118,16 +117,6 @@ class ConfiguracionViewModelTest {
 
         assertEquals(BackendMode.REMOTO, preferences.deviceConfig.first().backendMode)
         assertEquals(BackendMode.REMOTO, viewModel.uiState.value.modo)
-    }
-
-    @Test
-    fun `logout delegates to the session manager`(@TempDir tempDir: File) = runTest(dispatcher) {
-        val sessionManager = mockk<SessionManager>(relaxed = true)
-        val viewModel = viewModel(tempDir, sessionManager = sessionManager)
-
-        viewModel.logout()
-
-        verify { sessionManager.logout() }
     }
 
     @Test

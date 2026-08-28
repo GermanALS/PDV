@@ -2814,54 +2814,74 @@ ahí al cerrar esta sub-parte.)*
   sucursal manualmente — no forma parte del alcance de esta Parte 18.
 
 **G. Configuración: orden condicional, conexión real y limpieza**
-- [ ] Propuesta de la nueva estructura de `ConfiguracionScreen` presentada y
+- [x] Propuesta de la nueva estructura de `ConfiguracionScreen` presentada y
   aprobada — orden: `ModoSection` primero; `ConexionSection` +
   `SucursalSection` solo visibles si `backendMode != LOCAL`; sección
   "Permisos (simulados)" eliminada; botón "Importar catálogo" movido antes
   de `AsistenteIaSection`; botón "Cerrar sesión" eliminado de esta pantalla
   (queda solo en `HelloScreen`) — criterio: aprobación explícita
   registrada antes de implementar. `needs-approval` **Aprobado 2026-08-25.**
-- [ ] `ModoSection` se renderiza primero y sin condición; `ConexionSection`
+- [x] `ModoSection` se renderiza primero y sin condición; `ConexionSection`
   y `SucursalSection` solo se renderizan cuando el modo seleccionado no es
   `LOCAL` — criterio: revisión de código + `./gradlew build` en verde.
-- [ ] Campo "IP" renombrado a "IP / Servidor"; campo "Puerto" renombrado a
+  Verificado: `if (uiState.modo != BackendMode.LOCAL) { ConexionSection(...);
+  SucursalSection(...) }` en `ConfiguracionScreen`, `ModoSection` fuera del
+  `if`. `./gradlew build` en verde.
+- [x] Campo "IP" renombrado a "IP / Servidor"; campo "Puerto" renombrado a
   "Puerto del servidor"; campo "Nombre de base de datos" eliminado de la
   UI, de `DeviceConfig`, `ConfiguracionPreferences`
   (`KEY_NOMBRE_BASE_DATOS`, `setConexion`) y de `ConfiguracionUiState` —
   criterio: `./gradlew testDebugUnitTest` en verde tras actualizar
-  `ConfiguracionPreferencesTest`. `jvm-tests`
-- [ ] `NetworkModule` deja de usar un `BASE_URL` hardcodeado: el
+  `ConfiguracionPreferencesTest`. `jvm-tests` Verificado: `setConexion(ip,
+  puerto)` sin tercer parámetro; `ConfiguracionPreferencesTest` y
+  `ChatViewModelTest` actualizados; `./gradlew :app:testDebugUnitTest` en
+  verde.
+- [x] `NetworkModule` deja de usar un `BASE_URL` hardcodeado: el
   `OkHttpClient`/`Retrofit` toman la IP/Puerto guardados en
   `ConfiguracionPreferences` (mecanismo dinámico, ej. interceptor que
   reescribe host/puerto desde el valor observado de `deviceConfig`, sin
   requerir reiniciar la app) — criterio: prueba unitaria confirma que
   cambiar la IP/Puerto guardado cambia el host efectivo de una llamada.
-  `jvm-tests`
-- [ ] Sección "Permisos (simulados)" eliminada (`PermisosSection`,
+  `jvm-tests` Verificado: `DynamicHostInterceptor` (`@Singleton`, lee
+  `deviceConfig.first()` vía `runBlocking` en el hilo de dispatch de OkHttp;
+  no-op si no hay IP/puerto guardados, deja el host del `BASE_URL` que ahora
+  solo aporta esquema y path base). `DynamicHostInterceptorTest`: 2 pruebas
+  (reescribe host/puerto guardados; passthrough sin conexión guardada).
+- [x] Sección "Permisos (simulados)" eliminada (`PermisosSection`,
   `PermisoModulo`, `permisosSimuladosDeEjemplo` en
   `ConfiguracionViewModel`/`ConfiguracionScreen`) — criterio: `./gradlew
   build` en verde, sin referencias residuales. No requiere reemplazo: la
   administración real de permisos ya es accesible desde la pantalla
-  principal (botón "Usuarios", Parte 13).
-- [ ] Botón "Importar catálogo" movido antes de `AsistenteIaSection` —
-  criterio: revisión de código confirma el nuevo orden.
-- [ ] Botón "Cerrar sesión" eliminado de `ConfiguracionScreen` (duplicado
+  principal (botón "Usuarios", Parte 13). Verificado: sin referencias
+  residuales a `PermisoModulo`/`permisosSimulados` en `app/src`; `./gradlew
+  build` en verde.
+- [x] Botón "Importar catálogo" movido antes de `AsistenteIaSection` —
+  criterio: revisión de código confirma el nuevo orden. Verificado: el
+  `Button` de "Importar catálogo" está entre el bloque condicional
+  Conexión/Sucursal y `AsistenteIaSection`.
+- [x] Botón "Cerrar sesión" eliminado de `ConfiguracionScreen` (duplicado
   del de `HelloScreen`) — criterio: `./gradlew build` en verde; un solo
-  botón "Cerrar sesión" en toda la app.
-- [ ] `ModeAwareSucursalRepository` usa `RemoteSucursalRepository` también
+  botón "Cerrar sesión" en toda la app. Verificado: `ConfiguracionViewModel
+  .logout()` y la prueba `logout delegates to the session manager`
+  eliminados; el único botón "Cerrar sesión" queda en `HelloScreen`.
+- [x] `ModeAwareSucursalRepository` usa `RemoteSucursalRepository` también
   en `LOCAL_CON_SINCRONIZACION` (no solo en `REMOTO`), alineado con el
   diseño ya aprobado en la Parte 3 ("en modo remoto o
   local-con-sincronización la trae con `GET /sucursales`") — criterio:
   prueba unitaria nueva en `ModeAwareSucursalRepositoryTest` cubre
-  `LOCAL_CON_SINCRONIZACION`. `jvm-tests`
-- [ ] Instalado y verificado en el Xiaomi en los tres modos — Modo aparece
+  `LOCAL_CON_SINCRONIZACION`. `jvm-tests` Verificado: `when` reagrupado a
+  `LOCAL -> local` / `REMOTO, LOCAL_CON_SINCRONIZACION -> remote`; prueba
+  nueva `LOCAL_CON_SINCRONIZACION also reads the sucursal catalog from the
+  backend`.
+- [x] Instalado y verificado en el Xiaomi en los tres modos — Modo aparece
   primero; en LOCAL no se ven Conexión ni Sucursal; en REMOTO y
   LOCAL_CON_SINCRONIZACION sí, y la lista de sucursales llega del backend
   en ambos modos; cambiar IP/Puerto y guardar hace que la app hable
   efectivamente con ese backend (probar apuntando a un puerto distinto al
   hardcodeado); "Importar catálogo" aparece antes de "Asistente de IA"; no
   hay sección Permisos ni botón "Cerrar sesión" en Configuración —
-  `needs-device`.
+  `needs-device`. Confirmado por el usuario el 2026-08-28: los tres modos
+  OK en el Xiaomi.
 
 **H. Corrección: sucursalIdSeleccionada no se reconcilia al cambiar de modo**
 
