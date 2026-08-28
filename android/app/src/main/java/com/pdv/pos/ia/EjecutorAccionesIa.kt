@@ -5,14 +5,19 @@ import com.pdv.pos.domain.model.CorteCaja
 import com.pdv.pos.domain.model.Devolucion
 import com.pdv.pos.domain.model.DevolucionLinea
 import com.pdv.pos.domain.model.Entrada
+import com.pdv.pos.domain.model.InventarioItem
 import com.pdv.pos.domain.model.RetiroEfectivo
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.DevolucionRepository
 import com.pdv.pos.domain.repository.EntradaRepository
+import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import com.pdv.pos.inventario.BuscadorArticuloExistente
+import com.pdv.pos.inventario.export.ArchivoExportado
+import com.pdv.pos.inventario.export.InventarioExportManager
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -32,7 +37,10 @@ import javax.inject.Inject
 sealed class ResultadoAccionIa {
     abstract val mensaje: String
 
-    data class Ejecutada(override val mensaje: String) : ResultadoAccionIa()
+    // archivoParaCompartir solo lo completa "exportar_inventario" (sub-parte
+    // D, Parte 18): el llamador (ChatViewModel) lo expone en ChatUiState para
+    // que el widget dispare el mismo Intent.ACTION_SEND que InventarioScreen.
+    data class Ejecutada(override val mensaje: String, val archivoParaCompartir: ArchivoExportado? = null) : ResultadoAccionIa()
     data class RechazadaPorPermiso(override val mensaje: String) : ResultadoAccionIa()
     data class Fallida(override val mensaje: String) : ResultadoAccionIa()
 }
@@ -66,6 +74,17 @@ private data class ParametrosDevolucionDto(
     val ventaId: String? = null,
 )
 
+@Serializable
+private data class ParametrosExportarInventarioDto(
+    val filtro: String? = null,
+)
+
+@Serializable
+private data class ParametrosConsultarStockDto(
+    val articulo: String? = null,
+    val categoria: String? = null,
+)
+
 // Instruccion tecnica de formato (PLAN.md Parte 16, sub-paso 5, hallazgo de
 // pruebas en el Xiaomi): el prompt de sistema aprobado (Parte 15) describe
 // las acciones en prosa pero nunca especifica el JSON exacto que
@@ -86,11 +105,11 @@ Formato de salida obligatorio (JSON, nada de texto fuera del JSON):
 }
 
 Si no proponés ninguna acción, "acciones" debe ser un array vacío: [].
-Cuando proponés una acción, cada elemento de "acciones" es un objeto con
-exactamente estas 3 claves: "modulo", "tipo", "parametros". Usá el "tipo"
-exacto y las claves de "parametros" exactas de una de estas 4 opciones (no
-inventes ni renombres claves; todo valor numérico va como texto, ej. "10",
-no 10):
+Cuando proponés una acción o una consulta, cada elemento de "acciones" es
+un objeto con exactamente estas 3 claves: "modulo", "tipo", "parametros".
+Usá el "tipo" exacto y las claves de "parametros" exactas de una de estas
+6 opciones (no inventes ni renombres claves; todo valor numérico va como
+texto, ej. "10", no 10):
 
 - tipo "alta_articulo" (modulo "entrada"): "parametros" = {"sku": string,
   "nombre": string, "unidadMedida": string, "cantidad": "10", "precioVenta":
@@ -103,6 +122,12 @@ no 10):
 - tipo "registrar_devolucion" (modulo "devoluciones"): "parametros" =
   {"articuloId": string, "cantidad": "2", "motivo": string (opcional),
   "condicion": string (opcional), "ventaId": string (opcional)}
+- tipo "exportar_inventario" (modulo "inventario"): "parametros" =
+  {"filtro": string (opcional, categoria o texto de busqueda; vacio =
+  catalogo completo)}
+- tipo "consultar_stock" (modulo "inventario"): "parametros" =
+  {"articulo": string (opcional), "categoria": string (opcional); ninguno
+  = total general}
 """.trimIndent()
 
 // Valida permisos y ejecuta las acciones que la IA propone (PLAN.md
@@ -119,6 +144,8 @@ class EjecutorAccionesIa @Inject constructor(
     private val retiroEfectivoRepository: RetiroEfectivoRepository,
     private val devolucionRepository: DevolucionRepository,
     private val buscadorArticuloExistente: BuscadorArticuloExistente,
+    private val inventarioRepository: InventarioRepository,
+    private val inventarioExportManager: InventarioExportManager,
     private val appLogger: AppLogger,
     private val json: Json,
 ) {
@@ -156,6 +183,8 @@ class EjecutorAccionesIa @Inject constructor(
                 "corte_parcial" -> ejecutarCorteParcial(sucursalId, usuarioId)
                 "retiro_efectivo" -> ejecutarRetiroEfectivo(accion, sucursalId, usuarioId)
                 "registrar_devolucion" -> ejecutarDevolucion(accion, sucursalId, usuarioId)
+                "exportar_inventario" -> ejecutarExportarInventario(accion, sucursalId)
+                "consultar_stock" -> ejecutarConsultarStock(accion, sucursalId)
                 else -> error("tipo ya validado por moduloRequeridoPorTipo: ${accion.tipo}")
             }
         } catch (e: SerializationException) {
@@ -173,6 +202,7 @@ class EjecutorAccionesIa @Inject constructor(
         "alta_articulo" -> "entrada"
         "corte_parcial", "retiro_efectivo" -> "caja"
         "registrar_devolucion" -> "devoluciones"
+        "exportar_inventario", "consultar_stock" -> "inventario"
         else -> null
     }
 
@@ -291,6 +321,84 @@ class EjecutorAccionesIa @Inject constructor(
         )
         devolucionRepository.registrarDevolucion(devolucion)
         return ResultadoAccionIa.Ejecutada("Devolución registrada: folio ${devolucion.folio}.")
+    }
+
+    // "filtro" (exportar_inventario) es ambiguo entre categoria y texto de
+    // busqueda a proposito (Parte 18, sub-parte D): se resuelve contra las
+    // categorias reales del catalogo en vez de pedirle a la IA que distinga
+    // los dos casos, ya que ella no tiene ese listado en el contexto.
+    private suspend fun ejecutarExportarInventario(accion: AccionIaDto, sucursalId: String): ResultadoAccionIa {
+        val p = json.decodeFromJsonElement<ParametrosExportarInventarioDto>(accion.parametros)
+        val filtro = p.filtro?.trim()?.takeIf { it.isNotBlank() }
+        val items = itemsFiltrados(sucursalId, articulo = null, categoria = null, textoLibre = filtro)
+        if (items.isEmpty()) {
+            return ResultadoAccionIa.Ejecutada("No hay artículos que coincidan con el filtro, no se generó ningún archivo.")
+        }
+        val archivo = inventarioExportManager.exportarCsv(items)
+        return ResultadoAccionIa.Ejecutada(
+            mensaje = "Exporté ${items.size} artículo(s) a CSV, listo para compartir.",
+            archivoParaCompartir = archivo,
+        )
+    }
+
+    private suspend fun ejecutarConsultarStock(accion: AccionIaDto, sucursalId: String): ResultadoAccionIa {
+        val p = json.decodeFromJsonElement<ParametrosConsultarStockDto>(accion.parametros)
+        val articulo = p.articulo?.trim()?.takeIf { it.isNotBlank() }
+        val categoria = p.categoria?.trim()?.takeIf { it.isNotBlank() }
+        val items = itemsFiltrados(sucursalId, articulo = articulo, categoria = categoria, textoLibre = null)
+        val total = items.sumOf { it.cantidad }
+        val descripcion = when {
+            categoria != null && articulo != null -> "\"$articulo\" en la categoría \"$categoria\""
+            categoria != null -> "la categoría \"$categoria\""
+            articulo != null -> "\"$articulo\""
+            else -> "el inventario total"
+        }
+        return ResultadoAccionIa.Ejecutada("El stock de $descripcion es $total.")
+    }
+
+    // Un solo filtro efectivo por llamada (Parte 18, sub-parte D): "articulo"
+    // reusa la busqueda LIKE de InventarioRepository.observarInventario
+    // (nombre/sku/codigoBarras); "categoria"/"textoLibre" primero traen el
+    // catalogo completo y filtran en memoria por Articulo.categoria, ya que
+    // observarInventario no busca por categoria. Si "textoLibre" no matchea
+    // ninguna categoria real, se reinterpreta como busqueda de texto.
+    private suspend fun itemsFiltrados(
+        sucursalId: String,
+        articulo: String?,
+        categoria: String?,
+        textoLibre: String?,
+    ): List<InventarioItem> {
+        if (articulo != null) return todosLosItems(sucursalId, articulo)
+        if (categoria != null) return itemsPorCategoria(sucursalId, categoria)
+        if (textoLibre != null) {
+            val categorias = inventarioRepository.observarCategorias().first()
+            return if (categorias.any { it.equals(textoLibre, ignoreCase = true) }) {
+                itemsPorCategoria(sucursalId, textoLibre)
+            } else {
+                todosLosItems(sucursalId, textoLibre)
+            }
+        }
+        return todosLosItems(sucursalId, "")
+    }
+
+    private suspend fun itemsPorCategoria(sucursalId: String, categoria: String): List<InventarioItem> =
+        todosLosItems(sucursalId, "").filter { it.articulo.categoria.equals(categoria, ignoreCase = true) }
+
+    // Mismo criterio de paginacion que InventarioViewModel.obtenerTodosLosItemsFiltrados
+    // (Parte 9/18): esta clase nunca depende de otro ViewModel, asi que
+    // recorre InventarioRepository directamente en vez de reusar ese metodo
+    // privado.
+    private suspend fun todosLosItems(sucursalId: String, busqueda: String): List<InventarioItem> {
+        val tamanioPagina = 100
+        val items = mutableListOf<InventarioItem>()
+        var pagina = 1
+        while (true) {
+            val resultado = inventarioRepository.observarInventario(sucursalId, busqueda, pagina, tamanioPagina).first()
+            items += resultado.items
+            if (resultado.items.isEmpty() || items.size >= resultado.total) break
+            pagina++
+        }
+        return items
     }
 
     private fun inicioDelDia(): Long = Calendar.getInstance().apply {

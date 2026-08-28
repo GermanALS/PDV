@@ -174,3 +174,62 @@ async def test_get_totales_corte_falta_sucursal_id_returns_422(client):
     )
 
     assert response.status_code == 422
+
+
+async def test_list_cortes_caja_happy_path(client):
+    sucursal_id = await _seeded_sucursal_id(client)
+    await client.post(
+        "/api/v1/cortes-caja",
+        json={
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "tipo": "parcial",
+            "fecha_inicio": "2026-08-21T08:00:00Z",
+            "fecha_fin": "2026-08-21T14:00:00Z",
+            "total_ventas": "500.00",
+            "total_efectivo": "500.00",
+            "total_tarjeta": "0",
+            "total_retiros": "0",
+            "monto_esperado": "500.00",
+        },
+    )
+
+    response = await client.get("/api/v1/cortes-caja", params={"sucursal_id": sucursal_id, "page_size": 100})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] >= 1
+    assert any(item["sucursal_id"] == sucursal_id and item["tipo"] == "parcial" for item in body["items"])
+
+
+async def test_list_cortes_caja_falta_sucursal_id_returns_422(client):
+    response = await client.get("/api/v1/cortes-caja")
+
+    assert response.status_code == 422
+
+
+async def test_list_retiros_efectivo_happy_path(client):
+    sucursal_id = await _seeded_sucursal_id(client)
+    await client.post(
+        "/api/v1/retiros-efectivo",
+        json={
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "monto": "25.00",
+            "motivo": "Prueba de listado",
+            "fecha": "2026-08-21T11:00:00Z",
+        },
+    )
+
+    response = await client.get("/api/v1/retiros-efectivo", params={"sucursal_id": sucursal_id, "page_size": 100})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] >= 1
+    assert any(item["sucursal_id"] == sucursal_id and item["motivo"] == "Prueba de listado" for item in body["items"])
+
+
+async def test_list_retiros_efectivo_falta_sucursal_id_returns_422(client):
+    response = await client.get("/api/v1/retiros-efectivo")
+
+    assert response.status_code == 422

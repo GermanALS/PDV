@@ -85,7 +85,8 @@ class InventarioViewModelTest {
         inventarioRepository: InventarioRepository,
         preferences: ConfiguracionPreferences,
         sessionManager: SessionManager,
-    ) = InventarioViewModel(inventarioRepository, preferences, sessionManager, mockk<InventarioExportManager>())
+        inventarioRefreshSignal: InventarioRefreshSignal = InventarioRefreshSignal(),
+    ) = InventarioViewModel(inventarioRepository, preferences, sessionManager, mockk<InventarioExportManager>(), inventarioRefreshSignal)
 
     @Test
     fun `guardarCambios persists via InventarioRepository and shows confirmation`(@TempDir tempDir: File) = runTest(dispatcher) {
@@ -150,6 +151,47 @@ class InventarioViewModelTest {
 
         coVerify(exactly = 0) { inventarioRepository.actualizarArticulo(any()) }
         assertEquals("La cantidad debe ser un número válido", viewModel.uiState.value.mensajeConfirmacion)
+    }
+
+    // PLAN.md Parte 18, sub-parte E: InventarioViewModel es agnostico de
+    // BackendMode (eso lo resuelve ModeAwareInventarioRepository, ya
+    // cubierto en ModeAwareInventarioRepositoryTest) - esta prueba simula el
+    // comportamiento de un solo disparo de RemoteInventarioRepository
+    // (cada llamada a observarInventario devuelve un Flow ya completo, no
+    // una suscripcion real) para confirmar que emitir() en
+    // InventarioRefreshSignal fuerza una nueva llamada sin cambiar pagina ni
+    // busqueda.
+    @Test
+    fun `emitir la señal de refresco fuerza un nuevo fetch sin cambiar pagina ni busqueda`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val preferences = preferences(tempDir)
+        preferences.setSucursalSeleccionada("suc-1")
+        val sessionManager = SessionManager()
+        val inventarioRepository = mockk<InventarioRepository>()
+        val paginaInicial = PaginaInventario(items = listOf(itemDeEjemplo()), pagina = 1, tamanioPagina = 20, total = 1)
+        val paginaActualizada = PaginaInventario(
+            items = listOf(itemDeEjemplo(), itemDeEjemplo().copy(articulo = itemDeEjemplo().articulo.copy(id = "art-2"))),
+            pagina = 1,
+            tamanioPagina = 20,
+            total = 2,
+        )
+        var llamadas = 0
+        every { inventarioRepository.observarInventario(any(), any(), any(), any()) } answers {
+            llamadas++
+            if (llamadas == 1) flowOf(paginaInicial) else flowOf(paginaActualizada)
+        }
+        every { inventarioRepository.observarCategorias() } returns flowOf(emptyList())
+        every { inventarioRepository.observarUnidadesMedida() } returns flowOf(emptyList())
+        every { inventarioRepository.observarUbicaciones(any()) } returns flowOf(emptyList())
+        val signal = InventarioRefreshSignal()
+        val viewModel = viewModel(inventarioRepository, preferences, sessionManager, signal)
+
+        assertEquals(1, viewModel.uiState.value.resultado.total)
+
+        signal.emitir()
+
+        assertEquals(2, viewModel.uiState.value.resultado.total)
+        assertEquals(1, viewModel.uiState.value.paginaMostrada)
+        assertEquals("", viewModel.uiState.value.busqueda)
     }
 
     @Test

@@ -4,6 +4,8 @@ import com.pdv.pos.domain.model.RetiroEfectivo
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,7 +26,19 @@ class LocalRetiroEfectivoRepository @Inject constructor(
             mensaje = "Retiro de efectivo registrado: monto=${retiro.monto}",
         )
     }
+
+    override fun observeRetiros(sucursalId: String): Flow<List<RetiroEfectivo>> =
+        dao.observarRetiros(sucursalId).map { entidades -> entidades.map { it.toDomain() } }
 }
+
+private fun RetiroEfectivoEntity.toDomain() = RetiroEfectivo(
+    id = localId,
+    sucursalId = sucursalId,
+    usuarioId = usuarioId,
+    monto = monto,
+    motivo = motivo,
+    fecha = fecha,
+)
 
 private fun RetiroEfectivo.toEntity(now: Long) = RetiroEfectivoEntity(
     localId = id,

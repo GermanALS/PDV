@@ -12,6 +12,7 @@ import com.pdv.pos.data.remote.dto.ChatMessageDto
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Rol
 import com.pdv.pos.domain.repository.RolRepository
+import com.pdv.pos.inventario.export.ArchivoExportado
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -237,6 +238,54 @@ class ChatViewModelTest {
         val resuelta = viewModel.uiState.value.mensajes.filterIsInstance<ChatUiMessage.AccionPendiente>().single()
         assertTrue(resuelta.resuelta)
         assertEquals("Corte parcial registrado.", resuelta.mensajeResultado)
+    }
+
+    // PLAN.md Parte 18, sub-parte D: a diferencia de las 4 acciones de
+    // escritura (siempre tarjeta AccionPendiente), las dos consultas de solo
+    // lectura se ejecutan de inmediato al llegar la respuesta de la IA.
+    @Test
+    fun `una consulta de solo lectura se ejecuta de inmediato sin tarjeta de confirmacion`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        val accion = AccionIaDto(modulo = "inventario", tipo = "consultar_stock", parametros = buildJsonObject { })
+        coEvery { llmClient.chatEstructurado(any(), any(), any(), any()) } returns
+            ApiResult.Success(RespuestaIaDto(respuestaUsuario = "Consultando...", acciones = listOf(accion)))
+        val ejecutor = mockk<EjecutorAccionesIa>()
+        coEvery { ejecutor.ejecutar(any(), any(), any(), any()) } returns
+            ResultadoAccionIa.Ejecutada("El stock de el inventario total es 42.")
+        val viewModel = viewModel(llmClient = llmClient, ejecutorAccionesIa = ejecutor)
+
+        viewModel.onTextoChange("cuanto stock total hay")
+        viewModel.enviarMensaje()
+
+        coVerify { ejecutor.ejecutar(accion, setOf("ia", "entrada"), "suc-1", "german") }
+        val mensajes = viewModel.uiState.value.mensajes
+        assertTrue(mensajes.none { it is ChatUiMessage.AccionPendiente })
+        assertTrue(mensajes.any { it is ChatUiMessage.DeIa && it.texto == "El stock de el inventario total es 42." })
+    }
+
+    // exportar_inventario es la unica accion que produce un archivo para
+    // compartir - se expone en ChatUiState.archivoParaCompartir para que
+    // AsistenteIaWidget dispare el mismo share sheet que InventarioScreen.
+    @Test
+    fun `exportar_inventario expone el archivo para compartir y se limpia al confirmarse compartido`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        val accion = AccionIaDto(modulo = "inventario", tipo = "exportar_inventario", parametros = buildJsonObject { })
+        coEvery { llmClient.chatEstructurado(any(), any(), any(), any()) } returns
+            ApiResult.Success(RespuestaIaDto(respuestaUsuario = "Exportando...", acciones = listOf(accion)))
+        val archivo = ArchivoExportado(mockk(relaxed = true), "text/csv")
+        val ejecutor = mockk<EjecutorAccionesIa>()
+        coEvery { ejecutor.ejecutar(any(), any(), any(), any()) } returns
+            ResultadoAccionIa.Ejecutada("Exporté 3 artículo(s) a CSV, listo para compartir.", archivoParaCompartir = archivo)
+        val viewModel = viewModel(llmClient = llmClient, ejecutorAccionesIa = ejecutor)
+
+        viewModel.onTextoChange("exportá el inventario completo")
+        viewModel.enviarMensaje()
+
+        assertEquals(archivo, viewModel.uiState.value.archivoParaCompartir)
+
+        viewModel.onArchivoCompartido()
+
+        assertEquals(null, viewModel.uiState.value.archivoParaCompartir)
     }
 
     @Test

@@ -716,6 +716,82 @@ retiros en el periodo, todos los campos son `"0"`.
 Response `422 Unprocessable Entity` — falta `sucursal_id`/`fecha_inicio`/
 `fecha_fin`.
 
+### 8.4 Listar cortes de caja
+
+Contraparte remota de `CajaRepository.observeCortes` (Android, PLAN.md
+Parte 18, sub-parte F) — reemplaza el historial en memoria de
+`CajaViewModel` por una consulta real, para que un corte registrado desde
+otra pantalla o desde la IA aparezca sin reabrir Caja. Mismo estilo de
+paginación que `GET /inventario` (sección 7.1): `sucursal_id` requerido,
+orden por `fecha_fin` descendente (más reciente primero).
+
+**GET** `/cortes-caja?sucursal_id=uuid&page=1&page_size=20`
+
+Response `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "local_id": "uuid o null",
+      "sucursal_id": "uuid",
+      "usuario_id": "admin",
+      "tipo": "parcial",
+      "fecha_inicio": "2026-08-20T08:00:00Z",
+      "fecha_fin": "2026-08-20T14:00:00Z",
+      "total_ventas": "1500.00",
+      "total_efectivo": "900.00",
+      "total_tarjeta": "600.00",
+      "total_retiros": "100.00",
+      "monto_esperado": "800.00",
+      "monto_contado": "795.00",
+      "diferencia": "-5.00",
+      "updated_at": "2026-08-20T14:00:00Z",
+      "is_synced": true,
+      "deleted_at": null
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+Response `422 Unprocessable Entity` — falta `sucursal_id`.
+
+### 8.5 Listar retiros de efectivo
+
+Contraparte remota de `RetiroEfectivoRepository.observeRetiros` (Android,
+PLAN.md Parte 18, sub-parte F). Mismo criterio de paginación que 8.4,
+orden por `fecha` descendente.
+
+**GET** `/retiros-efectivo?sucursal_id=uuid&page=1&page_size=20`
+
+Response `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "local_id": "uuid o null",
+      "sucursal_id": "uuid",
+      "usuario_id": "admin",
+      "monto": "100.00",
+      "motivo": "string o null",
+      "fecha": "2026-08-20T11:00:00Z",
+      "updated_at": "2026-08-20T11:00:00Z",
+      "is_synced": true,
+      "deleted_at": null
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+Response `422 Unprocessable Entity` — falta `sucursal_id`.
+
 ---
 
 ## 9. Devoluciones

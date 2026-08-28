@@ -1,5 +1,7 @@
 package com.pdv.pos.ia
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -27,8 +29,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pdv.pos.inventario.export.ArchivoExportado
 
 // Widget flotante accesible desde cualquier pantalla (PLAN.md Parte 16,
 // sub-paso 1): se monta una sola vez en MainActivity, por fuera del
@@ -40,6 +44,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun BoxScope.AsistenteIaWidget(viewModel: ChatViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     if (!uiState.visible) return
+
+    // "exportar_inventario" (PLAN.md Parte 18, sub-parte D) dispara el mismo
+    // share sheet que InventarioScreen, via el archivo que ChatViewModel
+    // expone en ChatUiState.
+    val context = LocalContext.current
+    LaunchedEffect(uiState.archivoParaCompartir) {
+        val archivo = uiState.archivoParaCompartir ?: return@LaunchedEffect
+        context.compartir(archivo)
+        viewModel.onArchivoCompartido()
+    }
 
     FloatingActionButton(
         onClick = viewModel::abrirPanel,
@@ -171,6 +185,17 @@ private fun ChatPanelContent(uiState: ChatUiState, viewModel: ChatViewModel) {
             }
         }
     }
+}
+
+// Mismo Intent.ACTION_SEND que InventarioScreen.kt (privado a cada archivo,
+// sin extraer un util compartido para dos usos).
+private fun Context.compartir(archivo: ArchivoExportado) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = archivo.mimeType
+        putExtra(Intent.EXTRA_STREAM, archivo.uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    startActivity(Intent.createChooser(intent, "Exportar inventario"))
 }
 
 @Composable

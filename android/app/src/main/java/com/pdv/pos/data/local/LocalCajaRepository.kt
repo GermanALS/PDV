@@ -5,6 +5,8 @@ import com.pdv.pos.domain.model.TotalesCorte
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -51,7 +53,26 @@ class LocalCajaRepository @Inject constructor(
                 "monto_esperado=${corte.montoEsperado}",
         )
     }
+
+    override fun observeCortes(sucursalId: String): Flow<List<CorteCaja>> =
+        cajaDao.observarCortes(sucursalId).map { entidades -> entidades.map { it.toDomain() } }
 }
+
+private fun CorteCajaEntity.toDomain() = CorteCaja(
+    id = localId,
+    sucursalId = sucursalId,
+    usuarioId = usuarioId,
+    tipo = tipo,
+    fechaInicio = fechaInicio,
+    fechaFin = fechaFin,
+    totalVentas = totalVentas,
+    totalEfectivo = totalEfectivo,
+    totalTarjeta = totalTarjeta,
+    totalRetiros = totalRetiros,
+    montoEsperado = montoEsperado,
+    montoContado = montoContado,
+    diferencia = diferencia,
+)
 
 private fun CorteCaja.toEntity(now: Long) = CorteCajaEntity(
     localId = id,

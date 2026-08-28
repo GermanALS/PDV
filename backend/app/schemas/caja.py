@@ -70,3 +70,17 @@ class TotalesCorteResponseSchema(BaseModel):
     total_tarjeta: Decimal
     total_retiros: Decimal
     monto_esperado: Decimal
+
+
+class CorteCajaListResponseSchema(BaseModel):
+    items: list[CorteCajaResponseSchema]
+    page: int
+    page_size: int
+    total: int
+
+
+class RetiroEfectivoListResponseSchema(BaseModel):
+    items: list[RetiroEfectivoResponseSchema]
+    page: int
+    page_size: int
+    total: int

@@ -60,6 +60,11 @@ class ChatViewModel @Inject constructor(
     // code-reviewer).
     private var usuarioDeLaSesionActual: String? = null
 
+    // Consultas de solo lectura (PLAN.md Parte 18, sub-parte D): a diferencia
+    // de las 4 acciones de escritura, se ejecutan de inmediato al proponerse,
+    // sin tarjeta AccionPendiente ni confirmacion del usuario.
+    private val tiposSoloLectura = setOf("exportar_inventario", "consultar_stock")
+
     init {
         // Misma compuerta de permiso que el resto de los modulos (PLAN.md
         // Parte 13, HelloViewModel.observarModulosPermitidos): el widget no
@@ -165,14 +170,22 @@ class ChatViewModel @Inject constructor(
             is ApiResult.Success -> {
                 val respuesta = resultado.data
                 val mensajeIa = ChatUiMessage.DeIa(UUID.randomUUID().toString(), respuesta.respuestaUsuario)
-                val acciones = respuesta.acciones.map { accion ->
-                    ChatUiMessage.AccionPendiente(
-                        id = UUID.randomUUID().toString(),
-                        descripcion = descripcionAccion(accion),
-                        accion = accion,
-                    )
+                // Las dos consultas de solo lectura (PLAN.md Parte 18,
+                // sub-parte D) se ejecutan de inmediato, sin tarjeta de
+                // confirmacion - las 4 acciones de escritura restantes siguen
+                // el camino existente de AccionPendiente.
+                val mensajesDeAcciones = respuesta.acciones.map { accion ->
+                    if (accion.tipo in tiposSoloLectura) {
+                        ejecutarConsultaAutomatica(accion, sucursalId)
+                    } else {
+                        ChatUiMessage.AccionPendiente(
+                            id = UUID.randomUUID().toString(),
+                            descripcion = descripcionAccion(accion),
+                            accion = accion,
+                        )
+                    }
                 }
-                RespuestaChat.Mensajes(listOf(mensajeIa) + acciones)
+                RespuestaChat.Mensajes(listOf(mensajeIa) + mensajesDeAcciones)
             }
             is ApiResult.Error -> if (resultado.message == MENSAJE_SIN_CONEXION_IA) {
                 RespuestaChat.SinConexion
@@ -184,6 +197,29 @@ class ChatViewModel @Inject constructor(
 
     private fun mensajesDeError(texto: String): RespuestaChat.Mensajes =
         RespuestaChat.Mensajes(listOf(ChatUiMessage.DeError(UUID.randomUUID().toString(), texto)))
+
+    // Mismo resuelto de sesion/sucursal/permisos que confirmarAccion(), pero
+    // sincrono con la respuesta del LLM (sin tarjeta pendiente) - PLAN.md
+    // Parte 18, sub-parte D. Si "exportar_inventario" devuelve un archivo, se
+    // expone en ChatUiState para que AsistenteIaWidget dispare el share sheet.
+    private suspend fun ejecutarConsultaAutomatica(accion: AccionIaDto, sucursalId: String): ChatUiMessage {
+        val session = sessionManager.session.value
+            ?: return ChatUiMessage.DeIa(UUID.randomUUID().toString(), "No se pudo completar la consulta: falta la sesión.")
+
+        val modulosPermitidos = rolRepository.observeRoles().first()
+            .find { it.id == session.rolId }?.modulosPermitidos?.toSet() ?: emptySet()
+
+        val resultado = ejecutorAccionesIa.ejecutar(
+            accion = accion,
+            modulosPermitidos = modulosPermitidos,
+            sucursalId = sucursalId,
+            usuarioId = session.username,
+        )
+        if (resultado is ResultadoAccionIa.Ejecutada && resultado.archivoParaCompartir != null) {
+            _uiState.update { it.copy(archivoParaCompartir = resultado.archivoParaCompartir) }
+        }
+        return ChatUiMessage.DeIa(UUID.randomUUID().toString(), resultado.mensaje)
+    }
 
     // Punto de reintento manual desde la vista de FAQ (sub-paso 3): vuelve a
     // habilitar el chat para que el proximo enviarMensaje() intente de
@@ -250,6 +286,10 @@ class ChatViewModel @Inject constructor(
 
     fun rechazarAccion(id: String) {
         resolverAccion(id, "Acción descartada por el usuario.")
+    }
+
+    fun onArchivoCompartido() {
+        _uiState.update { it.copy(archivoParaCompartir = null) }
     }
 
     private fun resolverAccion(id: String, mensaje: String) {

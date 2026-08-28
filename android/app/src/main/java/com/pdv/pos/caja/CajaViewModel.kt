@@ -9,9 +9,17 @@ import com.pdv.pos.domain.model.RetiroEfectivo
 import com.pdv.pos.domain.repository.CajaRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.IOException
@@ -20,16 +28,39 @@ import java.util.Calendar
 import java.util.UUID
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CajaViewModel @Inject constructor(
     private val cajaRepository: CajaRepository,
     private val retiroRepository: RetiroEfectivoRepository,
     private val preferences: ConfiguracionPreferences,
     private val sessionManager: SessionManager,
+    private val cajaRefreshSignal: CajaRefreshSignal,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(estadoInicial())
     val uiState = _uiState.asStateFlow()
+
+    // Historial reactivo (PLAN.md Parte 18, sub-parte F): reemplaza el
+    // "prepend a la lista en memoria" anterior - un corte/retiro registrado
+    // desde otra pantalla o desde la IA (EjecutorAccionesIa, mismo
+    // CajaRepository/RetiroEfectivoRepository) ahora aparece solo. onStart
+    // siembra un primer valor para no esperar una escritura antes de la
+    // consulta inicial; cajaRefreshSignal fuerza el resubscribe en modo
+    // REMOTO (no-op en LOCAL, donde Room ya se refresca solo).
+    init {
+        val sucursalId = preferences.deviceConfig.map { it.sucursalIdSeleccionada }.distinctUntilChanged()
+        viewModelScope.launch {
+            combine(sucursalId, cajaRefreshSignal.refrescos.onStart { emit(Unit) }) { id, _ -> id }
+                .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else cajaRepository.observeCortes(id) }
+                .collect { historial -> _uiState.update { it.copy(historialCortes = historial) } }
+        }
+        viewModelScope.launch {
+            combine(sucursalId, cajaRefreshSignal.refrescos.onStart { emit(Unit) }) { id, _ -> id }
+                .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else retiroRepository.observeRetiros(id) }
+                .collect { historial -> _uiState.update { it.copy(historialRetiros = historial) } }
+        }
+    }
 
     fun onTipoCorteChange(tipo: TipoCorte) {
         val estado = _uiState.value
@@ -133,12 +164,16 @@ class CajaViewModel @Inject constructor(
                 return@launch
             }
 
-            val nuevoHistorial = listOf(corte) + _uiState.value.historialCortes
-            val (inicio, fin) = periodoPorDefecto(estado.tipoCorte, nuevoHistorial)
+            // El historial real ahora lo mantiene el collector reactivo del
+            // init{} (CajaRepository.observeCortes) - este prepend es solo
+            // para calcular el proximo periodo por defecto sin esperar a que
+            // esa senial reactiva se propague, no para persistirlo en
+            // uiState (evita que esta escritura directa compita con la del
+            // collector).
+            val (inicio, fin) = periodoPorDefecto(estado.tipoCorte, listOf(corte) + estado.historialCortes)
             _uiState.value = _uiState.value.copy(
                 calculado = false,
                 montoContado = "",
-                historialCortes = nuevoHistorial,
                 fechaInicio = inicio,
                 fechaFin = fin,
                 mensajeConfirmacion = "Corte guardado",
@@ -204,9 +239,11 @@ class CajaViewModel @Inject constructor(
                 return@launch
             }
 
+            // Historial real a cargo del collector reactivo del init{}
+            // (RetiroEfectivoRepository.observeRetiros), igual que
+            // historialCortes en onGuardarClick.
             _uiState.value = _uiState.value.copy(
                 mostrarDialogoRetiro = false,
-                historialRetiros = listOf(retiro) + _uiState.value.historialRetiros,
                 mensajeConfirmacion = "Retiro registrado",
             )
         }
