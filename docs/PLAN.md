@@ -2889,24 +2889,32 @@ ahí al cerrar esta sub-parte.)*
 la verificación needs-device de las sub-partes E/F; se elimina de ahí al
 agregar esta sub-parte.)*
 
-- [ ] Propuesta de fix presentada y aprobada — criterio: aprobación
+- [x] Propuesta de fix presentada y aprobada — criterio: aprobación
   explícita registrada antes de implementar. `needs-approval` Alcance: al
   resolver la lista de sucursales en modo REMOTO o
   LOCAL_CON_SINCRONIZACION (`ModeAwareSucursalRepository`), si
   `sucursalIdSeleccionada` no aparece en esa lista, el fallback ya usado
   para poblar el dropdown (`sucursales.firstOrNull()`) se persiste
   automáticamente de vuelta en `ConfiguracionPreferences` — no solo se usa
-  para el estado en memoria de `ConfiguracionScreen`.
-- [ ] Persistencia automática implementada — criterio: prueba unitaria en
+  para el estado en memoria de `ConfiguracionScreen`. **Aprobado
+  2026-08-28**: la reconciliación vive en el `combine(deviceConfig,
+  observeSucursales())` de `ConfiguracionViewModel` (que ya calcula ese
+  fallback), acotada a `modo != LOCAL`; sin loop porque al persistir el
+  `find` acierta y no reescribe.
+- [x] Persistencia automática implementada — criterio: prueba unitaria en
   `ModeAwareSucursalRepositoryTest`/`ConfiguracionViewModelTest` simula un
   `sucursalIdSeleccionada` local ausente en la lista remota tras un cambio
   de modo y confirma que `ConfiguracionPreferences.deviceConfig
   .sucursalIdSeleccionada` queda actualizado sin intervención manual del
-  usuario. `jvm-tests`
-- [ ] Verificado en el Xiaomi: reproducir el escenario original (operar en
+  usuario. `jvm-tests` Verificado: 2 pruebas nuevas en
+  `ConfiguracionViewModelTest` (non-LOCAL reconcilia al fallback; LOCAL deja
+  el id intacto); `./gradlew :app:testDebugUnitTest` en verde.
+- [x] Verificado en el Xiaomi: reproducir el escenario original (operar en
   LOCAL, cambiar a REMOTO sin tocar el dropdown de sucursal) y confirmar
   que una escritura remota (ej. un retiro) ya no falla con
-  `ForeignKeyViolationError`. `needs-device`
+  `ForeignKeyViolationError`. `needs-device`. Confirmado por el usuario el
+  2026-08-28: retiro remoto OK sin error de FK tras cambiar de LOCAL a
+  REMOTO sin tocar el dropdown.
 
 **I. Caja: historial limitado a 7 días y exportación de cortes/retiros por periodo**
 

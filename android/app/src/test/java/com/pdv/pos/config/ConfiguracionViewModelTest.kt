@@ -130,6 +130,45 @@ class ConfiguracionViewModelTest {
     }
 
     @Test
+    fun `in a non-LOCAL mode a saved sucursal absent from the catalog is reconciled to the fallback`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val preferences = ConfiguracionPreferences(dataStore)
+        preferences.setSucursalSeleccionada("sucursal-local-vieja")
+        preferences.setBackendMode(BackendMode.REMOTO)
+
+        ConfiguracionViewModel(
+            mockk(relaxed = true),
+            preferences,
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            mockk(relaxed = true),
+            PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+        )
+
+        assertEquals("s1", preferences.deviceConfig.first().sucursalIdSeleccionada)
+    }
+
+    @Test
+    fun `in LOCAL mode the saved sucursal id is left untouched`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val preferences = ConfiguracionPreferences(dataStore)
+        preferences.setSucursalSeleccionada("sucursal-local-vieja")
+
+        ConfiguracionViewModel(
+            mockk(relaxed = true),
+            preferences,
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            mockk(relaxed = true),
+            PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+        )
+
+        assertEquals("sucursal-local-vieja", preferences.deviceConfig.first().sucursalIdSeleccionada)
+    }
+
+    @Test
     fun `saving an ia token persists it, clears the draft and never re-exposes it`(@TempDir tempDir: File) = runTest(dispatcher) {
         val dataStore = dataStore(tempDir)
         val iaPreferences = fakeIaPreferences(dataStore)

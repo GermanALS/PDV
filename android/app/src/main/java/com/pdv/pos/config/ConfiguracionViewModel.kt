@@ -50,11 +50,23 @@ class ConfiguracionViewModel @Inject constructor(
             combine(preferences.deviceConfig, sucursalRepository.observeSucursales()) { config, sucursales ->
                 config to sucursales
             }.collect { (config, sucursales) ->
+                val seleccionada = sucursales.find { sucursal -> sucursal.id == config.sucursalIdSeleccionada }
+                    ?: sucursales.firstOrNull()
+                // Si la sucursal persistida no existe en el catalogo del modo
+                // actual (tipico al pasar de LOCAL a REMOTO sin tocar el
+                // dropdown), persiste el fallback: sin esto el estado en memoria
+                // muestra la sucursal correcta pero la primera escritura remota
+                // falla con ForeignKeyViolationError contra el id local viejo.
+                if (config.backendMode != BackendMode.LOCAL &&
+                    seleccionada != null &&
+                    seleccionada.id != config.sucursalIdSeleccionada
+                ) {
+                    preferences.setSucursalSeleccionada(seleccionada.id)
+                }
                 _uiState.update {
                     it.copy(
                         sucursales = sucursales,
-                        sucursalSeleccionada = sucursales.find { sucursal -> sucursal.id == config.sucursalIdSeleccionada }
-                            ?: sucursales.firstOrNull(),
+                        sucursalSeleccionada = seleccionada,
                         modo = config.backendMode,
                     )
                 }
