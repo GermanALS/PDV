@@ -2574,7 +2574,7 @@ reimpresión opcional para el cliente. No toca `docs/api-contract.md` ni
 
 ---
 
-## Parte 18: Datos de prueba y mejoras transversales
+## Parte 18: Datos de prueba y mejoras transversales  <!-- POS-74 -->
 
 Incorpora una función real de importación de catálogo desde CSV, agrega
 teclado numérico y máscara de moneda a los campos de monto/cantidad de toda
@@ -2607,7 +2607,7 @@ campos que se pidió originalmente.
 
 ### Checklist
 
-**A. Importación de catálogo desde CSV**
+**A. Importación de catálogo desde CSV** (POS-75)
 - [x] Propuesta de pantalla ("Importar catálogo" en Configuración, selector
   de archivo vía `ACTION_OPEN_DOCUMENT`, formato esperado documentado en
   pantalla: mismas columnas que `docs/inventario-inicial.csv`) presentada
@@ -2638,7 +2638,7 @@ campos que se pidió originalmente.
   ViewModel persistida a nivel Activity) — corregido limpiando el estado al
   presionar "Atrás".
 
-**B. Teclado numérico automático**
+**B. Teclado numérico automático** (POS-76)
 - [x] `KeyboardOptions(keyboardType = KeyboardType.Decimal)` aplicado a los
   10 campos de monto/cantidad identificados: `VentaScreen.kt` (efectivo
   recibido), `EntradaScreen.kt` (precio de venta, costo, cantidad),
@@ -2650,7 +2650,7 @@ campos que se pidió originalmente.
 - [x] Instalado y verificado en el Xiaomi: teclado numérico aparece en los
   10 campos — `needs-device`.
 
-**C. Máscara de moneda `$`**
+**C. Máscara de moneda `$`** (POS-77)
 - [x] `VisualTransformation` propio (prefijo `$ `, sin separador de miles
   ni redondeo, consistente con que el resto de la app no formatea moneda
   con locale) aplicado solo a los campos de **monto** (precio de venta,
@@ -2660,7 +2660,7 @@ campos que se pidió originalmente.
   `jvm-tests`
 - [x] Instalado y verificado en el Xiaomi — `needs-device`.
 
-**D. IA: exportar CSV o calcular total exacto en vez de listar**
+**D. IA: exportar CSV o calcular total exacto en vez de listar** (POS-78)
 - [x] Texto exacto agregado a `PROMPT_SISTEMA_DEFAULT` (Parte 15)
   describiendo las dos herramientas de solo lectura nuevas y cuándo
   usarlas, presentado y aprobado explícitamente antes de activarse —
@@ -2707,7 +2707,7 @@ campos que se pidió originalmente.
   categoría con más de 20 artículos) y respuesta con número exacto (total,
   artículo puntual, categoría) verificados en el Xiaomi.
 
-**E. Corrección: Inventario no se refresca en modo remoto tras escrituras externas**
+**E. Corrección: Inventario no se refresca en modo remoto tras escrituras externas** (POS-79)
 - [x] `InventarioRefreshSignal` (singleton Hilt, `MutableSharedFlow<Unit>`)
   emitido tras cada escritura exitosa que afecta `inventario`/`articulos`
   desde fuera de `InventarioViewModel`: `EntradaRepository.registrarEntrada`,
@@ -2748,7 +2748,7 @@ campos que se pidió originalmente.
   (`q=SKU`) + tamaño de página 1 que dejaba fuera de vista la fila
   correcta — no por el mecanismo de refresco en sí.
 
-**F. Historial reactivo de cortes y retiros de caja**
+**F. Historial reactivo de cortes y retiros de caja** (POS-80)
 
 *(Cierra el ítem ya documentado en el Backlog de este plan; se elimina de
 ahí al cerrar esta sub-parte.)*
@@ -2813,7 +2813,7 @@ ahí al cerrar esta sub-parte.)*
   modo) que bloqueaba las escrituras remotas hasta reseleccionar la
   sucursal manualmente — no forma parte del alcance de esta Parte 18.
 
-**G. Configuración: orden condicional, conexión real y limpieza**
+**G. Configuración: orden condicional, conexión real y limpieza** (POS-81)
 - [x] Propuesta de la nueva estructura de `ConfiguracionScreen` presentada y
   aprobada — orden: `ModoSection` primero; `ConexionSection` +
   `SucursalSection` solo visibles si `backendMode != LOCAL`; sección
@@ -2883,7 +2883,7 @@ ahí al cerrar esta sub-parte.)*
   `needs-device`. Confirmado por el usuario el 2026-08-28: los tres modos
   OK en el Xiaomi.
 
-**H. Corrección: sucursalIdSeleccionada no se reconcilia al cambiar de modo**
+**H. Corrección: sucursalIdSeleccionada no se reconcilia al cambiar de modo** (POS-82)
 
 *(Cierra el bug documentado en el Backlog de este plan, encontrado durante
 la verificación needs-device de las sub-partes E/F; se elimina de ahí al
@@ -2916,7 +2916,7 @@ agregar esta sub-parte.)*
   2026-08-28: retiro remoto OK sin error de FK tras cambiar de LOCAL a
   REMOTO sin tocar el dropdown.
 
-**I. Caja: historial limitado a 7 días y exportación de cortes/retiros por periodo**
+**I. Caja: historial limitado a 7 días y exportación de cortes/retiros por periodo** (POS-83)
 
 - [x] Propuesta presentada y aprobada — criterio: aprobación explícita
   registrada antes de implementar. `needs-approval` Contenido de la
