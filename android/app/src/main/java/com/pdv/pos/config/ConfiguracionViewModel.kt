@@ -7,19 +7,27 @@ import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.domain.repository.AuthRepository
 import com.pdv.pos.domain.repository.LoginResultado
+import com.pdv.pos.domain.repository.RolRepository
 import com.pdv.pos.domain.repository.SucursalRepository
 import com.pdv.pos.ia.LlmClient
 import com.pdv.pos.ia.LlmProvider
+import com.pdv.pos.logging.AppLogger
+import com.pdv.pos.logging.LogType
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ConfiguracionViewModel @Inject constructor(
     private val sessionManager: SessionManager,
@@ -29,12 +37,31 @@ class ConfiguracionViewModel @Inject constructor(
     private val llmClient: LlmClient,
     private val promptIaPreferences: PromptIaPreferences,
     private val authRepository: AuthRepository,
+    private val rolRepository: RolRepository,
+    private val appLogger: AppLogger,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConfiguracionUiState())
     val uiState: StateFlow<ConfiguracionUiState> = _uiState.asStateFlow()
 
+    // Modulos habilitados para el rol de la sesion, para gatear el acceso
+    // al panel de conflictos igual que "usuarios" (PLAN.md Parte 19).
+    private val modulosPermitidos = MutableStateFlow<Set<String>>(emptySet())
+
     init {
+        viewModelScope.launch {
+            sessionManager.session
+                .flatMapLatest { session ->
+                    if (session == null) {
+                        flowOf(emptySet<String>())
+                    } else {
+                        rolRepository.observeRoles().map { roles ->
+                            roles.find { it.id == session.rolId }?.modulosPermitidos?.toSet() ?: emptySet()
+                        }
+                    }
+                }
+                .collect { modulos -> modulosPermitidos.value = modulos }
+        }
         // Los campos de conexion (ip/puerto) se siembran una sola vez desde el
         // valor persistido y de ahi en mas son un borrador puramente local
         // hasta onGuardarConexion(): son preferencia de dispositivo de un solo
@@ -94,6 +121,28 @@ class ConfiguracionViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    // Compuerta de acceso al panel de conflictos, mismo criterio que el
+    // modulo "usuarios" (PLAN.md Parte 19). Un intento denegado queda
+    // registrado con categoria AUTH, igual que HelloViewModel.onIntentoNavegar.
+    fun onIntentoAbrirConflictos(): Boolean {
+        val permitido = "usuarios" in modulosPermitidos.value
+        if (!permitido) {
+            viewModelScope.launch {
+                val sucursalId = preferences.deviceConfig.first().sucursalIdSeleccionada ?: "-"
+                val username = sessionManager.session.value?.username
+                if (username != null) {
+                    appLogger.log(
+                        LogType.AUTH,
+                        sucursalId = sucursalId,
+                        usuario = username,
+                        mensaje = "Acceso denegado al panel de conflictos de sincronizacion",
+                    )
+                }
+            }
+        }
+        return permitido
     }
 
     fun onIpChange(value: String) {

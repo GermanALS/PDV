@@ -8,6 +8,7 @@ import com.pdv.pos.data.ModeAwareInventarioRepository
 import com.pdv.pos.data.ModeAwareRetiroEfectivoRepository
 import com.pdv.pos.data.ModeAwareRolRepository
 import com.pdv.pos.data.ModeAwareSucursalRepository
+import com.pdv.pos.data.ModeAwareSyncConflictRepository
 import com.pdv.pos.data.ModeAwareUsuarioRepository
 import com.pdv.pos.data.ModeAwareVentaRepository
 import com.pdv.pos.domain.repository.AuthRepository
@@ -18,6 +19,7 @@ import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import com.pdv.pos.domain.repository.RolRepository
 import com.pdv.pos.domain.repository.SucursalRepository
+import com.pdv.pos.domain.repository.SyncConflictRepository
 import com.pdv.pos.domain.repository.UsuarioRepository
 import com.pdv.pos.domain.repository.VentaRepository
 import dagger.Binds
@@ -32,6 +34,10 @@ abstract class RepositoryModule {
     // Resuelve local/remota segun BackendMode (PLAN.md Parte 6, sub-paso 5).
     @Binds
     abstract fun bindSucursalRepository(impl: ModeAwareSucursalRepository): SucursalRepository
+
+    // Resuelve local/remota segun BackendMode (PLAN.md Parte 19, sub-paso 4).
+    @Binds
+    abstract fun bindSyncConflictRepository(impl: ModeAwareSyncConflictRepository): SyncConflictRepository
 
     // Resuelve local/remota segun BackendMode (PLAN.md Parte 7, sub-paso 4).
     @Binds

@@ -5,7 +5,18 @@ from alembic import context
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.database import Base, DATABASE_URL
-from app.models import articulo, caja, devolucion, inventario, movimiento, sucursal, usuario, venta  # noqa: F401 - registra las tablas en Base.metadata
+from app.models import (  # noqa: F401 - registra las tablas en Base.metadata
+    articulo,
+    caja,
+    devolucion,
+    inventario,
+    movimiento,
+    rol,
+    sucursal,
+    sync_conflict,
+    usuario,
+    venta,
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", DATABASE_URL)

@@ -88,67 +88,85 @@ Response `422 Unprocessable Entity` — falta `username`/`password`.
 
 ---
 
-## 3. Recurso de ejemplo: Items (placeholder — pendiente de reemplazo)
+## 3. Conflictos de sincronización
 
-**Este bloque es el template genérico de scaffolding inicial y no refleja el
-dominio del punto de venta.** Se reemplaza por los endpoints reales
-(`articulos`, `inventario`, `ventas`, `cortes_caja`, `devoluciones`,
-`movimientos`, `usuarios`, `sucursales`) cuando:
+Auditoría de la sincronización (`sync_conflicts`, PLAN.md Parte 3). Cada
+dispositivo detecta conflictos localmente con el motor de sync (PLAN.md
+Parte 6: `LastWriteWinsSyncEngine` / `EventoAditivoCombiner`) y los sube al
+backend para consolidar una vista multi-sucursal. El panel de revisión
+(PLAN.md Parte 19) es **solo lectura**: lista, nunca modifica.
 
-- PLAN.md Parte 3 (modelado de BD) defina el esquema campo-por-campo de los
-  7 módulos y quede aprobado por el usuario (todavía no ejecutada).
-- Cada Parte de módulo (PLAN.md Partes 6-12, una por módulo) traduzca su
-  porción del esquema a rutas reales de FastAPI.
+Esta tabla **no** participa del ciclo `local_id`/`remote_id`/`is_synced`/
+`deleted_at` — es en sí misma el registro de auditoría, no una entidad que
+se sincroniza. El `id` lo genera el dispositivo (es el `id` del
+`SyncConflictEntity` local) y viaja en el `POST`, para que la subida sea
+idempotente frente a reintentos.
 
-Se conserva la forma (paginación, envoltorio de respuesta, errores) de este
-placeholder como referencia de estilo para cuando se escriban los endpoints
-reales.
+`valor_local` / `valor_remoto` / `valor_resuelto` son objetos JSON libres
+(el snapshot de cada lado y el valor final aplicado). `politica_aplicada`
+es uno de `"last_write_wins"` | `"evento_aditivo"`.
 
-### 3.1 Listar items
+### 3.1 Listar conflictos
 
-**GET** `/items?page=1&page_size=20`
+**GET** `/sync-conflicts?page=1&page_size=20`
 
-Response `200 OK`
+Filtros opcionales de query: `sucursal_id=uuid`,
+`resuelto_automaticamente=true|false`.
+
+Response `200 OK` — ordenado por `fecha_deteccion` descendente.
 ```json
 {
   "items": [
-    { "id": "uuid", "title": "string", "created_at": "2026-08-08T12:00:00Z" }
+    {
+      "id": "uuid",
+      "entidad": "inventario",
+      "entidad_local_id": "uuid",
+      "sucursal_id": "uuid o null",
+      "valor_local": { "cantidad": 2 },
+      "valor_remoto": { "cantidad": 3 },
+      "valor_resuelto": { "cantidad": -1 },
+      "politica_aplicada": "evento_aditivo",
+      "resuelto_automaticamente": false,
+      "fecha_deteccion": "2026-08-28T14:03:11Z"
+    }
   ],
   "page": 1,
   "page_size": 20,
-  "total": 42
+  "total": 1
 }
 ```
 
-### 3.2 Crear item
+Response `422` — `page` o `page_size` fuera de rango, o
+`resuelto_automaticamente` no parseable como booleano.
 
-**POST** `/items`
+### 3.2 Subir conflicto
+
+**POST** `/sync-conflicts`
 
 Request body
 ```json
 {
-  "title": "string, 1-120 caracteres"
+  "id": "uuid (generado por el dispositivo)",
+  "entidad": "string",
+  "entidad_local_id": "uuid",
+  "sucursal_id": "uuid o null",
+  "valor_local": { },
+  "valor_remoto": { },
+  "valor_resuelto": { },
+  "politica_aplicada": "last_write_wins | evento_aditivo",
+  "resuelto_automaticamente": false,
+  "fecha_deteccion": "2026-08-28T14:03:11Z"
 }
 ```
 
-Response `201 Created`
-```json
-{ "id": "uuid", "title": "string", "created_at": "2026-08-08T12:00:00Z" }
-```
+- Response `201 Created` → el conflicto se insertó; mismo shape que un ítem
+  de 3.1.
+- Response `200 OK` → ya existía un conflicto con ese `id` (reintento de
+  sync); devuelve la fila existente sin duplicar ni sobreescribir.
+- Response `422` → falta un campo obligatorio o `politica_aplicada` está
+  fuera del enum.
 
-### 3.3 Obtener item por id
-
-**GET** `/items/{id}`
-
-Response `200 OK` → mismo shape que 3.2
-Response `404 Not Found` → item no existe
-
-### 3.4 Eliminar item
-
-**DELETE** `/items/{id}`
-
-Response `204 No Content`
-Response `404 Not Found` → item no existe
+No hay `DELETE`: un registro de auditoría no se borra.
 
 ---
 
@@ -1138,9 +1156,8 @@ este contrato, sino prerequisitos pendientes):
   la lectura/ajuste de `articulos`/`inventario` (sección 7),
   `cortes_caja`/`retiros_efectivo` (sección 8), `devoluciones` (sección 9),
   `roles` (sección 10), `usuarios` (sección 11) y `auth/login` (sección 2)
-  ya están implementadas; el placeholder de la sección 3 se reemplaza
-  módulo por módulo a medida que cada Parte llega a su sub-paso de
-  repositorio remoto.
+  ya están implementadas. El placeholder de la sección 3 (Items) fue
+  reemplazado por el contrato real de `sync-conflicts` (PLAN.md Parte 19).
 - [ ] Enforcement del header `Authorization: Bearer <access_token>` sobre
   el resto de las rutas (fuera de `/auth/*` y `/health`) — el token ya se
   emite (sección 2) pero ningún endpoint lo valida todavía; no es parte del

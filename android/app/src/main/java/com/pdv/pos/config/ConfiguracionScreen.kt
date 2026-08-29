@@ -43,6 +43,7 @@ import com.pdv.pos.ia.LlmProvider
 fun ConfiguracionScreen(
     onBack: () -> Unit,
     onNavigateToImportarCatalogo: () -> Unit,
+    onNavigateToConflictos: () -> Unit,
     viewModel: ConfiguracionViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -83,6 +84,12 @@ fun ConfiguracionScreen(
             }
             Button(onClick = onNavigateToImportarCatalogo, modifier = Modifier.fillMaxWidth()) {
                 Text("Importar catálogo")
+            }
+            Button(
+                onClick = { if (viewModel.onIntentoAbrirConflictos()) onNavigateToConflictos() },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Revisión de conflictos de sincronización")
             }
             AsistenteIaSection(
                 activo = uiState.iaActivo,

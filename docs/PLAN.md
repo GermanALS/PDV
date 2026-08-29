@@ -3048,7 +3048,7 @@ agregar esta sub-parte.)*
 
 ---
 
-## Parte 19: Panel de revisión manual de conflictos de sincronización
+## Parte 19: Panel de revisión manual de conflictos de sincronización  <!-- POS-84 -->
 
 *(Cierra el punto ya mencionado en el Backlog de este plan desde la Parte
 6; se elimina de ahí al agregar esta Parte.)*
@@ -3061,44 +3061,111 @@ administrador pueda auditar qué pasó durante la sincronización.
 
 ### Checklist
 
-**1. UI** (POS-XX)
-- [ ] Propuesta de pantalla (lista de conflictos con entidad, valores
+**1. UI** (POS-85)
+- [x] Propuesta de pantalla (lista de conflictos con entidad, valores
   local/remoto/resuelto, política aplicada, si se resolvió
   automáticamente) presentada y aprobada — criterio: aprobación explícita
-  registrada antes de implementar. `needs-approval`
-- [ ] Composable implementado con datos estáticos de ejemplo — criterio:
+  registrada antes de implementar. `needs-approval` Aprobado el 2026-08-28
+  (pantalla propia `RevisionConflictosScreen`, solo lectura, filtro
+  Todos/Pendientes/Auto-resueltos, tarjeta por conflicto con chip de
+  estado; acceso desde `ConfiguracionScreen`).
+- [x] Composable implementado con datos estáticos de ejemplo — criterio:
   `./gradlew build` en verde y la pantalla es navegable desde
-  Configuración.
+  Configuración. Verificado: `./gradlew build` en verde (`BUILD
+  SUCCESSFUL`, incluye lint y `testReleaseUnitTest`/`test`). Paquete
+  `com.pdv.pos.conflictos` (`RevisionConflictosScreen`/`ViewModel`/
+  `UiState`) con 3 conflictos de ejemplo; `Pantalla.CONFLICTOS` nuevo en
+  `MainActivity`, botón "Revisión de conflictos de sincronización" en
+  `ConfiguracionScreen`. Gate de permiso (`onIntentoNavegar("usuarios")`)
+  diferido al sub-paso 4 (Wiring).
 - [ ] Instalado y verificado en el Xiaomi — `needs-device`.
 
-**2. Repositorio local** (POS-XX)
-- [ ] `SyncConflictRepository` (interfaz) en `domain/repository/` —
-  criterio: compila sin Room ni Retrofit.
-- [ ] `LocalSyncConflictRepository` (Room, sobre `SyncConflictDao` ya
+**2. Repositorio local** (POS-86)
+- [x] `SyncConflictRepository` (interfaz) en `domain/repository/` —
+  criterio: compila sin Room ni Retrofit. Verificado: `SyncConflictRepository`
+  expone solo `observeConflictos(): Flow<List<SyncConflict>>` sobre el
+  modelo de dominio `SyncConflict`; sin imports de Room ni Retrofit.
+- [x] `LocalSyncConflictRepository` (Room, sobre `SyncConflictDao` ya
   existente desde la Parte 6) — criterio: `./gradlew testDebugUnitTest`
-  en verde. `jvm-tests`
+  en verde. `jvm-tests` Verificado: `./gradlew testDebugUnitTest` en verde
+  (`BUILD SUCCESSFUL in 2m 59s`); `LocalSyncConflictRepositoryTest` 3/3
+  (mapeo entity->dominio, lista vacía, múltiples conflictos) y
+  `LastWriteWinsSyncEngineTest` 3/3 (sin romper por el nuevo método del
+  DAO). Se agregó `SyncConflictDao.observeAll(): Flow<...>` con
+  `ORDER BY fechaDeteccion DESC` (se mantienen `insert`/`getAll`).
 
-**3. Repositorio remoto** (POS-XX)
-- [ ] `docs/api-contract.md` actualizado con el endpoint de listado de
+**3. Repositorio remoto** (POS-87)
+- [x] `docs/api-contract.md` actualizado con el endpoint de listado de
   conflictos — criterio: sección nueva, revisada antes de tocar código
-  (CLAUDE.md §9).
-- [ ] Ruta FastAPI + `RemoteSyncConflictRepository` (Retrofit) — criterio:
-  `pytest`/`./gradlew testDebugUnitTest` en verde. `jvm-tests`
+  (CLAUDE.md §9). Aprobado el 2026-08-28: reemplazó el placeholder de la
+  sección 3 (Items) por "Conflictos de sincronización" — `GET
+  /sync-conflicts` (paginado, filtros opcionales `sucursal_id` /
+  `resuelto_automaticamente`, orden `fecha_deteccion` desc) y `POST
+  /sync-conflicts` (subida device->backend con `id` generado por el
+  dispositivo, idempotente: `201` nuevo / `200` ya existía / `422`
+  inválido). Sin `DELETE`.
+- [x] Ruta FastAPI + `RemoteSyncConflictRepository` (Retrofit) — criterio:
+  `pytest`/`./gradlew testDebugUnitTest` en verde. `jvm-tests` `schema-parity`
+  Verificado backend: `alembic upgrade head` aplicó `0011_create_sync_conflicts`
+  y `alembic check` → "No new upgrade operations detected"; `pytest`
+  completo 65/65 en verde (`test_sync_conflicts.py` 5/5: GET orden desc,
+  POST happy path, idempotencia `201`->`200` sin sobreescribir, filtro
+  `resuelto_automaticamente`, `422` por política inválida). `schema-parity`:
+  `docs/schema-pos.json` `sync_conflicts` == `SyncConflict` (SQLAlchemy,
+  `JSONB` para los tres `valor_*`) == `SyncConflictEntity` (Room, Parte 6);
+  `alembic/env.py` ahora importa también `rol` y `sync_conflict` (faltaba
+  `rol`, rompía `alembic check`). Verificado Android: DTOs
+  (`valor_*` como `JsonElement`), `SyncConflictApiService` (GET/POST),
+  `RemoteSyncConflictRepository` (`observeConflictos()` vía GET +
+  `subirConflicto()` vía POST, fuera de la interfaz de solo lectura),
+  wiring en `NetworkModule`, `RemoteSyncConflictRepositoryTest` 3/3.
+  `./gradlew testDebugUnitTest` en verde (`BUILD SUCCESSFUL in 2m 3s`).
 
-**4. Wiring** (POS-XX)
-- [ ] `ViewModel` conectado según `BackendMode` (Parte 6), mismo patrón
+**4. Wiring** (POS-88)
+- [x] `ViewModel` conectado según `BackendMode` (Parte 6), mismo patrón
   `ModeAware*` que el resto de módulos — criterio: prueba con estados
-  mockeados. `jvm-tests`
-- [ ] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`.
+  mockeados. `jvm-tests` Verificado: `./gradlew build` en verde (`BUILD
+  SUCCESSFUL in 11m 59s`, incluye lint y `test`). `ModeAwareSyncConflictRepository`
+  (`flatMapLatest` sobre `deviceConfig.backendMode`; LOCAL y
+  LOCAL_CON_SINCRONIZACION leen Room, REMOTO lee el backend, mismo split
+  que `ModeAwareVentaRepository`) cableado en `RepositoryModule` vía
+  `@Binds`. `RevisionConflictosViewModel` reescrito: inyecta
+  `SyncConflictRepository`, mapea `SyncConflict` -> `ConflictoUi` con fecha
+  formateada, sin datos estáticos. Gate de acceso al panel en
+  `ConfiguracionViewModel.onIntentoAbrirConflictos()` (mismo criterio que
+  el módulo "usuarios", registra `AUTH` en el log si se deniega — como
+  `HelloViewModel.onIntentoNavegar`). Pruebas:
+  `ModeAwareSyncConflictRepositoryTest` 3/3,
+  `RevisionConflictosViewModelTest` 2/2, `ConfiguracionViewModelTest` 18/18
+  (+2 del gate).
+- [x] Verificado end-to-end en el Xiaomi en los tres modos — `needs-device`.
+  Confirmado por el usuario el 2026-08-29: modo REMOTO muestra los dos
+  conflictos sembrados vía `POST /sync-conflicts` (orden `fecha_deteccion`
+  desc, chip rojo "Pendiente de revisión" / verde "Auto-resuelto", filtro
+  Todos/Pendientes/Auto-resueltos); modos LOCAL y LOCAL_CON_SINCRONIZACION
+  abren el panel leyendo de Room (vacío -> "Sin conflictos registrados",
+  correcto porque el dispositivo nunca corrió una sincronización).
 
 ### Decisiones abiertas
 
-- [ ] Alcance de la acción del administrador sobre un conflicto: ¿solo
+- [x] Alcance de la acción del administrador sobre un conflicto: ¿solo
   visualizar (auditoría de solo lectura), o permitir revertir/forzar un
   valor distinto al ya resuelto? Impacta si el módulo escribe algo además
-  de leer `sync_conflicts`.
-- [ ] Ubicación en la navegación: ¿pantalla propia accesible desde
+  de leer `sync_conflicts`. **Decidido** (2026-08-28): solo lectura
+  (auditoría). El panel no escribe `sync_conflicts` ni la entidad
+  afectada; `SyncConflictRepository`/`LocalSyncConflictRepository`/
+  `RemoteSyncConflictRepository` exponen únicamente listado/observación.
+- [x] Ubicación en la navegación: ¿pantalla propia accesible desde
   Configuración, o sub-sección dentro de una pantalla existente?
+  **Decidido** (2026-08-28): pantalla propia (`Pantalla` nueva en
+  `MainActivity`), mismo patrón que Usuarios/Roles/Venta/Caja, con gate de
+  permiso vía `onIntentoNavegar`.
+- [x] Lado backend del sub-paso 3 (no listada originalmente; surgió al
+  implementar): hoy nada llena `sync_conflicts` en el backend (solo Room
+  local, sin motor de sync remoto real). **Decidido** (2026-08-28): el
+  backend gana tabla + modelo SQLAlchemy + migración Alembic + `GET`
+  paginado **y** un `POST` de subida para que cada dispositivo empuje sus
+  conflictos al sincronizar, cerrando el ciclo end-to-end en esta Parte.
 
 ---
 
