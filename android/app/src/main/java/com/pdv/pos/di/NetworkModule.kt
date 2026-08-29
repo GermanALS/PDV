@@ -11,6 +11,7 @@ import com.pdv.pos.data.remote.InventarioApiService
 import com.pdv.pos.data.remote.RetiroApiService
 import com.pdv.pos.data.remote.RolApiService
 import com.pdv.pos.data.remote.SucursalApiService
+import com.pdv.pos.data.remote.SyncConflictApiService
 import com.pdv.pos.data.remote.UsuarioApiService
 import com.pdv.pos.data.remote.VentaApiService
 import dagger.Module
@@ -70,6 +71,11 @@ object NetworkModule {
     @Singleton
     fun provideVentaApiService(retrofit: Retrofit): VentaApiService =
         retrofit.create(VentaApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSyncConflictApiService(retrofit: Retrofit): SyncConflictApiService =
+        retrofit.create(SyncConflictApiService::class.java)
 
     @Provides
     @Singleton

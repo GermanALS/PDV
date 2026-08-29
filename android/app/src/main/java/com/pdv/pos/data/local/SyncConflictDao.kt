@@ -3,6 +3,7 @@ package com.pdv.pos.data.local
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SyncConflictDao {
@@ -12,4 +13,7 @@ interface SyncConflictDao {
 
     @Query("SELECT * FROM sync_conflicts")
     suspend fun getAll(): List<SyncConflictEntity>
+
+    @Query("SELECT * FROM sync_conflicts ORDER BY fechaDeteccion DESC")
+    fun observeAll(): Flow<List<SyncConflictEntity>>
 }

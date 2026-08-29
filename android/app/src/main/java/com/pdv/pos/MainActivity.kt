@@ -15,6 +15,7 @@ import com.pdv.pos.auth.LoginScreen
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.caja.CajaScreen
 import com.pdv.pos.config.ConfiguracionScreen
+import com.pdv.pos.conflictos.RevisionConflictosScreen
 import com.pdv.pos.devolucion.DevolucionScreen
 import com.pdv.pos.entrada.EntradaScreen
 import com.pdv.pos.ia.AsistenteIaWidget
@@ -29,7 +30,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 private enum class Pantalla {
-    HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO, CAJA, DEVOLUCIONES, USUARIOS, ROLES, IMPORTAR_CATALOGO,
+    HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO, CAJA, DEVOLUCIONES, USUARIOS, ROLES, IMPORTAR_CATALOGO, CONFLICTOS,
 }
 
 @AndroidEntryPoint
@@ -65,6 +66,7 @@ class MainActivity : ComponentActivity() {
                             Pantalla.CONFIGURACION -> ConfiguracionScreen(
                                 onBack = { pantalla = Pantalla.HELLO },
                                 onNavigateToImportarCatalogo = { pantalla = Pantalla.IMPORTAR_CATALOGO },
+                                onNavigateToConflictos = { pantalla = Pantalla.CONFLICTOS },
                             )
                             Pantalla.VENTA -> VentaScreen(onBack = { pantalla = Pantalla.HELLO })
                             Pantalla.ENTRADA -> EntradaScreen(onBack = { pantalla = Pantalla.HELLO })
@@ -77,6 +79,7 @@ class MainActivity : ComponentActivity() {
                             )
                             Pantalla.ROLES -> RolScreen(onBack = { pantalla = Pantalla.USUARIOS })
                             Pantalla.IMPORTAR_CATALOGO -> ImportarCatalogoScreen(onBack = { pantalla = Pantalla.CONFIGURACION })
+                            Pantalla.CONFLICTOS -> RevisionConflictosScreen(onBack = { pantalla = Pantalla.CONFIGURACION })
                         }
                         AsistenteIaWidget()
                     }

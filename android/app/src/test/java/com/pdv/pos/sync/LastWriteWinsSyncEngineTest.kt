@@ -4,6 +4,8 @@ import com.pdv.pos.data.local.SyncConflictDao
 import com.pdv.pos.data.local.SyncConflictEntity
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.logging.AppLogger
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -19,6 +21,7 @@ class LastWriteWinsSyncEngineTest {
             inserted.add(entity)
         }
         override suspend fun getAll(): List<SyncConflictEntity> = inserted.toList()
+        override fun observeAll(): Flow<List<SyncConflictEntity>> = flowOf(inserted.toList())
     }
 
     @Test

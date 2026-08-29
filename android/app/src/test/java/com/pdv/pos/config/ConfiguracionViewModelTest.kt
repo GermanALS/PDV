@@ -8,10 +8,14 @@ import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Sucursal
+import com.pdv.pos.domain.model.Rol
 import com.pdv.pos.domain.repository.AuthRepository
 import com.pdv.pos.domain.repository.LoginResultado
+import com.pdv.pos.domain.repository.RolRepository
 import com.pdv.pos.domain.repository.SucursalRepository
 import com.pdv.pos.domain.model.Usuario
+import com.pdv.pos.logging.AppLogger
+import com.pdv.pos.logging.LogType
 import com.pdv.pos.ia.LlmClient
 import com.pdv.pos.ia.LlmProvider
 import com.pdv.pos.ia.PROMPT_SISTEMA_DEFAULT
@@ -95,7 +99,60 @@ class ConfiguracionViewModelTest {
             llmClient,
             PromptIaPreferences(dataStore),
             authRepository,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
+    }
+
+    private fun viewModelConGate(
+        dataStore: DataStore<Preferences>,
+        session: Session?,
+        roles: List<Rol>,
+        appLogger: AppLogger,
+    ): ConfiguracionViewModel {
+        val sessionManager = mockk<SessionManager>(relaxed = true)
+        every { sessionManager.session } returns MutableStateFlow(session).asStateFlow()
+        val rolRepository = mockk<RolRepository>()
+        every { rolRepository.observeRoles() } returns flowOf(roles)
+        return ConfiguracionViewModel(
+            sessionManager,
+            ConfiguracionPreferences(dataStore),
+            fakeSucursalRepository,
+            fakeIaPreferences(dataStore),
+            mockk(relaxed = true),
+            PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+            rolRepository,
+            appLogger,
+        )
+    }
+
+    @Test
+    fun `onIntentoAbrirConflictos returns true when the session role includes the usuarios module`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val appLogger = mockk<AppLogger>(relaxed = true)
+        val viewModel = viewModelConGate(
+            dataStore(tempDir),
+            Session(username = "admin", usuarioId = "u1", rolId = "r1"),
+            listOf(Rol(id = "r1", nombre = "Admin", modulosPermitidos = listOf("usuarios", "configuracion"))),
+            appLogger,
+        )
+
+        assertEquals(true, viewModel.onIntentoAbrirConflictos())
+        coVerify(exactly = 0) { appLogger.log(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `onIntentoAbrirConflictos returns false and logs an AUTH denial when the role lacks the usuarios module`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val appLogger = mockk<AppLogger>(relaxed = true)
+        val viewModel = viewModelConGate(
+            dataStore(tempDir),
+            Session(username = "cajero", usuarioId = "u2", rolId = "r2"),
+            listOf(Rol(id = "r2", nombre = "Cajero", modulosPermitidos = listOf("venta"))),
+            appLogger,
+        )
+
+        assertEquals(false, viewModel.onIntentoAbrirConflictos())
+        coVerify { appLogger.log(LogType.AUTH, any(), "cajero", any()) }
     }
 
     @Test
@@ -109,6 +166,8 @@ class ConfiguracionViewModelTest {
             fakeIaPreferences(dataStore),
             mockk(relaxed = true),
             PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
             mockk(relaxed = true),
         )
         assertEquals(BackendMode.LOCAL, viewModel.uiState.value.modo)
@@ -144,6 +203,8 @@ class ConfiguracionViewModelTest {
             mockk(relaxed = true),
             PromptIaPreferences(dataStore),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
         assertEquals("s1", preferences.deviceConfig.first().sucursalIdSeleccionada)
@@ -163,6 +224,8 @@ class ConfiguracionViewModelTest {
             mockk(relaxed = true),
             PromptIaPreferences(dataStore),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
         assertEquals("sucursal-local-vieja", preferences.deviceConfig.first().sucursalIdSeleccionada)
@@ -179,6 +242,8 @@ class ConfiguracionViewModelTest {
             iaPreferences,
             mockk(relaxed = true),
             PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
             mockk(relaxed = true),
         )
 
@@ -202,6 +267,8 @@ class ConfiguracionViewModelTest {
             iaPreferences,
             mockk(relaxed = true),
             PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
             mockk(relaxed = true),
         )
 
@@ -313,6 +380,8 @@ class ConfiguracionViewModelTest {
             mockk(relaxed = true),
             promptIaPreferences,
             authRepository,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
         viewModel.onPromptIaChange("Prompt nuevo")
@@ -339,6 +408,8 @@ class ConfiguracionViewModelTest {
             mockk(relaxed = true),
             promptIaPreferences,
             authRepository,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
         viewModel.onPromptIaChange("Prompt nuevo")
