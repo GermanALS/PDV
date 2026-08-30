@@ -39,7 +39,7 @@ class ChatViewModel @Inject constructor(
     private val estadoPuntoVentaBuilder: EstadoPuntoVentaBuilder,
     private val llmClient: LlmClient,
     private val ejecutorAccionesIa: EjecutorAccionesIa,
-    private val faqContent: FaqContent,
+    private val faqRepository: FaqRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -48,7 +48,7 @@ class ChatViewModel @Inject constructor(
     // Contenido estatico, sin necesidad de corutina ni de vivir en
     // ChatUiState (PLAN.md Parte 16, sub-paso 4): se lee una sola vez al
     // crear el ViewModel, igual de disponible con o sin conexion.
-    val faqTexto: String = faqContent.texto()
+    val faqTexto: String = faqRepository.textoAyuda
 
     // AsistenteIaWidget se monta una sola vez fuera del `when(pantalla)` de
     // MainActivity, asi que hiltViewModel() resuelve siempre a la misma
@@ -60,10 +60,10 @@ class ChatViewModel @Inject constructor(
     // code-reviewer).
     private var usuarioDeLaSesionActual: String? = null
 
-    // Consultas de solo lectura (PLAN.md Parte 18, sub-parte D): a diferencia
-    // de las 4 acciones de escritura, se ejecutan de inmediato al proponerse,
-    // sin tarjeta AccionPendiente ni confirmacion del usuario.
-    private val tiposSoloLectura = setOf("exportar_inventario", "consultar_stock")
+    // Consultas de solo lectura (PLAN.md Parte 18, sub-parte D; Parte 20): a
+    // diferencia de las 4 acciones de escritura, se ejecutan de inmediato al
+    // proponerse, sin tarjeta AccionPendiente ni confirmacion del usuario.
+    private val tiposSoloLectura = setOf("exportar_inventario", "consultar_stock", "consultar_faq")
 
     init {
         // Misma compuerta de permiso que el resto de los modulos (PLAN.md
@@ -108,6 +108,21 @@ class ChatViewModel @Inject constructor(
         val texto = estado.entradaTexto.trim()
         if (texto.isEmpty() || estado.enviando) return
 
+        val numeroFaq = numeroFaqInstantaneo(texto)
+        if (numeroFaq != null) {
+            responderFaqInstantaneo(texto, numeroFaq)
+            return
+        }
+
+        // Coincidencia exacta (tras normalizar) con una pregunta del FAQ:
+        // se responde sin llamar al LLM, igual que "qN" (PLAN.md Parte 20,
+        // ronda de dispositivo 2026-08-30).
+        val faqPorTexto = faqRepository.matchPorTexto(texto)
+        if (faqPorTexto != null) {
+            responderFaqInstantaneo(texto, faqPorTexto.faq)
+            return
+        }
+
         val historialPrevio = estado.mensajes.mapNotNull {
             when (it) {
                 is ChatUiMessage.DeUsuario -> ChatMessageDto(role = "user", content = it.texto)
@@ -131,6 +146,26 @@ class ChatViewModel @Inject constructor(
                 RespuestaChat.SinConexion ->
                     _uiState.update { it.copy(enviando = false, sinConexion = true) }
             }
+        }
+    }
+
+    // Atajo "qN" (PLAN.md Parte 20): el usuario escribe q + numero de
+    // pregunta y la app responde esa entrada del FAQ sin llamar al LLM -
+    // funciona sin token, sin sucursal y sin conexion. Solo matchea la
+    // cadena completa (q + hasta 3 digitos), no algo como "que es q3".
+    private fun numeroFaqInstantaneo(texto: String): Int? =
+        Regex("""^[qQ]\s?(\d{1,3})$""").find(texto.trim())?.groupValues?.get(1)?.toInt()
+
+    private fun responderFaqInstantaneo(texto: String, numero: Int) {
+        val respuesta = faqRepository.find(numero)?.answer
+            ?: "No encontré la pregunta $numero en el FAQ."
+        _uiState.update {
+            it.copy(
+                mensajes = it.mensajes +
+                    ChatUiMessage.DeUsuario(UUID.randomUUID().toString(), texto) +
+                    ChatUiMessage.DeIa(UUID.randomUUID().toString(), respuesta),
+                entradaTexto = "",
+            )
         }
     }
 
@@ -159,7 +194,11 @@ class ChatViewModel @Inject constructor(
         // prosa no alcanza para que el proveedor acierte las claves exactas
         // de "parametros" y Json.decodeFromString fallaba con
         // SerializationException en cualquier pedido de accion.
-        val promptSistema = promptIaPreferences.prompt.first() + "\n\n" + FORMATO_SALIDA_ACCIONES
+        // instruccionFaq va al final (PLAN.md Parte 20): la lista de
+        // preguntas del FAQ curado, para que el modelo responda via la
+        // consulta de solo lectura "consultar_faq" en vez de improvisar.
+        val promptSistema = promptIaPreferences.prompt.first() + "\n\n" +
+            FORMATO_SALIDA_ACCIONES + "\n\n" + faqRepository.instruccionFaq
         val estadoJson = estadoPuntoVentaBuilder.armarJson(sucursalId, historial)
         val mensajesLlm = listOf(ChatMessageDto(role = "system", content = promptSistema)) +
             historial +
@@ -169,9 +208,18 @@ class ChatViewModel @Inject constructor(
         return when (val resultado = llmClient.chatEstructurado(iaConfig.proveedor, token, modelo, mensajesLlm)) {
             is ApiResult.Success -> {
                 val respuesta = resultado.data
-                val mensajeIa = ChatUiMessage.DeIa(UUID.randomUUID().toString(), respuesta.respuestaUsuario)
-                // Las dos consultas de solo lectura (PLAN.md Parte 18,
-                // sub-parte D) se ejecutan de inmediato, sin tarjeta de
+                // Cuando la unica accion es consultar_faq, se descarta la
+                // burbuja respuesta_usuario del modelo y se muestra solo el
+                // texto verbatim del FAQ (PLAN.md Parte 20, ronda de
+                // dispositivo 2026-08-30): sin esto el modelo improvisaba
+                // una respuesta ademas del texto exacto.
+                val soloFaq = respuesta.acciones.isNotEmpty() &&
+                    respuesta.acciones.all { it.tipo == "consultar_faq" }
+                val mensajesBase =
+                    if (soloFaq) emptyList()
+                    else listOf(ChatUiMessage.DeIa(UUID.randomUUID().toString(), respuesta.respuestaUsuario))
+                // Las consultas de solo lectura (PLAN.md Parte 18, sub-parte
+                // D; Parte 20) se ejecutan de inmediato, sin tarjeta de
                 // confirmacion - las 4 acciones de escritura restantes siguen
                 // el camino existente de AccionPendiente.
                 val mensajesDeAcciones = respuesta.acciones.map { accion ->
@@ -185,7 +233,7 @@ class ChatViewModel @Inject constructor(
                         )
                     }
                 }
-                RespuestaChat.Mensajes(listOf(mensajeIa) + mensajesDeAcciones)
+                RespuestaChat.Mensajes(mensajesBase + mensajesDeAcciones)
             }
             is ApiResult.Error -> if (resultado.message == MENSAJE_SIN_CONEXION_IA) {
                 RespuestaChat.SinConexion

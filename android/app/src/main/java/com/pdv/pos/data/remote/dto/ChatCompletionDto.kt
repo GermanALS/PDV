@@ -31,9 +31,19 @@ data class ChatCompletionRequestDto(
 @Serializable
 data class ChatCompletionChoiceDto(
     val message: ChatMessageDto,
+    // Diagnostico (PLAN.md Parte 20): distingue una respuesta vacia por
+    // truncado ("length") o filtro ("content_filter") de un "stop" normal.
+    @SerialName("finish_reason") val finishReason: String? = null,
+)
+
+@Serializable
+data class ChatCompletionUsageDto(
+    @SerialName("prompt_tokens") val promptTokens: Int? = null,
+    @SerialName("completion_tokens") val completionTokens: Int? = null,
 )
 
 @Serializable
 data class ChatCompletionResponseDto(
     val choices: List<ChatCompletionChoiceDto>,
+    val usage: ChatCompletionUsageDto? = null,
 )

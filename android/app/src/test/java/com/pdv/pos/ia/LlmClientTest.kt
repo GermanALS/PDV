@@ -8,14 +8,21 @@ import com.pdv.pos.data.remote.dto.ChatCompletionRequestDto
 import com.pdv.pos.data.remote.dto.ChatCompletionResponseDto
 import com.pdv.pos.data.remote.dto.ChatMessageDto
 import com.pdv.pos.data.remote.dto.ResponseFormatDto
+import android.util.Log
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.EnumSource
@@ -24,6 +31,19 @@ import java.io.IOException
 class LlmClientTest {
 
     private val json = Json { ignoreUnknownKeys = true }
+
+    // LlmClient loguea el contenido crudo cuando no parsea (diagnostico de
+    // la Parte 20); android.util.Log no esta disponible en tests JVM.
+    @BeforeEach
+    fun setUp() {
+        mockkStatic(Log::class)
+        every { Log.w(any<String>(), any<String>()) } returns 0
+    }
+
+    @AfterEach
+    fun tearDown() {
+        unmockkStatic(Log::class)
+    }
 
     @Test
     fun `chat devuelve el contenido de la respuesta como exito`() = runTest {
@@ -236,5 +256,35 @@ class LlmClientTest {
 
         assertTrue(resultado is ApiResult.Error)
         assertEquals("La IA devolvio una respuesta con formato invalido", (resultado as ApiResult.Error).message)
+        // El contenido crudo se loguea para poder diagnosticar el caso
+        // (PLAN.md Parte 20): sin esto un "formato invalido" intermitente no
+        // se puede reproducir.
+        verify { Log.w("LlmClient", match<String> { it.contains("esto no es json") }) }
+    }
+
+    // PLAN.md Parte 20 (ronda 2 de diagnostico): un "content" vacio con
+    // response_format json_object no es "formato invalido" - es truncado por
+    // tokens / filtro. Se distingue con su propio mensaje y se loguea
+    // finish_reason + usage.
+    @Test
+    fun `chatEstructurado trata un contenido vacio como respuesta ausente y loguea finish_reason`() = runTest {
+        val api = mockk<LlmApiService>()
+        coEvery { api.chatCompletions(any(), any(), any()) } returns ChatCompletionResponseDto(
+            choices = listOf(
+                ChatCompletionChoiceDto(
+                    message = ChatMessageDto(role = "assistant", content = ""),
+                    finishReason = "length",
+                ),
+            ),
+        )
+        val client = LlmClient(api, json)
+
+        val resultado = client.chatEstructurado(
+            LlmProvider.DEEP_SEEK, "token", "deepseek-chat", listOf(ChatMessageDto("user", "hola")),
+        )
+
+        assertTrue(resultado is ApiResult.Error)
+        assertEquals("El proveedor no devolvio ninguna respuesta", (resultado as ApiResult.Error).message)
+        verify { Log.w("LlmClient", match<String> { it.contains("finish_reason=length") }) }
     }
 }
