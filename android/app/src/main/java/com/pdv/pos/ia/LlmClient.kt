@@ -6,6 +6,7 @@ import com.pdv.pos.data.remote.LlmHttpException
 import com.pdv.pos.data.remote.dto.ChatCompletionRequestDto
 import com.pdv.pos.data.remote.dto.ChatMessageDto
 import com.pdv.pos.data.remote.dto.ResponseFormatDto
+import android.util.Log
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.io.IOException
@@ -80,13 +81,36 @@ class LlmClient @Inject constructor(
                 responseFormat = ResponseFormatDto(type = "json_object"),
             ),
         )
-        val contenido = response.choices.firstOrNull()?.message?.content
-        if (contenido == null) {
+        val choice = response.choices.firstOrNull()
+        val contenido = choice?.message?.content
+        if (contenido.isNullOrBlank()) {
+            // Diagnostico (PLAN.md Parte 20): un contenido vacio con
+            // response_format json_object suele ser truncado por tokens
+            // ("length"), filtro de contenido, o el modelo escribiendo en
+            // otro campo (razonamiento). finish_reason y usage lo distinguen.
+            Log.w(
+                "LlmClient",
+                "El proveedor devolvio contenido vacio. finish_reason=${choice?.finishReason} " +
+                    "prompt_tokens=${response.usage?.promptTokens} " +
+                    "completion_tokens=${response.usage?.completionTokens}",
+            )
             ApiResult.Error("El proveedor no devolvio ninguna respuesta")
         } else {
             try {
                 ApiResult.Success(json.decodeFromString(RespuestaIaDto.serializer(), contenido))
             } catch (e: SerializationException) {
+                // El texto crudo del modelo no se guarda en ningun lado, asi
+                // que un "formato invalido" intermitente es imposible de
+                // reproducir. Se loguea solo el contenido de la respuesta
+                // (truncado) - el token va unicamente en el header del
+                // request, nunca aca.
+                Log.w(
+                    "LlmClient",
+                    "Respuesta no parseable a RespuestaIaDto (${e.message}). " +
+                        "finish_reason=${choice.finishReason} " +
+                        "completion_tokens=${response.usage?.completionTokens} " +
+                        "Contenido: ${contenido.take(1500)}",
+                )
                 ApiResult.Error("La IA devolvio una respuesta con formato invalido")
             }
         }

@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -99,9 +100,12 @@ class ChatViewModelTest {
         return builder
     }
 
-    private fun faqContent(): FaqContent {
-        val faq = mockk<FaqContent>()
-        every { faq.texto() } returns "FAQ de prueba"
+    private fun faqRepository(): FaqRepository {
+        val faq = mockk<FaqRepository>()
+        every { faq.textoAyuda } returns "FAQ de prueba"
+        every { faq.instruccionFaq } returns "# FAQ\n1. Como cobro en efectivo?"
+        every { faq.find(any()) } returns null
+        every { faq.matchPorTexto(any()) } returns null
         return faq
     }
 
@@ -112,6 +116,7 @@ class ChatViewModelTest {
         iaPreferences: IaPreferences = iaPreferences(),
         llmClient: LlmClient = mockk(),
         ejecutorAccionesIa: EjecutorAccionesIa = mockk(),
+        faqRepository: FaqRepository = faqRepository(),
     ) = ChatViewModel(
         sessionManager,
         rolRepository,
@@ -121,7 +126,7 @@ class ChatViewModelTest {
         estadoPuntoVentaBuilder(),
         llmClient,
         ejecutorAccionesIa,
-        faqContent(),
+        faqRepository,
     )
 
     @Test
@@ -136,6 +141,20 @@ class ChatViewModelTest {
         val viewModel = viewModel(sessionManager = sessionManager(sesion.copy(rolId = "r2")))
 
         assertEquals(false, viewModel.uiState.value.visible)
+    }
+
+    // PLAN.md Parte 20, sub-paso 6: el panel de Ayuda y el fallback sin
+    // conexion muestran faqTexto, que ahora se arma desde FaqRepository
+    // (reemplaza al Markdown libre de res/raw/faq.md, eliminado).
+    @Test
+    fun `faqTexto viene del FaqRepository`() = runTest(dispatcher) {
+        val faq = mockk<FaqRepository>()
+        every { faq.textoAyuda } returns "P: Como cobro?\nR: Con efectivo o tarjeta."
+        every { faq.instruccionFaq } returns "# FAQ"
+        every { faq.find(any()) } returns null
+        val viewModel = viewModel(faqRepository = faq)
+
+        assertEquals("P: Como cobro?\nR: Con efectivo o tarjeta.", viewModel.faqTexto)
     }
 
     // PLAN.md Parte 16, sub-paso 2: la voz es solo otra forma de llenar el
@@ -193,6 +212,26 @@ class ChatViewModelTest {
         assertTrue(mensajeSistema.content.contains("alta_articulo"))
         assertTrue(mensajeSistema.content.contains("precioVenta"))
         assertTrue(mensajeSistema.content.contains("registrar_devolucion"))
+    }
+
+    // PLAN.md Parte 20, sub-paso 2: la lista de preguntas del FAQ curado
+    // (FaqRepository.instruccionFaq) se concatena al prompt de sistema en
+    // runtime, despues de FORMATO_SALIDA_ACCIONES, para que el modelo
+    // responda via la consulta de solo lectura "consultar_faq".
+    @Test
+    fun `el mensaje de sistema incluye la instruccion de FAQ con la lista de preguntas`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        val mensajesCapturados = slot<List<ChatMessageDto>>()
+        coEvery { llmClient.chatEstructurado(any(), any(), any(), capture(mensajesCapturados)) } returns
+            ApiResult.Success(RespuestaIaDto(respuestaUsuario = "Listo.", acciones = emptyList()))
+        val viewModel = viewModel(llmClient = llmClient)
+
+        viewModel.onTextoChange("hola")
+        viewModel.enviarMensaje()
+
+        val mensajeSistema = mensajesCapturados.captured.single { it.role == "system" }
+        assertTrue(mensajeSistema.content.contains("# FAQ"))
+        assertTrue(mensajeSistema.content.contains("Como cobro en efectivo?"))
     }
 
     @Test
@@ -261,6 +300,137 @@ class ChatViewModelTest {
         val mensajes = viewModel.uiState.value.mensajes
         assertTrue(mensajes.none { it is ChatUiMessage.AccionPendiente })
         assertTrue(mensajes.any { it is ChatUiMessage.DeIa && it.texto == "El stock de el inventario total es 42." })
+    }
+
+    // PLAN.md Parte 20, sub-paso 3: consultar_faq entra por el mismo camino
+    // de solo lectura que consultar_stock - se ejecuta al instante (sin
+    // tarjeta AccionPendiente) y el "answer" verbatim aparece como mensaje
+    // de IA, ademas de la frase introductoria del modelo.
+    @Test
+    fun `consultar_faq se ejecuta de inmediato y su respuesta aparece como mensaje de IA`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        val accion = AccionIaDto(modulo = "ia", tipo = "consultar_faq", parametros = buildJsonObject { put("numero", "3") })
+        coEvery { llmClient.chatEstructurado(any(), any(), any(), any()) } returns
+            ApiResult.Success(RespuestaIaDto(respuestaUsuario = "Te muestro la respuesta:", acciones = listOf(accion)))
+        val ejecutor = mockk<EjecutorAccionesIa>()
+        coEvery { ejecutor.ejecutar(any(), any(), any(), any()) } returns
+            ResultadoAccionIa.Ejecutada("**Efectivo**: la app pide el monto recibido y calcula el cambio.")
+        val viewModel = viewModel(llmClient = llmClient, ejecutorAccionesIa = ejecutor)
+
+        viewModel.onTextoChange("como cobro en efectivo?")
+        viewModel.enviarMensaje()
+
+        coVerify { ejecutor.ejecutar(accion, setOf("ia", "entrada"), "suc-1", "german") }
+        val mensajes = viewModel.uiState.value.mensajes
+        assertTrue(mensajes.none { it is ChatUiMessage.AccionPendiente })
+        assertTrue(mensajes.any { it is ChatUiMessage.DeIa && it.texto.contains("calcula el cambio") })
+    }
+
+    // PLAN.md Parte 20, sub-paso 4: el atajo "qN" responde una entrada del
+    // FAQ sin llamar al proveedor - no requiere token, sucursal ni conexion.
+    @Test
+    fun `el atajo qN responde la entrada del FAQ sin llamar al proveedor`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        val faq = mockk<FaqRepository>()
+        every { faq.textoAyuda } returns "FAQ de prueba"
+        every { faq.instruccionFaq } returns "# FAQ"
+        every { faq.find(3) } returns
+            FaqEntry(3, "Como cobro en efectivo?", "**Efectivo**: la app calcula el cambio.")
+        val viewModel = viewModel(llmClient = llmClient, faqRepository = faq)
+
+        viewModel.onTextoChange("q3")
+        viewModel.enviarMensaje()
+
+        coVerify(exactly = 0) { llmClient.chatEstructurado(any(), any(), any(), any()) }
+        val mensajes = viewModel.uiState.value.mensajes
+        assertTrue(mensajes.any { it is ChatUiMessage.DeUsuario && it.texto == "q3" })
+        assertTrue(mensajes.any { it is ChatUiMessage.DeIa && it.texto == "**Efectivo**: la app calcula el cambio." })
+        assertEquals("", viewModel.uiState.value.entradaTexto)
+        assertEquals(false, viewModel.uiState.value.enviando)
+    }
+
+    @Test
+    fun `el atajo qN con un numero inexistente responde que no encontro la pregunta`() = runTest(dispatcher) {
+        val faq = mockk<FaqRepository>()
+        every { faq.textoAyuda } returns "x"
+        every { faq.instruccionFaq } returns "# FAQ"
+        every { faq.find(any()) } returns null
+        val viewModel = viewModel(faqRepository = faq)
+
+        viewModel.onTextoChange("q99")
+        viewModel.enviarMensaje()
+
+        assertTrue(
+            viewModel.uiState.value.mensajes.any {
+                it is ChatUiMessage.DeIa && it.texto.contains("No encontré la pregunta 99")
+            },
+        )
+    }
+
+    @Test
+    fun `un mensaje que no es el atajo qN sigue yendo al proveedor`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        coEvery { llmClient.chatEstructurado(any(), any(), any(), any()) } returns
+            ApiResult.Success(RespuestaIaDto(respuestaUsuario = "Hola.", acciones = emptyList()))
+        val viewModel = viewModel(llmClient = llmClient)
+
+        viewModel.onTextoChange("que hago con la pregunta q3")
+        viewModel.enviarMensaje()
+
+        coVerify(exactly = 1) { llmClient.chatEstructurado(any(), any(), any(), any()) }
+    }
+
+    // PLAN.md Parte 20 (ronda de dispositivo 2026-08-30): una pregunta que
+    // coincide con una del FAQ salvo por "¿"/acentos/mayusculas se responde
+    // sin llamar al proveedor (cero tokens), igual que el atajo "qN".
+    @Test
+    fun `una pregunta que coincide con el FAQ salvo signos y acentos se responde sin llamar al proveedor`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        val faq = mockk<FaqRepository>()
+        every { faq.textoAyuda } returns "x"
+        every { faq.instruccionFaq } returns "# FAQ"
+        every { faq.matchPorTexto("¿Cómo cobro en efectivo?") } returns
+            FaqEntry(5, "Como cobro en efectivo?", "**Efectivo**: la app calcula el cambio.")
+        every { faq.find(5) } returns
+            FaqEntry(5, "Como cobro en efectivo?", "**Efectivo**: la app calcula el cambio.")
+        val viewModel = viewModel(llmClient = llmClient, faqRepository = faq)
+
+        viewModel.onTextoChange("¿Cómo cobro en efectivo?")
+        viewModel.enviarMensaje()
+
+        coVerify(exactly = 0) { llmClient.chatEstructurado(any(), any(), any(), any()) }
+        assertTrue(
+            viewModel.uiState.value.mensajes.any {
+                it is ChatUiMessage.DeIa && it.texto == "**Efectivo**: la app calcula el cambio."
+            },
+        )
+    }
+
+    // PLAN.md Parte 20 (ronda de dispositivo 2026-08-30): si la respuesta
+    // del modelo trae consultar_faq como unica accion, no se muestra su
+    // respuesta_usuario improvisada - solo el texto verbatim del FAQ.
+    @Test
+    fun `cuando la IA responde con consultar_faq no se muestra su respuesta_usuario improvisada`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        val accion = AccionIaDto(modulo = "ia", tipo = "consultar_faq", parametros = buildJsonObject { put("numero", "5") })
+        coEvery { llmClient.chatEstructurado(any(), any(), any(), any()) } returns
+            ApiResult.Success(
+                RespuestaIaDto(
+                    respuestaUsuario = "El efectivo se cobra pidiendo el monto y tal y cual, respuesta larga improvisada.",
+                    acciones = listOf(accion),
+                ),
+            )
+        val ejecutor = mockk<EjecutorAccionesIa>()
+        coEvery { ejecutor.ejecutar(any(), any(), any(), any()) } returns
+            ResultadoAccionIa.Ejecutada("**Efectivo**: la app pide el monto recibido y calcula el cambio.")
+        val viewModel = viewModel(llmClient = llmClient, ejecutorAccionesIa = ejecutor)
+
+        viewModel.onTextoChange("como se cobra")
+        viewModel.enviarMensaje()
+
+        val iaMsgs = viewModel.uiState.value.mensajes.filterIsInstance<ChatUiMessage.DeIa>()
+        assertTrue(iaMsgs.any { it.texto.contains("calcula el cambio") })
+        assertTrue(iaMsgs.none { it.texto.contains("respuesta larga improvisada") })
     }
 
     // exportar_inventario es la unica accion que produce un archivo para

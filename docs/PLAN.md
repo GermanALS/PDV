@@ -2105,8 +2105,9 @@ casos, sin depender de que haya backend configurado.
 
 Se genera durante el desarrollo y se empaqueta como recurso de la app
 (disponible sin conexión). Sirve como contenido de ayuda estático y como
-contexto para la IA en modo local con conexión, mientras el RAG (ver
-Backlog) no esté implementado.
+contexto para la IA en modo local con conexión. La Parte 20 reemplaza este
+`res/raw/faq.md` de texto libre por un FAQ curado en `res/raw/faq.jsonl`
+consultable por número.
 
 ### Checklist
 
@@ -3169,45 +3170,228 @@ administrador pueda auditar qué pasó durante la sincronización.
 
 ---
 
-## Parte 20: RAG para el chat de IA
+## Parte 20: FAQ curado para el chat de IA  <!-- POS-89 -->
 
 *(Cierra el punto ya mencionado en el Backlog de este plan desde la Parte
-16; se elimina de ahí al agregar esta Parte.)*
+16; se elimina de ahí al agregar esta Parte. El título original era "RAG
+para el chat de IA"; se redefinió el 2026-08-29 — ver Decisiones abiertas.)*
 
 Reemplaza el contexto de FAQ estático usado hoy por `ChatViewModel`/
-`PromptSistema` (Parte 16) por una indexación real de `docs/` del proyecto
-más una fuente de documentación externa combinada, para mejorar la calidad
-de las respuestas del asistente en modo local con conexión.
+`PromptSistema` (Parte 16) —el archivo de texto libre `res/raw/faq.md`
+inyectado entero— por un FAQ curado en `res/raw/faq.jsonl`: una lista de
+entradas `{"faq": N, "question": ..., "answer": ...}`. La lista de
+preguntas (número + texto) se concatena al prompt de sistema en tiempo de
+ejecución, igual que ya se hace con `FORMATO_SALIDA_ACCIONES` (Parte 16).
+Cuando la pregunta del usuario coincide con una del FAQ, el modelo emite
+una nueva consulta de solo lectura `consultar_faq` con `{"numero": "N"}` y
+la app devuelve el `answer` **verbatim** al chat, con sus marcadores
+Markdown originales — mismo mecanismo que `consultar_stock` /
+`exportar_inventario` (Parte 18, sub-parte D). Además, si el usuario
+escribe `qN` (atajo), la app responde la entrada N sin llamar al LLM
+(funciona sin conexión).
 
-Esta Parte tiene decisiones de arquitectura no resueltas (CLAUDE.md §9)
-que deben cerrarse antes de detallar el checklist de sub-pasos con el
-mismo nivel de concreción que el resto del documento — se detalla al
-retomar esta Parte vía `/parte 20`.
-
-### Decisiones abiertas
-
-- [ ] Almacén vectorial: ¿embeddings + índice on-device (sin dependencia de
-  red para la búsqueda), o un servicio remoto (pgvector en el Postgres ya
-  existente, u otro)? Condiciona si esta Parte funciona en modo LOCAL o
-  solo en modo REMOTO/LOCAL_CON_SINCRONIZACION.
-- [ ] Proveedor de embeddings: ¿el mismo proveedor de IA ya configurado
-  (Parte 14, DeepSeek u otro) si expone un endpoint de embeddings, o uno
-  dedicado? Impacta costo y si depende de conectividad.
-- [ ] Fuente de documentación externa a combinar con `docs/`: ¿cuál
-  fuente concretamente, y con qué frecuencia se re-indexa?
-- [ ] Alcance de la Parte: ¿reemplaza por completo el contexto de FAQ
-  estático de la Parte 16, o convive con él como fallback sin
-  conectividad/índice disponible?
+Objetivo: respuestas de ayuda precisas y consistentes (texto curado, no
+parafraseo del modelo), sin dependencias nuevas, en los tres modos de
+backend con conexión.
 
 ### Checklist
 
-- [ ] Pendiente de detallar — bloqueado por las decisiones abiertas de
-  arriba.
+**1. Contenido del FAQ** (POS-90)
+- [x] `android/app/src/main/res/raw/faq.jsonl` con 45 entradas (una línea
+  JSON por entrada: `{"faq": N, "question": string, "answer": string}`),
+  derivadas de las 8 secciones de `res/raw/faq.md` + comportamiento
+  estabilizado en `CLAUDE.md` y Partes 6-19. `answer` en español con
+  marcadores Markdown, sin diagramas. Numeración `faq` contigua 1..45.
+  `needs-approval` Aprobado el 2026-08-29 (45 entradas presentadas:
+  Venta 1-6, Entrada 7-10, Inventario 11-15, Caja 16-20, Devoluciones
+  21-23, Usuarios/roles 24-27, Configuración 28-33, Asistente de IA 34-41,
+  Sincronización/transversal 42-45; JSON validado).
+- [x] `res/raw/faq.md` eliminado; `res/raw/faq.jsonl` es la única fuente
+  del FAQ — Verificado: no quedan referencias a `R.raw.faq` que esperen
+  Markdown libre (`FaqContent.kt` eliminado; `FaqRepository` parsea JSONL).
+
+**2. Carga, lookup e inyección al prompt** (POS-91)
+- [x] `ia/FaqRepository.kt` (`FaqEntry` `@Serializable`; `entries` parsea
+  `R.raw.faq` una vez vía `parseFaqJsonl`; `find(numero)` → `buscarFaq`;
+  `instruccionFaq` = `construirInstruccionFaq` arma el bloque `# FAQ` +
+  lista numerada de preguntas). Reemplaza a `ia/FaqContent.kt` (eliminado)
+  — criterio: `./gradlew testDebugUnitTest --tests "com.pdv.pos.ia.*"` en
+  verde. `jvm-tests` Verificado: `FaqRepositoryTest` 4/4 (parseo sin error
+  con 45 entradas, numeración contigua 1..45, `buscarFaq` acierta y da
+  `null` fuera de rango, `instruccionFaq` empieza con `# FAQ` y lista las
+  45). `EjecutorAccionesIaIntegrationTest` 23/23 sin cambios.
+- [x] `ChatViewModel.obtenerRespuesta` concatena `faqRepository.instruccionFaq`
+  después de `FORMATO_SALIDA_ACCIONES`; `faqTexto` pasa a
+  `faqRepository.textoAyuda` — criterio: test de `ChatViewModelTest` que
+  captura el mensaje de sistema y verifica `# FAQ` + una pregunta.
+  `jvm-tests` Verificado: `ChatViewModelTest` 20/20 (incluye el test nuevo
+  `el mensaje de sistema incluye la instruccion de FAQ...`).
+
+**3. Acción de solo lectura `consultar_faq`** (POS-92)
+- [x] En `EjecutorAccionesIa`: `ParametrosConsultarFaqDto(numero: String)`,
+  7ª opción en `FORMATO_SALIDA_ACCIONES` (`tipo "consultar_faq"`, `modulo
+  "ia"`, `parametros {"numero": "12"}`), `moduloRequeridoPorTipo` →
+  `"ia"`, rama en el `when` → `ejecutarConsultarFaq` (devuelve
+  `Ejecutada(entry.answer)` verbatim, o `Fallida` si el número no existe;
+  `numero` no numérico lo captura el `catch (NumberFormatException)`
+  existente). `FaqRepository` inyectado por constructor — criterio:
+  `./gradlew testDebugUnitTest --tests "com.pdv.pos.ia.*"` en verde.
+  `jvm-tests` Verificado: `EjecutorAccionesIaIntegrationTest` 25/25
+  (`consultar_faq` con `{"numero":"5"}` → `Ejecutada` con el `answer`
+  exacto; `{"numero":"999"}` → `Fallida`).
+- [x] `ChatViewModel.tiposSoloLectura` incluye `"consultar_faq"` (se
+  ejecuta de inmediato, sin tarjeta de confirmación, vía
+  `ejecutarConsultaAutomatica`) — criterio: test que verifica que no se
+  genera `AccionPendiente` y el `answer` aparece como mensaje de IA.
+  `jvm-tests` Verificado: `ChatViewModelTest` 21/21 (test nuevo
+  `consultar_faq se ejecuta de inmediato...`).
+
+**4. Respuesta instantánea sin LLM: atajo `qN` y match por texto** (POS-93)
+- [x] `ChatViewModel.enviarMensaje` detecta `^[qQ]\s?(\d{1,3})$` antes de
+  llamar al LLM (`numeroFaqInstantaneo` / `responderFaqInstantaneo`) y
+  responde `faqRepository.find(n)?.answer` verbatim, sin
+  token/sucursal/conexión — criterio: `./gradlew testDebugUnitTest --tests
+  "com.pdv.pos.ia.ChatViewModelTest"` en verde. `jvm-tests` Verificado:
+  `ChatViewModelTest` (`q3` responde la entrada 3 con `coVerify(exactly
+  = 0)` sobre el proveedor; `q99` inexistente → "No encontré la pregunta
+  99"; "que hago con la pregunta q3" NO dispara el atajo y sí llama al
+  proveedor).
+- [x] Match exacto tras normalizar (ronda de dispositivo 2026-08-30: en el
+  celular cuesta escribir `¿`, la pregunta no coincía literal y el modelo
+  improvisaba una respuesta además del texto verbatim).
+  `FaqRepository.matchPorTexto` → `buscarFaqPorTexto` + `normalizarConsultaFaq`
+  (minúsculas, sin acentos ni signos, espacios colapsados); en
+  `enviarMensaje` se chequea después de `qN` y responde sin llamar al LLM.
+  Además, en `obtenerRespuesta`, cuando la única acción de la respuesta del
+  modelo es `consultar_faq` se descarta su `respuesta_usuario` y se muestra
+  solo el texto verbatim. No cubre parafraseos (→ embeddings, trabajo
+  futuro) — criterio: `./gradlew testDebugUnitTest --tests
+  "com.pdv.pos.ia.*"` en verde. `jvm-tests` Verificado: `FaqRepositoryTest`
+  7/7 (normaliza `¿Cómo cobro, en efectivo?!` → `como cobro en efectivo`;
+  matchea la misma pregunta con `¿`/acentos/mayúsculas; no matchea
+  parafraseo ni blanco); `ChatViewModelTest` 27/27 (`¿Cómo cobro en
+  efectivo?` responde verbatim con `coVerify(exactly = 0)`; con
+  `consultar_faq` no se muestra la `respuesta_usuario` improvisada).
+
+**5. Prompt de sistema por defecto** (POS-94)
+- [x] `PROMPT_SISTEMA_DEFAULT` (`ia/PromptSistema.kt`): ítem 6 nuevo
+  ("Responder una pregunta frecuente con el texto exacto del FAQ") en la
+  lista de consultas de solo lectura; conteos en prosa ajustados ("solo
+  estas dos" → "solo estas tres", "consultas de solo lectura (4 y 5)" →
+  "(4, 5 y 6)", "cinco tipos (tres acciones, dos consultas)" → "seis
+  tipos (tres acciones, tres consultas)"). El mecanismo real lo dispara
+  `instruccionFaq` en runtime; este cambio mantiene coherente el texto por
+  defecto para instalaciones nuevas. `needs-approval` Aprobado el
+  2026-08-29 (4 cambios presentados y aceptados; un dispositivo con prompt
+  ya editado en DataStore conserva su copia y el FAQ le funciona igual).
+  Verificado: `./gradlew testDebugUnitTest --tests "com.pdv.pos.ia.*"
+  --tests "com.pdv.pos.config.ConfiguracionViewModelTest" --tests
+  "com.pdv.pos.config.PromptIaPreferencesTest"` en verde (los tests
+  comparan contra la constante, sin strings hardcodeados).
+
+**6. Panel de ayuda** (POS-95)
+- [x] `ChatViewModel.faqTexto` se arma desde `FaqRepository.textoAyuda`
+  (`entries.joinToString("\n\n") { "P: ...\nR: ..." }`); `FaqPanelContent`
+  (`AsistenteIaWidget.kt`) no cambia de firma — sigue recibiendo
+  `viewModel.faqTexto` y lo renderiza como texto plano — criterio:
+  `./gradlew build` en verde y la vista de Ayuda / el fallback sin
+  conexión siguen mostrando el FAQ. `jvm-tests` Verificado: `./gradlew
+  build` `BUILD SUCCESSFUL` (compila debug+release, `:app:check` con
+  unit tests y lintVital, `assemble`); `ChatViewModelTest` 25/25 (incluye
+  `faqTexto viene del FaqRepository`).
+
+**7. Verificación end-to-end en dispositivo** (POS-96)
+- [x] Instalado y verificado en el Xiaomi M2102J20SG — `needs-device`.
+  Confirmado por el usuario el 2026-08-30: (a) *"¿cómo cobro en efectivo?"*
+  → la IA emite `consultar_faq` y aparece el `answer` verbatim con sus
+  marcadores; (b) `q3` → respuesta instantánea sin latencia de red; (c)
+  modo avión → `q3` sigue respondiendo y un mensaje normal cae al panel de
+  ayuda con las 45 entradas en formato P/R; (d) *"dá de alta 10 tornillos
+  a $50"* → tarjeta de confirmación normal; (e) `consultar_faq` + alta de
+  artículo verificados en LOCAL, REMOTO y LOCAL_CON_SINCRONIZACION.
+  Durante la prueba se observó, de forma **intermitente**, "La IA devolvió
+  una respuesta con formato inválido" en un `alta_articulo` multi-turno; se
+  investigó (ver Hallazgo abajo) y se determinó que es un fallo
+  preexistente del proveedor, no una regresión de esta Parte — el mismo
+  pedido funcionó al reintentar.
+- [x] Ronda 2 (`needs-device`): match por texto del grupo 4. Confirmado por
+  el usuario el 2026-08-30 en el Xiaomi: (a) pregunta del FAQ **sin** `¿` y
+  sin acentos → respuesta verbatim instantánea, sin "Escribiendo..." (no
+  llamó al LLM); (b) parafraseo distinto → sigue yendo al modelo; (c) con
+  `consultar_faq` ya no aparece la respuesta improvisada además del texto
+  verbatim.
+
+### Hallazgo (2026-08-30): DeepSeek devuelve `content` vacío de forma intermitente
+
+En pruebas de dispositivo, `alta_articulo` en un intercambio multi-turno
+falló con "La IA devolvió una respuesta con formato inválido". El
+diagnóstico agregado (`LlmClient` loguea `finish_reason` + `usage` +
+contenido crudo cuando no parsea) mostró que DeepSeek `deepseek-chat` en
+modo `response_format: json_object` a veces devuelve `content` vacío
+(`""`), que el parser interpretaba como EOF. Es intermitente (el mismo
+pedido, reintentado, funcionó) y preexistente — la Parte 16 ya lo
+documenta como el motivo de `FORMATO_SALIDA_ACCIONES`. La Parte 20 alarga
+el prompt de sistema (~3 KB por `instruccionFaq`), lo que podría subir la
+frecuencia, pero no es una regresión dura (no falla de forma sistemática).
+
+Cambios hechos en esta Parte a raíz del hallazgo (`ia/LlmClient.kt`,
+`data/remote/dto/ChatCompletionDto.kt`):
+- `ChatCompletionChoiceDto.finishReason` y `ChatCompletionResponseDto.usage`
+  (`prompt_tokens` / `completion_tokens`) — nullable, `ignoreUnknownKeys`.
+- `LlmClient.chatEstructurado` distingue **contenido vacío** (→ "El
+  proveedor no devolvió ninguna respuesta", antes daba el engañoso
+  "formato inválido") de **JSON mal formado**, y loguea `finish_reason` +
+  `usage` en ambos casos. `LlmClientTest` cubre los dos.
+
+Robustez del reintento / `max_tokens` explícito → Backlog.
+
+### Decisiones abiertas
+
+- [x] Almacén vectorial: ¿embeddings + índice on-device, o un servicio
+  remoto (pgvector, u otro)? **Decidido** (2026-08-29): ninguno. El corpus
+  real (~4 KB de ayuda) no justifica un índice vectorial ni una
+  dependencia de modelo de embeddings on-device (25-100 MB) — CLAUDE.md
+  §"no sobre-ingeniería". Se inyecta la lista de preguntas al prompt y el
+  modelo elige por número.
+- [x] Proveedor de embeddings: ¿el mismo de IA (Parte 14) u otro
+  dedicado? **Decidido** (2026-08-29): no aplica — no se usan embeddings en
+  esta Parte.
+- [x] Fuente de documentación externa a combinar con `docs/`. **Decidido**
+  (2026-08-29): ninguna fuente externa. El contenido de `faq.jsonl` es
+  curado a mano a partir de `res/raw/faq.md` + `CLAUDE.md` + Partes 6-19 de
+  este plan.
+- [x] Alcance de la Parte: ¿reemplaza el FAQ estático de la Parte 16 o
+  convive con él? **Decidido** (2026-08-29): lo reemplaza por completo.
+  `res/raw/faq.md` se elimina; `faq.jsonl` es la única fuente, y sigue
+  sirviendo como fallback sin conexión (renderizada legible por
+  `FaqRepository`).
+- [x] Embeddings on-device (MiniLM / EmbeddingGemma int8) para match por
+  similaridad. **Decidido** (2026-08-29): fase futura, fuera del alcance de
+  esta Parte (ver "Trabajo futuro" abajo).
+
+### Trabajo futuro (fuera del alcance de esta Parte)
+
+- Embeddings on-device (MiniLM / EmbeddingGemma int8) para elegir la
+  entrada del FAQ por similaridad de coseno en vez de inyectar la lista al
+  prompt — útil solo si el FAQ crece hasta un tamaño donde la lista de
+  preguntas encarezca el prompt.
+- Indexación RAG de `docs/` completo o de fuentes externas.
+- Renderizado Markdown de las respuestas en el chat (hoy los marcadores se
+  muestran literales; el proyecto no tiene renderer y CLAUDE.md pide no
+  agregar librerías).
 
 ---
 
 ## Backlog (trabajo futuro, fuera del alcance actual)
 
+- **Robustez ante `content` vacío del proveedor de IA** (hallazgo Parte
+  20, 2026-08-30): DeepSeek `deepseek-chat` en modo `json_object` devuelve
+  `content` vacío de forma intermitente, lo que hoy corta la conversación
+  con "El proveedor no devolvió ninguna respuesta". Evaluar un reintento
+  único de la misma llamada ante `content` vacío, y/o fijar `max_tokens`
+  explícito en `ChatCompletionRequestDto`. Toca el camino compartido de IA
+  (Parte 15/16), no solo el FAQ. El diagnóstico (`finish_reason` + `usage`
+  en el log de `LlmClient`) ya está para juntar más muestras.
 - **Multi-tenancy compartido (alternativa no elegida)**: en vez de un
   backend por franquicia, un solo backend/Postgres podría servir a varias
   franquicias separadas lógicamente por un `tenant_id` en

@@ -127,6 +127,7 @@ class EjecutorAccionesIaIntegrationTest {
         inventarioRepository: InventarioRepository = inventarioRepositorySinCoincidencias(),
         inventarioExportManager: InventarioExportManager = mockk(relaxed = true),
         appLogger: AppLogger,
+        faqRepository: FaqRepository = mockk(relaxed = true),
     ) = EjecutorAccionesIa(
         entradaRepository,
         cajaRepository,
@@ -137,6 +138,7 @@ class EjecutorAccionesIaIntegrationTest {
         inventarioExportManager,
         appLogger,
         json,
+        faqRepository,
     )
 
     @Test
@@ -742,6 +744,38 @@ class EjecutorAccionesIaIntegrationTest {
         val resultado = ejecutor.ejecutar(accion, modulosPermitidos = emptySet(), "suc-1", "german")
 
         assertTrue(resultado is ResultadoAccionIa.RechazadaPorPermiso)
+    }
+
+    // PLAN.md Parte 20, sub-paso 3: consultar_faq es de solo lectura (modulo
+    // "ia", que el widget ya exige) y devuelve el "answer" de la entrada tal
+    // cual, con sus marcadores de formato originales - sin parafraseo.
+    @Test
+    fun `consultar_faq devuelve el texto de la entrada del FAQ tal cual`(@TempDir tempDir: File) = runTest {
+        val faqRepository = mockk<FaqRepository>()
+        every { faqRepository.find(5) } returns
+            FaqEntry(5, "Como cobro en efectivo?", "**Efectivo**: la app pide el monto recibido y calcula el cambio.")
+        val ejecutor = ejecutor(faqRepository = faqRepository, appLogger = AppLogger(tempDir))
+        val accion = AccionIaDto(modulo = "ia", tipo = "consultar_faq", parametros = buildJsonObject { put("numero", "5") })
+
+        val resultado = ejecutor.ejecutar(accion, setOf("ia"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        assertEquals(
+            "**Efectivo**: la app pide el monto recibido y calcula el cambio.",
+            (resultado as ResultadoAccionIa.Ejecutada).mensaje,
+        )
+    }
+
+    @Test
+    fun `consultar_faq con un numero inexistente falla sin crashear`(@TempDir tempDir: File) = runTest {
+        val faqRepository = mockk<FaqRepository>()
+        every { faqRepository.find(any()) } returns null
+        val ejecutor = ejecutor(faqRepository = faqRepository, appLogger = AppLogger(tempDir))
+        val accion = AccionIaDto(modulo = "ia", tipo = "consultar_faq", parametros = buildJsonObject { put("numero", "999") })
+
+        val resultado = ejecutor.ejecutar(accion, setOf("ia"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Fallida)
     }
 
     // PLAN.md Parte 18, sub-parte E: alta_articulo llama a

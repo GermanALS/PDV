@@ -85,6 +85,11 @@ private data class ParametrosConsultarStockDto(
     val categoria: String? = null,
 )
 
+@Serializable
+private data class ParametrosConsultarFaqDto(
+    val numero: String,
+)
+
 // Instruccion tecnica de formato (PLAN.md Parte 16, sub-paso 5, hallazgo de
 // pruebas en el Xiaomi): el prompt de sistema aprobado (Parte 15) describe
 // las acciones en prosa pero nunca especifica el JSON exacto que
@@ -108,7 +113,7 @@ Si no proponés ninguna acción, "acciones" debe ser un array vacío: [].
 Cuando proponés una acción o una consulta, cada elemento de "acciones" es
 un objeto con exactamente estas 3 claves: "modulo", "tipo", "parametros".
 Usá el "tipo" exacto y las claves de "parametros" exactas de una de estas
-6 opciones (no inventes ni renombres claves; todo valor numérico va como
+7 opciones (no inventes ni renombres claves; todo valor numérico va como
 texto, ej. "10", no 10):
 
 - tipo "alta_articulo" (modulo "entrada"): "parametros" = {"sku": string,
@@ -128,6 +133,9 @@ texto, ej. "10", no 10):
 - tipo "consultar_stock" (modulo "inventario"): "parametros" =
   {"articulo": string (opcional), "categoria": string (opcional); ninguno
   = total general}
+- tipo "consultar_faq" (modulo "ia"): "parametros" = {"numero": "12"} (el
+  numero de la pregunta del FAQ que coincide con la consulta del usuario;
+  la app responde el texto de esa entrada tal cual)
 """.trimIndent()
 
 // Valida permisos y ejecuta las acciones que la IA propone (PLAN.md
@@ -148,6 +156,7 @@ class EjecutorAccionesIa @Inject constructor(
     private val inventarioExportManager: InventarioExportManager,
     private val appLogger: AppLogger,
     private val json: Json,
+    private val faqRepository: FaqRepository,
 ) {
     suspend fun ejecutar(
         accion: AccionIaDto,
@@ -185,6 +194,7 @@ class EjecutorAccionesIa @Inject constructor(
                 "registrar_devolucion" -> ejecutarDevolucion(accion, sucursalId, usuarioId)
                 "exportar_inventario" -> ejecutarExportarInventario(accion, sucursalId)
                 "consultar_stock" -> ejecutarConsultarStock(accion, sucursalId)
+                "consultar_faq" -> ejecutarConsultarFaq(accion)
                 else -> error("tipo ya validado por moduloRequeridoPorTipo: ${accion.tipo}")
             }
         } catch (e: SerializationException) {
@@ -203,6 +213,7 @@ class EjecutorAccionesIa @Inject constructor(
         "corte_parcial", "retiro_efectivo" -> "caja"
         "registrar_devolucion" -> "devoluciones"
         "exportar_inventario", "consultar_stock" -> "inventario"
+        "consultar_faq" -> "ia"
         else -> null
     }
 
@@ -354,6 +365,21 @@ class EjecutorAccionesIa @Inject constructor(
             else -> "el inventario total"
         }
         return ResultadoAccionIa.Ejecutada("El stock de $descripcion es $total.")
+    }
+
+    // Consulta de solo lectura (PLAN.md Parte 20): el modelo elige el
+    // numero de la pregunta del FAQ curado desde la lista inyectada al
+    // prompt (FaqRepository.instruccionFaq) y la app responde el "answer"
+    // de esa entrada tal cual, sin llamada extra al LLM - mismo camino de
+    // solo lectura que consultar_stock (se ejecuta al instante, sin tarjeta
+    // de confirmacion). Un "numero" no numerico lo captura el catch de
+    // NumberFormatException de ejecutar().
+    private fun ejecutarConsultarFaq(accion: AccionIaDto): ResultadoAccionIa {
+        val p = json.decodeFromJsonElement<ParametrosConsultarFaqDto>(accion.parametros)
+        val numero = p.numero.toInt()
+        val entry = faqRepository.find(numero)
+            ?: return ResultadoAccionIa.Fallida("No encontré la pregunta $numero en el FAQ.")
+        return ResultadoAccionIa.Ejecutada(entry.answer)
     }
 
     // Un solo filtro efectivo por llamada (Parte 18, sub-parte D): "articulo"
