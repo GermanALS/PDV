@@ -11,11 +11,12 @@ parte de este documento se estabiliza, su resumen final se migra a
 (Logs en la Parte 5, motor de sync dentro de la Parte 6) se construye antes
 que los módulos que la usan, y cada módulo del POS es una Parte independiente
 (6-12) con sus propios sub-pasos (UI → repositorio local → repositorio
-remoto/contrato → wiring). Las 16 Partes tienen su propia sección
+remoto/contrato → wiring). Todas las Partes tienen su propia sección
 `### Checklist` con ítems verificables y criterios de éxito concretos
 (comando, archivo, o comportamiento observable — nunca "pruebas
-exhaustivas"). La Parte 3 (esquema de datos, `docs/schema-pos.json`) quedó
-aprobada el 2026-08-18; el siguiente paso es la Parte 4 (login ficticio).
+exhaustivas"). Las Partes 1-20 están implementadas y migradas a `CLAUDE.md`
+en lo que se estabilizó; las Partes 21-29 incorporan los hallazgos de
+`docs/review_code.md` (revisión de código del 2026-08-30) y están pendientes.
 
 Las Partes con decisiones sin cerrar llevan además una subsección
 `### Decisiones abiertas` con checkboxes: son preguntas que el agente debe
@@ -3382,6 +3383,520 @@ Robustez del reintento / `max_tokens` explícito → Backlog.
 
 ---
 
+## Partes 21-29: incorporación de la revisión de código (`docs/review_code.md`)
+
+*(El 2026-08-30 se produjo `docs/review_code.md`, una revisión de todo el
+monorepo con 24 hallazgos: 4 tipo A —atender antes de exponer el backend o
+distribuir la app—, 11 tipo M —atender pronto— y 9 tipo B —deuda menor—. Estas
+Partes trasladan cada hallazgo al plan: cada A es una Parte propia; los M se
+agrupan por relación; los B van juntos salvo B-2 —Parte 26— y B-3 —Parte 22—.
+`docs/review_code.md` queda como documento fuente. El marcador `<!-- POS-XXX -->`
+lo agrega `/jira-sync` al crear cada épica.)*
+
+| Parte | Hallazgos | Módulo |
+|---|---|---|
+| 21 Autenticación JWT | A-1, M-10 | backend + android |
+| 22 Rotación de secretos | A-2, B-3 | raíz / ops |
+| 23 Idempotencia de POST de sync | A-3 | backend + contrato |
+| 24 Migraciones de Room | A-4 | android |
+| 25 Robustez y correctitud del backend | M-1, M-2, M-3, M-5, M-6 | backend (+android) |
+| 26 Despliegue y CI del backend | M-4, M-11, B-2 | backend + transversal |
+| 27 Navigation-Compose | M-7 | android |
+| 28 Android: logging y agregaciones | M-8, M-9 | android |
+| 29 Deuda técnica menor | B-1, B-4, B-5, B-6, B-7, B-8, B-9 | ambos + docs |
+
+---
+
+## Parte 21: Enforcement de autenticación JWT en el backend  <!-- POS-97 -->
+
+*(Cierra el pendiente ya anotado en `docs/api-contract.md` §13, "Enforcement del
+header `Authorization: Bearer`…"; se mueve ahí a implementado al terminar esta
+Parte. Hallazgos A-1 y M-10 de `docs/review_code.md`.)*
+
+Hoy `create_access_token` (`backend/app/security.py`) emite un JWT en
+`POST /auth/login`, pero ningún endpoint lo valida: `backend/app/` no tiene
+`jwt.decode` ni dependencia de autenticación, así que todo salvo `/auth/login` y
+`/health` está abierto — incluido `POST /usuarios` y `POST /roles`, con lo que
+cualquiera con acceso de red al puerto 8000 puede crear un usuario administrador.
+El enforcement de permisos por módulo (M-10) hoy vive solo en la UI de Android
+(`HelloScreen` oculta botones, `HelloViewModel.onIntentoNavegar` valida); sin
+identidad verificada en el servidor no hay barrera real, así que se resuelve en
+esta misma Parte.
+
+Objetivo: toda ruta fuera de `/auth/*` y `/health` exige
+`Authorization: Bearer <access_token>` válido; el cliente Android lo adjunta en
+modo REMOTO; los endpoints sensibles chequean el módulo del rol del usuario
+autenticado. Modo LOCAL / LOCAL_CON_SINCRONIZACION no cambia (no hay backend que
+valide).
+
+### Checklist
+
+**1. Contrato** (POS-98)
+- [ ] `docs/api-contract.md` §12/§13 actualizado: header
+  `Authorization: Bearer <access_token>` obligatorio fuera de `/auth/*` y
+  `/health`; `401` sin token o con token inválido/expirado; `403` para usuario
+  autenticado sin permiso de módulo. El ítem de §13 pasa de "pendiente" a
+  "implementado". Criterio: sección revisada y aprobada antes de tocar código
+  (CLAUDE.md §9). `needs-approval`
+- [ ] Ejemplos de request/response de `401` y `403` en el formato
+  `{ "detail": ... }` de §12.
+
+**2. Dependencia de auth en FastAPI** (POS-99)
+- [ ] `usuario_actual` (dependencia): `HTTPBearer` -> `jwt.decode` con
+  `JWT_SECRET_KEY`/`JWT_ALGORITHM` -> carga `Usuario` por `sub`, `deleted_at IS
+  NULL` y `activo`. `401` en cualquier fallo (token ausente, firma inválida,
+  expirado, usuario inexistente/inactivo). Criterio: `pytest` de la dependencia
+  aislada (token válido, expirado, firma mala, usuario borrado).
+- [ ] Aplicada como `dependencies=[Depends(usuario_actual)]` a nivel de
+  `APIRouter` en todos los routers salvo `auth` y `health`. Criterio: `pytest` -
+  cada endpoint existente gana un caso `401` sin header; los happy-path
+  existentes se ajustan para enviar el header (fixture `client_autenticado`).
+- [ ] `pytest` completo en verde tras el ajuste de todos los tests existentes.
+  `jvm-tests` (backend: mostrar salida de `pytest`).
+
+**3. Cliente Android adjunta el token** (POS-100)
+- [ ] `Session`/`SessionManager` conservan el `accessToken` del login remoto
+  (hoy `LocalAuthRepository` devuelve `accessToken = null`; `RemoteAuthRepository`
+  ya lo recibe). Interceptor OkHttp en `di/NetworkModule.kt` que agrega
+  `Authorization: Bearer` cuando hay sesión con token. Criterio:
+  `./gradlew testDebugUnitTest` con el interceptor probado (con token / sin
+  token). `jvm-tests`
+- [ ] En `401` del backend, la app cierra la sesión y vuelve a `LoginScreen`
+  (misma reacción que sesión nula). Criterio: prueba de ViewModel con `401`
+  mockeado.
+
+**4. Permisos server-side** (POS-101, absorbe M-10)
+- [ ] Los endpoints sensibles (`usuarios`, `roles`, y los de escritura que
+  correspondan) verifican que `usuario_actual` tenga el módulo requerido en su
+  rol; `403` si no. Criterio: `pytest` - usuario con rol sin `usuarios` recibe
+  `403` en `POST /usuarios`.
+- [ ] El mapeo endpoint -> módulo requerido queda en un solo lugar, no repetido
+  por ruta.
+
+**5. Verificación en dispositivo** (POS-102)
+- [ ] Modo REMOTO: login exigido, el header viaja en cada request, un token
+  manipulado da `401` y expulsa al login. Modos LOCAL / LOCAL_CON_SINCRONIZACION:
+  sin cambios (Room, sin token). `needs-device`
+
+### Decisiones abiertas
+
+- [ ] ¿Modo LOCAL / LOCAL_CON_SINCRONIZACION queda explícitamente exento (no hay
+  backend que valide) y solo REMOTO exige token? (propuesta: sí).
+- [ ] ¿Se agrega `refresh_token` ahora o se difiere? `docs/api-contract.md` §13
+  ya lo lista como genuinamente abierto (propuesta: diferir; mantener el JWT de
+  24 h y re-login al expirar).
+- [ ] ¿La dependencia de auth se aplica router por router, o como
+  `dependencies=` global de la app excluyendo `auth`/`health`? (afecta cómo se
+  montan `health` y `auth`).
+- [ ] ¿`401` por token expirado se distingue de `401` por credenciales, para que
+  la app muestre "sesión expirada" en vez de "credenciales inválidas"?
+
+---
+
+## Parte 22: Rotación de secretos y saneamiento de `.env`  <!-- POS-103 -->
+
+*(Hallazgos A-2 y B-3 de `docs/review_code.md`.)*
+
+`.env` en la raíz del repo contiene un Personal Access Token de GitHub
+(`github_pat_...`) y una API key de DeepSeek (`sk-...`) reales, en texto plano. El
+archivo está en `.gitignore` y **no aparece en el historial de git** (verificado
+en la revisión), pero los secretos quedaron expuestos en el entorno de trabajo y
+deben tratarse como comprometidos. Ni `docker-compose.yml` ni el `Dockerfile`
+consumen ese `.env`, y no se encontró uso de `API_KEY_DEEPSEEK` en
+`backend/app/`. Parte mayormente operativa, poco código.
+
+Objetivo: secretos rotados, `.env` fuera del repo (o reducido a un
+`.env.example` sin valores), y la config de despliegue sin secretos por defecto.
+
+### Checklist
+
+**1. Rotación de credenciales** (POS-104)
+- [ ] PAT de GitHub revocado y regenerado. Criterio: el token anterior deja de
+  autenticar (verificación manual). `needs-device`
+- [ ] API key de DeepSeek rotada. Criterio: la key anterior deja de responder;
+  la nueva se inyecta por variable de entorno donde se necesite. `needs-device`
+
+**2. Saneamiento del repo** (POS-105)
+- [ ] Confirmado si `.env` hace falta en runtime. Si no, se elimina; si sí, se
+  reemplaza por `.env.example` sin valores y se documenta en `CLAUDE.md` /
+  `README.md` que la inyección es por entorno. Criterio: `git status` limpio y
+  ningún secreto real versionado.
+- [ ] `.gitignore` revisado para cubrir `.env` en todos los subdirectorios.
+
+**3. Higiene de config de despliegue** (POS-106, = B-3)
+- [ ] `docker-compose.yml`: `JWT_SECRET_KEY` explícito por entorno (no el default
+  `dev-secret-key-cambiar-en-produccion` de `security.py`); credenciales de
+  Postgres fuera de `pdv/pdv` para cualquier entorno no-local; revisada la
+  exposición del puerto `5432:5432`. Criterio: `docker compose config` no muestra
+  el secreto por defecto ni credenciales triviales para el perfil no-local.
+
+### Decisiones abiertas
+
+- [ ] ¿`.env` se elimina del repo por completo, o se conserva un `.env.example`
+  documentado?
+- [ ] ¿La config de despliegue no-local se maneja con un `docker-compose` de
+  override, variables de entorno del host, o un gestor de secretos? (hoy no hay
+  destino de despliegue definido - `CLAUDE.md` §7).
+
+---
+
+## Parte 23: Idempotencia de los POST de sincronización  <!-- POS-107 -->
+
+*(Hallazgo A-3 de `docs/review_code.md`.)*
+
+`POST /ventas`, `POST /entradas`, `POST /cortes-caja` y `POST /retiros-efectivo`
+generan un `id` nuevo en el servidor (`default=uuid.uuid4`) e ignoran `local_id`
+como clave. Si un dispositivo envía una venta, el servidor la persiste, y la
+respuesta se pierde por un corte de red, el reintento del motor de sync crea una
+**segunda** venta con el mismo `local_id`. `POST /sync-conflicts` (Parte 19) ya
+resuelve esto: usa el `id` generado por el dispositivo y devuelve `200` con la
+fila existente en vez de duplicar. Se replica ese patrón en las 4 rutas
+transaccionales.
+
+Objetivo: reintentar cualquiera de esos POST con el mismo `local_id` no duplica
+datos y devuelve la entidad ya persistida.
+
+### Checklist
+
+**1. Contrato** (POS-108)
+- [ ] `docs/api-contract.md` secciones 5 (ventas), 6 (entradas) y 8
+  (cortes/retiros): POST idempotente por `local_id`; `201` cuando se crea, `200`
+  cuando ya existía (mismo shape de respuesta que `sync-conflicts` §3.2).
+  Criterio: secciones revisadas y aprobadas antes de tocar código. `needs-approval`
+
+**2. Backend** (POS-109)
+- [ ] En cada uno de los 4 POST: chequeo previo por `local_id` -> si existe,
+  `200` con la fila existente sin insertar ni recalcular inventario/movimientos;
+  si no, el camino actual. Criterio: `pytest` por ruta - "POST repetido con el
+  mismo `local_id` devuelve `200`, no duplica la fila, no vuelve a mover
+  inventario".
+- [ ] Si se elige el constraint `UNIQUE(local_id)` (ver Decisiones abiertas):
+  migración Alembic en las 4 tablas + captura de `IntegrityError`. `schema-parity`
+  (JSON de `docs/` + entidad Room + migración Alembic alineados).
+- [ ] `pytest` completo en verde. `jvm-tests`
+
+**3. Verificación end-to-end** (POS-110)
+- [ ] Sincronización con corte de red simulado entre el commit del servidor y la
+  recepción de la respuesta: no se generan duplicados al reintentar.
+  `needs-device`
+
+### Decisiones abiertas
+
+- [ ] ¿Pre-chequeo con `db.get(local_id)` (sin cambio de esquema, más simple) o
+  `UNIQUE(local_id)` + `IntegrityError` (robusto ante dos reintentos concurrentes,
+  requiere migración en 4 tablas)? Propuesta: `UNIQUE(local_id)`.
+- [ ] ¿`local_id` pasa a ser obligatorio (no-null) en el body de esos 4 POST, o
+  sigue nullable y la idempotencia solo aplica cuando viene?
+- [ ] ¿Alcance solo backend, o el motor de sync de Android también debe marcar la
+  entidad como sincronizada al recibir el `200` (hoy podría re-encolarla)?
+
+---
+
+## Parte 24: Migraciones de esquema de Room  <!-- POS-111 -->
+
+*(Hallazgo A-4 de `docs/review_code.md`.)*
+
+`di/DatabaseModule.kt` construye `PdvDatabase` con
+`fallbackToDestructiveMigration(dropAllTables = true)`, y `PdvDatabase` está en
+`version = 7` con `exportSchema = false`. En una app offline-first donde Room
+**es** la fuente de verdad, el primer cambio de esquema tras tener datos reales en
+un dispositivo borra todo el inventario, ventas y cortes locales de ese equipo.
+`exportSchema = false` además impide los tests de migración de Room y deja sin
+registro histórico el esquema.
+
+Objetivo: esquema exportado y versionado, migraciones reales a partir de una
+línea base, sin `fallbackToDestructiveMigration`, antes de la primera
+distribución a un comercio.
+
+### Checklist
+
+**1. Exportar y versionar el esquema** (POS-112)
+- [ ] `exportSchema = true` en `@Database` + `room.schemaLocation` configurado en
+  `app/build.gradle.kts`; los JSON generados quedan versionados en git. Criterio:
+  `./gradlew build` genera `app/schemas/com.pdv.pos.data.local.PdvDatabase/7.json`.
+
+**2. Línea base y migraciones** (POS-113)
+- [ ] Definida la línea base (ver Decisiones abiertas) y escrito el andamiaje de
+  `Migration` (aunque la primera sea 7 -> 8 en la próxima Parte que toque
+  esquema). `fallbackToDestructiveMigration` eliminado; `Room.databaseBuilder`
+  registra las migraciones. Criterio: `./gradlew build` en verde y arranque
+  limpio sobre una `pdv.db` existente en v7.
+- [ ] Test de migración con `MigrationTestHelper` para la primera migración real.
+  Criterio: el test aplica la migración y valida el esquema resultante.
+  `jvm-tests` o `needs-device` según el runner elegido.
+
+**3. Verificación en dispositivo** (POS-114)
+- [ ] Instalar una versión con esquema nuevo sobre una instalación previa con
+  datos (ventas, inventario, cortes) y confirmar que se conservan. `needs-device`
+
+### Decisiones abiertas
+
+- [ ] ¿Línea base en la v7 actual (nadie tiene datos de producción que preservar;
+  se asume v7 como punto de partida y se escriben migraciones de v7 en adelante),
+  o se reconstruye el historial 1 -> 7? Propuesta: línea base v7.
+- [ ] Tests de migración: ¿instrumentados (`connectedAndroidTest`, `needs-device`,
+  sin dependencia nueva) o Robolectric (corre en JVM, `jvm-tests`, pero es
+  dependencia nueva - CLAUDE.md §9)?
+- [ ] ¿Se aprovecha esta Parte para dejar `exportSchema` como gate permanente
+  (CI que falla si el JSON no está commiteado)? (se cruza con la Parte 26).
+
+---
+
+## Parte 25: Robustez y correctitud del backend  <!-- POS-115 -->
+
+*(Hallazgos M-1, M-2, M-3, M-5 y M-6 de `docs/review_code.md`.)*
+
+Cinco defectos de robustez/correctitud en `backend/app/routers/` y
+`backend/app/main.py` que conviene resolver en una sola pasada. M-3 puede
+producir una diferencia de caja silenciosa: `caja.get_totales_corte` filtra por
+`metodo_pago == "efectivo"` / `"tarjeta"` y `estado == "completada"` con
+literales exactos, pero `VentaCreateSchema` deja `metodo_pago` y `estado` como
+`str` libres, así que una venta con `metodo_pago = "Efectivo"` (u otra variante)
+queda fuera del total de efectivo del corte.
+
+### Checklist
+
+**1. Concurrencia e integridad de inventario** (POS-116, M-1 + M-6)
+- [ ] Decremento/incremento de inventario en `ventas.create_venta` y
+  `entradas.create_entrada` sin read-modify-write en Python: `select(...)
+  .with_for_update()` dentro de la transacción, o `UPDATE inventario SET cantidad
+  = cantidad - :n WHERE ...` atómico (mismo principio de "delta con signo" que ya
+  siguen). Criterio: `pytest` con dos requests concurrentes para el mismo
+  `(sucursal, articulo)` no pierde un decremento.
+- [ ] `entradas.create_entrada` captura `IntegrityError` cuando `articulo_nuevo`
+  colisiona con el `UNIQUE` de `sku`/`codigo_barras` -> `409` (hoy -> `500`),
+  con `rollback` (mismo patrón que `usuarios`/`roles`). Criterio: `pytest` -
+  `sku` duplicado devuelve `409`.
+
+**2. Validación de dominio** (POS-117, M-2 + M-3)
+- [ ] `create_venta` valida los artículos de las líneas con un único
+  `select(Articulo.id).where(Articulo.id.in_(ids))` + diferencia de conjuntos,
+  en vez de N `await db.get` en un `for`. Criterio: `pytest` happy path y "línea
+  con `articulo_id` inexistente -> `404`" siguen pasando.
+- [ ] `metodo_pago` y `estado` de `VentaCreateSchema` pasan a `Literal[...]`
+  (o `enum.StrEnum`) con los valores que usan las queries de `caja`
+  (`efectivo`/`tarjeta`; `completada`/...). `schema-parity`: alineado con
+  `docs/schema-pos.json`, el modelo SQLAlchemy y las constantes de Android
+  (`METODO_PAGO_EFECTIVO` / `METODO_PAGO_TARJETA` en `LocalCajaRepository`,
+  `estado` de venta). Criterio: `pytest` - `metodo_pago` inválido -> `422`;
+  el total de efectivo del corte incluye todas las ventas en efectivo.
+- [ ] `pytest` completo en verde. `jvm-tests`
+
+**3. Manejo de errores centralizado** (POS-118, M-5)
+- [ ] `@app.exception_handler` global que devuelve el shape `{ "detail": ... }`
+  de `docs/api-contract.md` §12 para excepciones no previstas, con log a nivel
+  `ERROR` (CLAUDE.md §4). Criterio: `pytest` - una excepción no prevista devuelve
+  JSON consistente, no traceback.
+- [ ] `CORSMiddleware` agregado en `app/main.py`. Criterio: preflight `OPTIONS`
+  responde con los headers CORS.
+
+### Decisiones abiertas
+
+- [ ] M-3: ¿`enum.StrEnum` en Pydantic (y constantes equivalentes en Kotlin), o
+  solo `Literal[...]` en Pydantic reutilizando las constantes que Android ya
+  tiene? Propuesta: `Literal` + constantes existentes, sin infra nueva.
+- [ ] ¿Qué valores válidos tiene `estado` de venta además de `completada`
+  (`cancelada`, `devuelta`)? Confirmar antes de fijar el `Literal`.
+- [ ] `CORSMiddleware`: ¿orígenes `*` por ahora (no hay cliente web), o lista
+  explícita vacía hasta que exista uno?
+
+---
+
+## Parte 26: Despliegue y CI del backend  <!-- POS-119 -->
+
+*(Hallazgos M-4, M-11 y B-2 de `docs/review_code.md`. M-11 ya figura como
+pendiente en `CLAUDE.md` §7.)*
+
+`backend/Dockerfile` hace `COPY app ./app` únicamente: sin `alembic/` ni
+`alembic.ini` en la imagen, el contenedor no puede correr `alembic upgrade head`
+(M-4), así que hoy las migraciones dependen de un venv en el host. No hay CI
+(M-11): con ~386 pruebas entre ambos módulos, un workflow por módulo cerraría de
+paso el gate `schema-parity` de forma automática. Y la suite de backend crea el
+esquema con `Base.metadata.create_all` en vez de las migraciones (B-2), así que
+una divergencia modelo/migración pasa verde.
+
+### Checklist
+
+**1. Migraciones dentro de la imagen** (POS-120, M-4)
+- [ ] `Dockerfile` copia `alembic/` + `alembic.ini`; `alembic` disponible en la
+  imagen. Migración vía entrypoint (`alembic upgrade head` antes de `uvicorn`) o
+  servicio/job separado en `docker-compose.yml`. Criterio: `docker compose up`
+  sobre una base vacía deja el esquema aplicado sin intervención del host.
+
+**2. Fixture de test por migraciones** (POS-121, B-2)
+- [ ] `tests/conftest.py` deja de usar `Base.metadata.create_all` y aplica
+  `alembic upgrade head` sobre una base de test dedicada (no la de desarrollo).
+  Criterio: `pytest` en verde con el nuevo fixture; un modelo cambiado sin su
+  migración correspondiente rompe la suite. `jvm-tests`
+- [ ] Test explícito de paridad esquema-migraciones (`alembic check` /
+  comparación de `Base.metadata` contra el resultado de las migraciones).
+
+**3. Workflow de CI backend** (POS-122)
+- [ ] GitHub Actions: `pytest` + `alembic upgrade head` + `alembic check` contra
+  un Postgres de servicio. Criterio: el workflow corre en verde en un PR de
+  prueba y falla si `pytest` o `alembic check` fallan.
+
+**4. Workflow de CI Android** (POS-123)
+- [ ] GitHub Actions: `./gradlew test lint` (y verificación de que los JSON de
+  esquema de Room están commiteados, si la Parte 24 ya está). Criterio: verde en
+  un PR de prueba.
+
+### Decisiones abiertas
+
+- [ ] ¿Migración en el entrypoint del contenedor de la app, o job separado
+  (`depends_on` + `restart: on-failure`)? Propuesta: job separado (una sola
+  ejecución, sin condición de carrera si hay varios workers).
+- [ ] ¿CI en un solo archivo de workflow con dos jobs, o un archivo por módulo?
+  `CLAUDE.md` §7 sugiere uno por módulo.
+- [ ] ¿El CI de backend levanta Postgres como service container, o usa SQLite
+  para los tests (implicaría quitar `JSONB`/`ARRAY` específicos de Postgres)?
+  Propuesta: service container Postgres.
+
+---
+
+## Parte 27: Navegación con Navigation-Compose  <!-- POS-124 -->
+
+*(Hallazgo M-7 de `docs/review_code.md`.)*
+
+`MainActivity` usa un `enum Pantalla` + `when` hecho a mano: no hay pila de
+navegación (cada pantalla vuelve a `HELLO` con un `onBack` fijo), el botón físico
+de atrás del sistema cierra la app en vez de navegar, y "volver" desde `ROLES` va
+siempre a `USUARIOS` aunque se haya entrado desde otro lado. La dependencia
+`androidx.hilt:hilt-navigation-compose` ya está; falta
+`androidx.navigation:navigation-compose` (dependencia nueva - CLAUDE.md §9).
+
+Objetivo: back stack real y navegación declarativa, sin cambiar el
+comportamiento de los ViewModels ni de `AsistenteIaWidget`.
+
+### Checklist
+
+**1. Grafo de navegación** (POS-125)
+- [ ] `NavHost` con una ruta por pantalla (las 11 de `Pantalla`).
+  `AsistenteIaWidget` sigue montado una sola vez fuera del `NavHost` (como hoy
+  fuera del `when`), con la misma instancia de `ChatViewModel` durante la vida de
+  la Activity. Criterio: `./gradlew build` en verde; todas las pantallas
+  navegables desde donde lo eran antes.
+- [ ] El gate de permiso por pantalla (hoy en `HelloViewModel.onIntentoNavegar` /
+  `ConfiguracionViewModel.onIntentoAbrirConflictos`) se conserva. Criterio:
+  pruebas de esos ViewModels sin cambios de comportamiento.
+
+**2. Back stack real** (POS-126)
+- [ ] El botón de atrás del sistema navega hacia atrás en el stack; se retiran
+  los `onBack: () -> Unit` fijos de cada `*Screen` en favor del `NavController`.
+  Criterio: `./gradlew testDebugUnitTest` en verde; revisión manual del stack
+  (ej. `USUARIOS -> ROLES -> atrás` vuelve a `USUARIOS`; desde `HELLO`, atrás
+  sale de la app).
+
+**3. Verificación en dispositivo** (POS-127)
+- [ ] Recorrer las 11 pantallas y el botón de atrás en cada una; el widget de IA
+  sigue accesible desde todas. `needs-device`
+
+### Decisiones abiertas
+
+- [ ] ¿Nueva dependencia `androidx.navigation:navigation-compose` aprobada?
+  (CLAUDE.md §9).
+- [ ] ¿El destino actual debe sobrevivir a muerte de proceso como hoy
+  (`rememberSaveable`)? `NavHost` lo maneja vía `rememberNavController` +
+  `SavedStateHandle`; confirmar que el comportamiento observable no cambia.
+- [ ] ¿Se aprovecha para introducir rutas con argumento (ej. detalle) o el
+  alcance es 1:1 con las pantallas actuales? Propuesta: 1:1, sin ampliar alcance.
+
+---
+
+## Parte 28: Android - logging de red y agregaciones numéricas  <!-- POS-128 -->
+
+*(Hallazgos M-8 y M-9 de `docs/review_code.md`.)*
+
+Dos mejoras de Android independientes. `di/NetworkModule.kt` agrega
+`HttpLoggingInterceptor(Level.BASIC)` de forma incondicional, también en builds
+de release (M-8) - `BASIC` no registra cuerpos ni headers, pero no debería estar
+en release. Y `Converters` guarda `BigDecimal` como TEXT (`toPlainString`):
+correcto para precisión, pero implica que no se puede `SUM()` / `ORDER BY` /
+comparar cantidades en SQL de forma fiable, así que `LocalCajaRepository.
+calcularTotales` suma en Kotlin y `EjecutorAccionesIa.todosLosItems` pagina
+**todo** el inventario a memoria (bucle de 100 en 100) para responder
+`consultar_stock` / `exportar_inventario` (M-9) - escala mal con catálogos
+grandes.
+
+### Checklist
+
+**1. Logging de red solo en debug** (POS-129, M-8)
+- [ ] `HttpLoggingInterceptor` gateado con `BuildConfig.DEBUG` en
+  `di/NetworkModule.kt` (el cliente de IA, `LlmNetworkModule`, ya no lo tiene -
+  no se toca). Criterio: revisión de que el build de release no incluye el
+  interceptor; `./gradlew testDebugUnitTest` en verde. `jvm-tests`
+
+**2. Agregaciones numéricas de inventario** (POS-130, M-9)
+- [ ] Elegido el enfoque (ver Decisiones abiertas) e implementado el total de
+  stock y el orden por cantidad sin traer todo el catálogo a memoria.
+  `EjecutorAccionesIa.ejecutarConsultarStock` y el camino de exportación usan la
+  nueva ruta. Criterio: `jvm-tests` de la nueva agregación; comprobación
+  aproximada de que el uso de memoria no crece con el tamaño del catálogo.
+- [ ] `LocalCajaRepository.calcularTotales` revisado bajo el mismo criterio (o
+  documentado por qué se deja como está). Criterio: `./gradlew testDebugUnitTest`
+  en verde.
+
+### Decisiones abiertas
+
+- [ ] M-9: ¿columna numérica paralela en las entidades Room (para `SUM` / `ORDER
+  BY` / comparación en SQL, manteniendo la de TEXT para exactitud), o mover
+  `consultar_stock` y los totales de stock al backend cuando el modo lo permita
+  (análogo a `GET /cortes-caja/totales`, que ya agrega en Postgres con
+  `Numeric`)? Propuesta: columna paralela, para no crear dependencia de red en
+  una consulta de solo lectura que hoy funciona offline.
+- [ ] ¿M-8 y M-9 se mantienen en una sola Parte, o M-9 (diseño de esquema) se
+  separa de M-8 (cambio trivial)?
+
+---
+
+## Parte 29: Deuda técnica menor (varios)  <!-- POS-131 -->
+
+*(Hallazgos tipo B de `docs/review_code.md`, salvo B-2 -Parte 26- y B-3
+-Parte 22-. Cada grupo del checklist es independiente y se puede cerrar en
+cualquier orden.)*
+
+### Checklist
+
+**1. Config de build del backend** (POS-132)
+- [ ] B-1: versiones fijas en `backend/requirements.txt` (`==` o lockfile con
+  `uv`/`pip-tools`). Criterio: `pip install -r requirements.txt` resuelve el
+  mismo set en dos entornos.
+- [ ] B-4: usuario no privilegiado en `backend/Dockerfile` (`adduser` + `USER`).
+  Criterio: `docker run ... whoami` no devuelve `root`.
+
+**2. Android menor** (POS-133)
+- [ ] B-5: `DynamicHostInterceptor` cachea `deviceConfig` (ej. `StateFlow` en el
+  interceptor) en vez de `runBlocking { preferences.deviceConfig.first() }` por
+  request. Criterio: `./gradlew testDebugUnitTest` en verde; el `runBlocking`
+  repetido desaparece.
+- [ ] B-6: `Converters.toModulosPermitidos` / `fromModulosPermitidos` con un
+  separador que no pueda aparecer en una clave de módulo (o JSON). Criterio:
+  prueba con una clave que contenga el separador antiguo.
+- [ ] B-7: `isMinifyEnabled = true` en el build de release + reglas Proguard para
+  Room/Hilt/kotlinx-serialization/Retrofit. Criterio: `./gradlew assembleRelease`
+  en verde y la app funciona (verificación en dispositivo). `needs-device`
+- [ ] B-8: esquema definido para `versionCode`/`versionName` por release (hoy
+  fijos en `1` / `"0.1"` tras 20 Partes). Criterio: documentado en `CLAUDE.md`
+  §7 o en el build.
+
+**3. Documentación** (POS-134)
+- [ ] B-9: archivar las Partes ya migradas a `CLAUDE.md` en
+  `docs/PLAN-historico.md`, dejando en `docs/PLAN.md` solo lo activo; actualizar
+  el conteo "16 Partes" / "Partes 2-16" del encabezado de `PLAN.md` (líneas
+  10-18), que quedó desactualizado. Criterio: `PLAN.md` más corto y su encabezado
+  coherente con el número real de Partes.
+
+### Decisiones abiertas
+
+- [ ] B-7 (R8/shrinking): ¿en el alcance ahora, o se difiere hasta que haya
+  distribución real? Activarlo obliga a mantener reglas Proguard de varias
+  librerías y a re-verificar en dispositivo cada release.
+- [ ] B-9: ¿el archivo histórico es `docs/PLAN-historico.md`, o se mueven las
+  Partes cerradas a `CLAUDE.md` como bitácora? Propuesta: `docs/PLAN-historico.md`
+  (CLAUDE.md debe quedar enfocado - CLAUDE.md §1).
+
+---
+
 ## Backlog (trabajo futuro, fuera del alcance actual)
 
 - **Robustez ante `content` vacío del proveedor de IA** (hallazgo Parte
@@ -3445,3 +3960,13 @@ Robustez del reintento / `max_tokens` explícito → Backlog.
   cada uno. Esto recorrió Configuración y los módulos de la Parte 5-11
   anterior a la Parte 6-12 actual, y el resto de las partes (antes 12-16) a
   13-16.
+- **2026-08-31**: se incorporaron los hallazgos de la revisión de código
+  `docs/review_code.md` (2026-08-30) como Partes 21-29, siguiendo el esquema:
+  cada hallazgo tipo A es una Parte propia (21 auth JWT, 22 rotación de
+  secretos, 23 idempotencia de POST de sync, 24 migraciones de Room); los
+  tipo M se agruparon por relación (25 robustez del backend, 26 despliegue y
+  CI, 27 Navigation-Compose, 28 logging y agregaciones Android; M-10 se
+  absorbió en la Parte 21 porque sin auth no tiene sentido); los tipo B van
+  juntos en la Parte 29, salvo B-2 (Parte 26) y B-3 (Parte 22) por afinidad
+  temática. `docs/review_code.md` queda como documento fuente; ninguna Parte
+  nueva se implementó en esa sesión.
