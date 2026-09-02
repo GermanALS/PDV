@@ -1,15 +1,15 @@
 import uuid
 
 
-async def _seeded_sucursal_id(client) -> str:
-    response = await client.get("/api/v1/sucursales")
+async def _seeded_sucursal_id(client_autenticado) -> str:
+    response = await client_autenticado.get("/api/v1/sucursales")
     return response.json()["items"][0]["id"]
 
 
-async def test_create_entrada_articulo_nuevo_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_entrada_articulo_nuevo_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
@@ -37,10 +37,10 @@ async def test_create_entrada_articulo_nuevo_happy_path(client):
     assert body["movimiento"]["referencia_tipo"] == "entrada_manual"
 
 
-async def test_create_entrada_articulo_existente_increments_inventario(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_entrada_articulo_existente_increments_inventario(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    primera = await client.post(
+    primera = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
@@ -57,7 +57,7 @@ async def test_create_entrada_articulo_existente_increments_inventario(client):
     )
     articulo_id = primera.json()["articulo"]["id"]
 
-    segunda = await client.post(
+    segunda = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
@@ -75,10 +75,10 @@ async def test_create_entrada_articulo_existente_increments_inventario(client):
     assert body["inventario"]["articulo_id"] == articulo_id
 
 
-async def test_create_entrada_sin_articulo_id_ni_articulo_nuevo_returns_422(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_entrada_sin_articulo_id_ni_articulo_nuevo_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
@@ -91,10 +91,10 @@ async def test_create_entrada_sin_articulo_id_ni_articulo_nuevo_returns_422(clie
     assert response.status_code == 422
 
 
-async def test_create_entrada_articulo_id_inexistente_returns_404(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_entrada_articulo_id_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,

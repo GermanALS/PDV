@@ -1,8 +1,12 @@
 from app.security import hash_password
 
+# El login (/auth/login) es una ruta exenta: se ejerce con el `client`
+# anonimo. El armado previo (crear rol/usuario) pega en rutas protegidas, asi
+# que usa `client_autenticado`.
 
-async def _crear_rol(client, nombre: str = "rol_auth") -> str:
-    response = await client.post(
+
+async def _crear_rol(client_autenticado, nombre: str = "rol_auth") -> str:
+    response = await client_autenticado.post(
         "/api/v1/roles",
         json={"local_id": None, "nombre": nombre, "modulos_permitidos": ["venta"]},
     )
@@ -10,23 +14,27 @@ async def _crear_rol(client, nombre: str = "rol_auth") -> str:
 
 
 async def _crear_usuario_con_password(
-    client, username: str, password: str | None, activo: bool = True, rol_id: str | None = None
+    client_autenticado,
+    username: str,
+    password: str | None,
+    activo: bool = True,
+    rol_id: str | None = None,
 ):
-    return await client.post(
+    return await client_autenticado.post(
         "/api/v1/usuarios",
         json={
             "local_id": None,
             "username": username,
             "nombre_completo": "Usuario de prueba",
-            "rol_id": rol_id or await _crear_rol(client, f"rol_{username}"),
+            "rol_id": rol_id or await _crear_rol(client_autenticado, f"rol_{username}"),
             "activo": activo,
             "password_hash": hash_password(password) if password else None,
         },
     )
 
 
-async def test_login_happy_path(client):
-    await _crear_usuario_con_password(client, "usuario_login", "secret123")
+async def test_login_happy_path(client, client_autenticado):
+    await _crear_usuario_con_password(client_autenticado, "usuario_login", "secret123")
 
     response = await client.post(
         "/api/v1/auth/login", json={"username": "usuario_login", "password": "secret123"}
@@ -40,8 +48,8 @@ async def test_login_happy_path(client):
     assert "password_hash" not in body["usuario"]
 
 
-async def test_login_wrong_password_returns_401(client):
-    await _crear_usuario_con_password(client, "usuario_login_2", "secret123")
+async def test_login_wrong_password_returns_401(client, client_autenticado):
+    await _crear_usuario_con_password(client_autenticado, "usuario_login_2", "secret123")
 
     response = await client.post(
         "/api/v1/auth/login", json={"username": "usuario_login_2", "password": "incorrecta"}
@@ -58,8 +66,10 @@ async def test_login_usuario_inexistente_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_login_usuario_inactivo_returns_401(client):
-    await _crear_usuario_con_password(client, "usuario_inactivo", "secret123", activo=False)
+async def test_login_usuario_inactivo_returns_401(client, client_autenticado):
+    await _crear_usuario_con_password(
+        client_autenticado, "usuario_inactivo", "secret123", activo=False
+    )
 
     response = await client.post(
         "/api/v1/auth/login", json={"username": "usuario_inactivo", "password": "secret123"}
@@ -68,11 +78,12 @@ async def test_login_usuario_inactivo_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_login_usuario_sin_password_asignada_returns_401(client):
-    await _crear_usuario_con_password(client, "usuario_sin_password", None)
+async def test_login_usuario_sin_password_asignada_returns_401(client, client_autenticado):
+    await _crear_usuario_con_password(client_autenticado, "usuario_sin_password", None)
 
     response = await client.post(
-        "/api/v1/auth/login", json={"username": "usuario_sin_password", "password": "cualquiera"}
+        "/api/v1/auth/login",
+        json={"username": "usuario_sin_password", "password": "cualquiera"},
     )
 
     assert response.status_code == 401

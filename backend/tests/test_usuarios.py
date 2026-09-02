@@ -1,16 +1,16 @@
 import uuid
 
 
-async def _crear_rol(client, nombre: str = "rol_test") -> str:
-    response = await client.post(
+async def _crear_rol(client_autenticado, nombre: str = "rol_test") -> str:
+    response = await client_autenticado.post(
         "/api/v1/roles",
         json={"local_id": None, "nombre": nombre, "modulos_permitidos": ["venta"]},
     )
     return response.json()["id"]
 
 
-async def _crear_usuario(client, username: str, rol_id: str):
-    return await client.post(
+async def _crear_usuario(client_autenticado, username: str, rol_id: str):
+    return await client_autenticado.post(
         "/api/v1/usuarios",
         json={
             "local_id": None,
@@ -22,9 +22,9 @@ async def _crear_usuario(client, username: str, rol_id: str):
     )
 
 
-async def test_create_usuario_happy_path(client):
-    rol_id = await _crear_rol(client, "rol_usuario_1")
-    response = await _crear_usuario(client, "usuario_test_1", rol_id)
+async def test_create_usuario_happy_path(client_autenticado):
+    rol_id = await _crear_rol(client_autenticado, "rol_usuario_1")
+    response = await _crear_usuario(client_autenticado, "usuario_test_1", rol_id)
 
     assert response.status_code == 201
     body = response.json()
@@ -34,14 +34,14 @@ async def test_create_usuario_happy_path(client):
     assert body["is_synced"] is True
     assert "password_hash" not in body
 
-    listado = await client.get("/api/v1/usuarios?page_size=100")
+    listado = await client_autenticado.get("/api/v1/usuarios?page_size=100")
     usernames = [item["username"] for item in listado.json()["items"]]
     assert "usuario_test_1" in usernames
 
 
-async def test_create_usuario_without_username_returns_422(client):
-    rol_id = await _crear_rol(client, "rol_sin_username")
-    response = await client.post(
+async def test_create_usuario_without_username_returns_422(client_autenticado):
+    rol_id = await _crear_rol(client_autenticado, "rol_sin_username")
+    response = await client_autenticado.post(
         "/api/v1/usuarios",
         json={"nombre_completo": "Sin usuario", "rol_id": rol_id, "activo": True},
     )
@@ -49,8 +49,8 @@ async def test_create_usuario_without_username_returns_422(client):
     assert response.status_code == 422
 
 
-async def test_create_usuario_rol_inexistente_returns_404(client):
-    response = await client.post(
+async def test_create_usuario_rol_inexistente_returns_404(client_autenticado):
+    response = await client_autenticado.post(
         "/api/v1/usuarios",
         json={
             "username": "rol_invalido",
@@ -63,21 +63,21 @@ async def test_create_usuario_rol_inexistente_returns_404(client):
     assert response.status_code == 404
 
 
-async def test_create_usuario_username_duplicado_returns_409(client):
-    rol_id = await _crear_rol(client, "rol_duplicado_usuario")
-    await _crear_usuario(client, "usuario_duplicado", rol_id)
+async def test_create_usuario_username_duplicado_returns_409(client_autenticado):
+    rol_id = await _crear_rol(client_autenticado, "rol_duplicado_usuario")
+    await _crear_usuario(client_autenticado, "usuario_duplicado", rol_id)
 
-    response = await _crear_usuario(client, "usuario_duplicado", rol_id)
+    response = await _crear_usuario(client_autenticado, "usuario_duplicado", rol_id)
 
     assert response.status_code == 409
 
 
-async def test_update_usuario_happy_path(client):
-    rol_id = await _crear_rol(client, "rol_editar_usuario")
-    creado = await _crear_usuario(client, "usuario_a_editar", rol_id)
+async def test_update_usuario_happy_path(client_autenticado):
+    rol_id = await _crear_rol(client_autenticado, "rol_editar_usuario")
+    creado = await _crear_usuario(client_autenticado, "usuario_a_editar", rol_id)
     usuario_id = creado.json()["id"]
 
-    response = await client.patch(
+    response = await client_autenticado.patch(
         f"/api/v1/usuarios/{usuario_id}",
         json={
             "username": "usuario_editado",
@@ -95,9 +95,9 @@ async def test_update_usuario_happy_path(client):
     assert body["activo"] is False
 
 
-async def test_update_usuario_inexistente_returns_404(client):
-    rol_id = await _crear_rol(client, "rol_usuario_inexistente")
-    response = await client.patch(
+async def test_update_usuario_inexistente_returns_404(client_autenticado):
+    rol_id = await _crear_rol(client_autenticado, "rol_usuario_inexistente")
+    response = await client_autenticado.patch(
         f"/api/v1/usuarios/{uuid.uuid4()}",
         json={"username": "x", "nombre_completo": "x", "rol_id": rol_id, "activo": True},
     )
@@ -105,20 +105,20 @@ async def test_update_usuario_inexistente_returns_404(client):
     assert response.status_code == 404
 
 
-async def test_delete_usuario_happy_path(client):
-    rol_id = await _crear_rol(client, "rol_eliminar_usuario")
-    creado = await _crear_usuario(client, "usuario_a_eliminar", rol_id)
+async def test_delete_usuario_happy_path(client_autenticado):
+    rol_id = await _crear_rol(client_autenticado, "rol_eliminar_usuario")
+    creado = await _crear_usuario(client_autenticado, "usuario_a_eliminar", rol_id)
     usuario_id = creado.json()["id"]
 
-    response = await client.delete(f"/api/v1/usuarios/{usuario_id}")
+    response = await client_autenticado.delete(f"/api/v1/usuarios/{usuario_id}")
 
     assert response.status_code == 204
-    listado = await client.get("/api/v1/usuarios?page_size=100")
+    listado = await client_autenticado.get("/api/v1/usuarios?page_size=100")
     usernames = [item["username"] for item in listado.json()["items"]]
     assert "usuario_a_eliminar" not in usernames
 
 
-async def test_delete_usuario_inexistente_returns_404(client):
-    response = await client.delete(f"/api/v1/usuarios/{uuid.uuid4()}")
+async def test_delete_usuario_inexistente_returns_404(client_autenticado):
+    response = await client_autenticado.delete(f"/api/v1/usuarios/{uuid.uuid4()}")
 
     assert response.status_code == 404

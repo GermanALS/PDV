@@ -1,12 +1,12 @@
-async def _seeded_sucursal_id(client) -> str:
-    response = await client.get("/api/v1/sucursales")
+async def _seeded_sucursal_id(client_autenticado) -> str:
+    response = await client_autenticado.get("/api/v1/sucursales")
     return response.json()["items"][0]["id"]
 
 
-async def test_create_corte_caja_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_corte_caja_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/cortes-caja",
         json={
             "sucursal_id": sucursal_id,
@@ -33,10 +33,10 @@ async def test_create_corte_caja_happy_path(client):
     assert body["id"] is not None
 
 
-async def test_create_corte_caja_tipo_invalido_returns_422(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_corte_caja_tipo_invalido_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/cortes-caja",
         json={
             "sucursal_id": sucursal_id,
@@ -54,10 +54,10 @@ async def test_create_corte_caja_tipo_invalido_returns_422(client):
     assert response.status_code == 422
 
 
-async def test_create_retiro_efectivo_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_retiro_efectivo_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/retiros-efectivo",
         json={
             "sucursal_id": sucursal_id,
@@ -76,10 +76,10 @@ async def test_create_retiro_efectivo_happy_path(client):
     assert body["id"] is not None
 
 
-async def test_create_retiro_efectivo_monto_invalido_returns_422(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_retiro_efectivo_monto_invalido_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/retiros-efectivo",
         json={
             "sucursal_id": sucursal_id,
@@ -92,14 +92,14 @@ async def test_create_retiro_efectivo_monto_invalido_returns_422(client):
     assert response.status_code == 422
 
 
-async def test_get_totales_corte_happy_path(client):
+async def test_get_totales_corte_happy_path(client_autenticado):
     # Periodo en una fecha lejos de cualquier dato real/de verificacion
     # manual (evita colisionar con filas de otras corridas contra la misma
     # base de desarrollo, ya que este endpoint agrega por rango de fecha
     # sin filtrar por ningun id propio del test).
-    sucursal_id = await _seeded_sucursal_id(client)
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    articulo_response = await client.post(
+    articulo_response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
@@ -116,7 +116,7 @@ async def test_get_totales_corte_happy_path(client):
     )
     articulo_id = articulo_response.json()["articulo"]["id"]
 
-    await client.post(
+    await client_autenticado.post(
         "/api/v1/ventas",
         json={
             "sucursal_id": sucursal_id,
@@ -136,7 +136,7 @@ async def test_get_totales_corte_happy_path(client):
             ],
         },
     )
-    await client.post(
+    await client_autenticado.post(
         "/api/v1/retiros-efectivo",
         json={
             "sucursal_id": sucursal_id,
@@ -146,7 +146,7 @@ async def test_get_totales_corte_happy_path(client):
         },
     )
 
-    response = await client.get(
+    response = await client_autenticado.get(
         "/api/v1/cortes-caja/totales",
         params={
             "sucursal_id": sucursal_id,
@@ -164,8 +164,8 @@ async def test_get_totales_corte_happy_path(client):
     assert body["monto_esperado"] == "50.00"
 
 
-async def test_get_totales_corte_falta_sucursal_id_returns_422(client):
-    response = await client.get(
+async def test_get_totales_corte_falta_sucursal_id_returns_422(client_autenticado):
+    response = await client_autenticado.get(
         "/api/v1/cortes-caja/totales",
         params={
             "fecha_inicio": "2026-08-20T08:00:00Z",
@@ -176,9 +176,9 @@ async def test_get_totales_corte_falta_sucursal_id_returns_422(client):
     assert response.status_code == 422
 
 
-async def test_list_cortes_caja_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    await client.post(
+async def test_list_cortes_caja_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    await client_autenticado.post(
         "/api/v1/cortes-caja",
         json={
             "sucursal_id": sucursal_id,
@@ -194,7 +194,7 @@ async def test_list_cortes_caja_happy_path(client):
         },
     )
 
-    response = await client.get("/api/v1/cortes-caja", params={"sucursal_id": sucursal_id, "page_size": 100})
+    response = await client_autenticado.get("/api/v1/cortes-caja", params={"sucursal_id": sucursal_id, "page_size": 100})
 
     assert response.status_code == 200
     body = response.json()
@@ -202,15 +202,15 @@ async def test_list_cortes_caja_happy_path(client):
     assert any(item["sucursal_id"] == sucursal_id and item["tipo"] == "parcial" for item in body["items"])
 
 
-async def test_list_cortes_caja_falta_sucursal_id_returns_422(client):
-    response = await client.get("/api/v1/cortes-caja")
+async def test_list_cortes_caja_falta_sucursal_id_returns_422(client_autenticado):
+    response = await client_autenticado.get("/api/v1/cortes-caja")
 
     assert response.status_code == 422
 
 
-async def test_list_retiros_efectivo_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    await client.post(
+async def test_list_retiros_efectivo_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    await client_autenticado.post(
         "/api/v1/retiros-efectivo",
         json={
             "sucursal_id": sucursal_id,
@@ -221,7 +221,7 @@ async def test_list_retiros_efectivo_happy_path(client):
         },
     )
 
-    response = await client.get("/api/v1/retiros-efectivo", params={"sucursal_id": sucursal_id, "page_size": 100})
+    response = await client_autenticado.get("/api/v1/retiros-efectivo", params={"sucursal_id": sucursal_id, "page_size": 100})
 
     assert response.status_code == 200
     body = response.json()
@@ -229,16 +229,16 @@ async def test_list_retiros_efectivo_happy_path(client):
     assert any(item["sucursal_id"] == sucursal_id and item["motivo"] == "Prueba de listado" for item in body["items"])
 
 
-async def test_list_retiros_efectivo_falta_sucursal_id_returns_422(client):
-    response = await client.get("/api/v1/retiros-efectivo")
+async def test_list_retiros_efectivo_falta_sucursal_id_returns_422(client_autenticado):
+    response = await client_autenticado.get("/api/v1/retiros-efectivo")
 
     assert response.status_code == 422
 
 
-async def test_list_cortes_caja_filtra_por_rango_de_fechas(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_list_cortes_caja_filtra_por_rango_de_fechas(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
     for fecha_fin in ("2026-07-10T14:00:00Z", "2026-08-15T14:00:00Z"):
-        await client.post(
+        await client_autenticado.post(
             "/api/v1/cortes-caja",
             json={
                 "sucursal_id": sucursal_id,
@@ -254,7 +254,7 @@ async def test_list_cortes_caja_filtra_por_rango_de_fechas(client):
             },
         )
 
-    response = await client.get(
+    response = await client_autenticado.get(
         "/api/v1/cortes-caja",
         params={
             "sucursal_id": sucursal_id,
@@ -270,10 +270,10 @@ async def test_list_cortes_caja_filtra_por_rango_de_fechas(client):
     assert any(f.startswith("2026-08-15") for f in fechas_fin)
 
 
-async def test_list_retiros_efectivo_filtra_por_rango_de_fechas(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_list_retiros_efectivo_filtra_por_rango_de_fechas(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
     for fecha, motivo in (("2026-07-10T11:00:00Z", "fuera de rango"), ("2026-08-15T11:00:00Z", "dentro de rango")):
-        await client.post(
+        await client_autenticado.post(
             "/api/v1/retiros-efectivo",
             json={
                 "sucursal_id": sucursal_id,
@@ -284,7 +284,7 @@ async def test_list_retiros_efectivo_filtra_por_rango_de_fechas(client):
             },
         )
 
-    response = await client.get(
+    response = await client_autenticado.get(
         "/api/v1/retiros-efectivo",
         params={
             "sucursal_id": sucursal_id,

@@ -49,6 +49,7 @@ class LoginViewModel @Inject constructor(
                         username = resultado.usuario.username,
                         usuarioId = resultado.usuario.id,
                         rolId = resultado.usuario.rolId,
+                        accessToken = resultado.accessToken,
                     ),
                 )
                 LoginResultado.CredencialesInvalidas ->

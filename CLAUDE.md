@@ -202,6 +202,16 @@ scripts/stop-windows.ps1
 ```
 Backend disponible en `http://localhost:8000` en los tres casos.
 
+**Rebuild obligatorio tras cambiar código de backend**: el `Dockerfile`
+hornea el fuente (`COPY app ./app`) y `docker-compose.yml` no monta un
+volumen ni usa `--reload`, así que el contenedor en ejecución NO refleja
+cambios en `backend/app/` hasta reconstruir la imagen. Los scripts
+`start-*` ya hacen `docker compose up -d --build`; correrlos de nuevo
+basta. `pytest` corre contra el código del host, no contra el contenedor:
+verde en `pytest` no implica que el contenedor esté actualizado. Al
+verificar en dispositivo contra el backend dockerizado, reconstruir
+primero.
+
 **Alternativa manual (sin Docker, útil para iterar rápido en debug):**
 ```bash
 cd backend

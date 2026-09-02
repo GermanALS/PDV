@@ -1,13 +1,13 @@
 import uuid
 
 
-async def _seeded_sucursal_id(client) -> str:
-    response = await client.get("/api/v1/sucursales")
+async def _seeded_sucursal_id(client_autenticado) -> str:
+    response = await client_autenticado.get("/api/v1/sucursales")
     return response.json()["items"][0]["id"]
 
 
-async def _articulo_con_existencia(client, sucursal_id: str, sku: str, cantidad: str, categoria: str = "Bebidas") -> str:
-    response = await client.post(
+async def _articulo_con_existencia(client_autenticado, sucursal_id: str, sku: str, cantidad: str, categoria: str = "Bebidas") -> str:
+    response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
@@ -26,11 +26,11 @@ async def _articulo_con_existencia(client, sucursal_id: str, sku: str, cantidad:
     return response.json()["articulo"]["id"]
 
 
-async def test_list_inventario_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    articulo_id = await _articulo_con_existencia(client, sucursal_id, sku="INV-001", cantidad="15")
+async def test_list_inventario_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-001", cantidad="15")
 
-    response = await client.get(f"/api/v1/inventario?sucursal_id={sucursal_id}")
+    response = await client_autenticado.get(f"/api/v1/inventario?sucursal_id={sucursal_id}")
 
     assert response.status_code == 200
     body = response.json()
@@ -40,12 +40,12 @@ async def test_list_inventario_happy_path(client):
     assert fila["categoria"] == "Bebidas"
 
 
-async def test_list_inventario_filters_by_q(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    await _articulo_con_existencia(client, sucursal_id, sku="INV-BUSCAME", cantidad="1")
-    await _articulo_con_existencia(client, sucursal_id, sku="INV-OTRO", cantidad="1")
+async def test_list_inventario_filters_by_q(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-BUSCAME", cantidad="1")
+    await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-OTRO", cantidad="1")
 
-    response = await client.get(f"/api/v1/inventario?sucursal_id={sucursal_id}&q=BUSCAME")
+    response = await client_autenticado.get(f"/api/v1/inventario?sucursal_id={sucursal_id}&q=BUSCAME")
 
     assert response.status_code == 200
     body = response.json()
@@ -53,19 +53,19 @@ async def test_list_inventario_filters_by_q(client):
     assert len(body["items"]) >= 1
 
 
-async def test_list_inventario_rejects_invalid_page(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_list_inventario_rejects_invalid_page(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.get(f"/api/v1/inventario?sucursal_id={sucursal_id}&page=0")
+    response = await client_autenticado.get(f"/api/v1/inventario?sucursal_id={sucursal_id}&page=0")
 
     assert response.status_code == 422
 
 
-async def test_ajustar_articulo_updates_attributes_and_applies_delta(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    articulo_id = await _articulo_con_existencia(client, sucursal_id, sku="INV-002", cantidad="10")
+async def test_ajustar_articulo_updates_attributes_and_applies_delta(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-002", cantidad="10")
 
-    response = await client.patch(
+    response = await client_autenticado.patch(
         f"/api/v1/inventario/{articulo_id}",
         json={
             "sucursal_id": sucursal_id,
@@ -89,11 +89,11 @@ async def test_ajustar_articulo_updates_attributes_and_applies_delta(client):
     assert body["movimiento"]["cantidad"] == "20.000"
 
 
-async def test_ajustar_articulo_without_quantity_change_creates_no_movimiento(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    articulo_id = await _articulo_con_existencia(client, sucursal_id, sku="INV-003", cantidad="8")
+async def test_ajustar_articulo_without_quantity_change_creates_no_movimiento(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-003", cantidad="8")
 
-    response = await client.patch(
+    response = await client_autenticado.patch(
         f"/api/v1/inventario/{articulo_id}",
         json={
             "sucursal_id": sucursal_id,
@@ -109,10 +109,10 @@ async def test_ajustar_articulo_without_quantity_change_creates_no_movimiento(cl
     assert response.json()["movimiento"] is None
 
 
-async def test_ajustar_articulo_inexistente_returns_404(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_ajustar_articulo_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.patch(
+    response = await client_autenticado.patch(
         f"/api/v1/inventario/{uuid.uuid4()}",
         json={
             "sucursal_id": sucursal_id,
@@ -127,13 +127,13 @@ async def test_ajustar_articulo_inexistente_returns_404(client):
     assert response.status_code == 404
 
 
-async def test_valores_endpoints_include_seeded_data(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    await _articulo_con_existencia(client, sucursal_id, sku="INV-004", cantidad="1", categoria="Categoria-Unica-Test")
+async def test_valores_endpoints_include_seeded_data(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-004", cantidad="1", categoria="Categoria-Unica-Test")
 
-    categorias = await client.get("/api/v1/articulos/categorias")
-    unidades = await client.get("/api/v1/articulos/unidades-medida")
-    ubicaciones = await client.get(f"/api/v1/inventario/ubicaciones?sucursal_id={sucursal_id}")
+    categorias = await client_autenticado.get("/api/v1/articulos/categorias")
+    unidades = await client_autenticado.get("/api/v1/articulos/unidades-medida")
+    ubicaciones = await client_autenticado.get(f"/api/v1/inventario/ubicaciones?sucursal_id={sucursal_id}")
 
     assert "Categoria-Unica-Test" in categorias.json()["valores"]
     assert "pieza" in unidades.json()["valores"]

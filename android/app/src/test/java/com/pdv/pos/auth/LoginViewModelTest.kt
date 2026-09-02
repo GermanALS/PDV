@@ -55,7 +55,25 @@ class LoginViewModelTest {
         viewModel.login()
 
         assertNull(viewModel.uiState.value.errorMessage)
-        assertEquals(Session("admin", "usuario-1", "rol-admin"), sessionManager.session.value)
+        assertEquals(
+            Session("admin", "usuario-1", "rol-admin", accessToken = "token"),
+            sessionManager.session.value,
+        )
+    }
+
+    @Test
+    fun `login keeps the access token from the remote login in the session`() = runTest(dispatcher) {
+        val authRepository = mockk<AuthRepository>()
+        coEvery { authRepository.login("admin", "admin123") } returns
+            LoginResultado.Exitoso(usuarioDeEjemplo(), accessToken = "jwt-remoto")
+        val sessionManager = SessionManager()
+        val viewModel = LoginViewModel(authRepository, sessionManager)
+        viewModel.onUsernameChange("admin")
+        viewModel.onPasswordChange("admin123")
+
+        viewModel.login()
+
+        assertEquals("jwt-remoto", sessionManager.session.value?.accessToken)
     }
 
     @Test

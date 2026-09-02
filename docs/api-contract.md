@@ -21,7 +21,8 @@ Response `200 OK`
 }
 ```
 
-No requiere autenticación.
+No requiere autenticación — junto con `/auth/*` es una de las dos rutas
+exentas del header `Authorization: Bearer` (ver sección 12).
 
 ---
 
@@ -35,10 +36,12 @@ factor 12, mismo algoritmo y parámetros en backend y Android — PLAN.md
 Parte 13, Decisión 2) para el hash de contraseña; el hash se calcula del
 lado que recibe el texto plano (Android, siempre — ver sección 11.2/11.3),
 nunca en esta ruta. El `access_token` es un JWT (`PyJWT`, `HS256`, 24
-horas de expiración, firmado con `JWT_SECRET_KEY`) — **enforcement** del
+horas de expiración, firmado con `JWT_SECRET_KEY`). El **enforcement** del
 header `Authorization: Bearer <access_token>` sobre el resto de las rutas
-todavía no está implementado (no es parte del checklist de esta Parte); el
-token se emite pero ningún otro endpoint lo valida todavía.
+está implementado (PLAN.md Parte 21) — ver sección 12. La estrategia de
+`refresh_token` queda diferida hasta que el cliente persista la sesión
+(hoy `SessionManager` es en memoria y ya re-loguea en cada arranque); ver
+sección 13.
 
 **Usuario de bootstrap**: el backend recién levantado no tiene forma de
 autenticarse sin al menos un usuario existente. La migración
@@ -1146,6 +1149,67 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   estado final sobreescrito — ver PLAN.md Parte 6 (módulo Configuración,
   motor de sync genérico).
 
+### Autenticación: header `Authorization: Bearer` (PLAN.md Parte 21)
+
+- **Toda ruta fuera de `/auth/*` y `/health` exige** el header
+  `Authorization: Bearer <access_token>`, donde `<access_token>` es el JWT
+  emitido por `POST /auth/login` (sección 2). Sin header válido no se llega
+  al handler. Ejemplo de request autenticada:
+  ```
+  GET /api/v1/usuarios?page=1&page_size=20
+  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+  ```
+- **`401 Unauthorized`** — token ausente, con firma inválida, expirado, o
+  cuyo `sub` no corresponde a un usuario existente / activo /
+  no-borrado. Detalle genérico único, sin distinguir la causa (espeja la
+  genericidad deliberada del `401` de login):
+  ```
+  GET /api/v1/usuarios            (sin header Authorization)
+  ->
+  HTTP/1.1 401 Unauthorized
+  { "detail": "token invalido o expirado" }
+  ```
+  El cliente Android trata cualquier `401` en una llamada que no sea
+  `/auth/login` como sesión terminada: cierra la sesión y vuelve a
+  `LoginScreen` ("Tu sesión expiró, inicia sesión de nuevo"). No se
+  distingue "expirado" de "manipulado" — el remedio es el mismo.
+- **`403 Forbidden`** — token válido, pero el rol del usuario autenticado
+  no incluye el módulo requerido por esa **escritura** (ver tabla abajo):
+  ```
+  POST /api/v1/usuarios          (token de un usuario con rol solo-venta)
+  Authorization: Bearer eyJ...
+  ->
+  HTTP/1.1 403 Forbidden
+  { "detail": "el rol no tiene permiso para el modulo: usuarios" }
+  ```
+- **El chequeo de módulo aplica solo a las escrituras** (`POST` / `PATCH` /
+  `DELETE`). Las **lecturas** (`GET`) solo exigen token válido: otros
+  módulos las consumen de forma legítima (Venta y Entrada leen
+  `GET /inventario` y `GET /sucursales`; toda sesión lee `GET /roles` para
+  calcular sus módulos permitidos), así que gatearlas por módulo rompería
+  esos flujos.
+- **Mapeo escritura → módulo requerido** (fuente única en el backend):
+
+  | Escritura | Módulo requerido |
+  |---|---|
+  | `POST /ventas` | `venta` |
+  | `POST /entradas` | `entrada` |
+  | `PATCH /inventario/{articulo_id}` | `inventario` |
+  | `POST /cortes-caja`, `POST /retiros-efectivo` | `caja` |
+  | `POST /devoluciones` | `devoluciones` |
+  | `POST`/`PATCH`/`DELETE /usuarios` | `usuarios` |
+  | `POST`/`PATCH`/`DELETE /roles` | `usuarios` (se administra desde el módulo Usuarios) |
+  | `POST /sucursales` | `configuracion` |
+  | `POST /sync-conflicts` | ninguno (infraestructura del motor de sync, no acción de usuario) |
+  | cualquier `GET` (fuera de `/health`) | ninguno — solo token válido |
+  | `/auth/*`, `/health` | ninguno (rutas exentas del header) |
+
+- **Modo LOCAL / LOCAL_CON_SINCRONIZACION**: no cambia. No hay backend que
+  valide; el enforcement solo aplica a las llamadas HTTP que el cliente
+  hace en modo REMOTO. Cuando se implemente el push diferido de
+  LOCAL_CON_SINCRONIZACION (PLAN.md Parte 23+), adjuntará el mismo header
+  `Authorization: Bearer`.
+
 ## 13. Pendiente de definir
 
 Bloqueado por trabajo previo no ejecutado (no es falta de definición en
@@ -1158,16 +1222,17 @@ este contrato, sino prerequisitos pendientes):
   `roles` (sección 10), `usuarios` (sección 11) y `auth/login` (sección 2)
   ya están implementadas. El placeholder de la sección 3 (Items) fue
   reemplazado por el contrato real de `sync-conflicts` (PLAN.md Parte 19).
-- [ ] Enforcement del header `Authorization: Bearer <access_token>` sobre
-  el resto de las rutas (fuera de `/auth/*` y `/health`) — el token ya se
-  emite (sección 2) pero ningún endpoint lo valida todavía; no es parte del
-  checklist de la Parte 13, queda abierto para cuando el proyecto lo
-  priorice.
+- [x] Enforcement del header `Authorization: Bearer <access_token>` sobre
+  el resto de las rutas (fuera de `/auth/*` y `/health`) — **implementado**
+  (PLAN.md Parte 21). Ver sección 12 ("Autenticación: header
+  `Authorization: Bearer`").
 
 Genuinamente abierto (no depende de trabajo previo):
 
 - [ ] Estrategia de refresh token (¿se agrega `refresh_token` en login, y
-  con qué expiración?).
+  con qué expiración?). **Diferido** (PLAN.md Parte 21, Decisión abierta):
+  mientras el cliente no persista la sesión, el JWT de 24 h + re-login al
+  recibir `401` alcanza. Retomar cuando exista persistencia de sesión.
 - [ ] ¿Los logs de la app (PLAN.md Parte 5, archivos `.txt` locales al
   dispositivo) alguna vez viajan por API, o son puramente locales? Si son
   puramente locales, no requieren entrada en este contrato.
