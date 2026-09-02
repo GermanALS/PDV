@@ -8,6 +8,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.database import Base, get_db
 from app.main import app
+from app.models.rol import Rol
+from app.models.usuario import Usuario
+from app.security import create_access_token
+
+_TODOS_LOS_MODULOS = [
+    "venta",
+    "entrada",
+    "inventario",
+    "caja",
+    "devoluciones",
+    "usuarios",
+    "configuracion",
+    "ia",
+]
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -45,4 +59,32 @@ async def session(engine):
 async def client(session):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+# Usuario sembrado con un rol que tiene todos los modulos: sirve de
+# identidad para los happy-path de todos los routers. Los tests de permiso
+# server-side (403) crean su propio rol acotado.
+@pytest_asyncio.fixture
+async def usuario_autenticado(session) -> Usuario:
+    rol = Rol(nombre="rol_fixture_auth", modulos_permitidos=list(_TODOS_LOS_MODULOS))
+    session.add(rol)
+    await session.flush()
+    usuario = Usuario(
+        username="fixture_auth", nombre_completo="Fixture Auth", rol_id=rol.id
+    )
+    session.add(usuario)
+    await session.flush()
+    return usuario
+
+
+@pytest_asyncio.fixture
+async def client_autenticado(session, usuario_autenticado):
+    transport = ASGITransport(app=app)
+    token = create_access_token(str(usuario_autenticado.id))
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {token}"},
+    ) as ac:
         yield ac

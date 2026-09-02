@@ -6,13 +6,13 @@ from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
 
 
-async def _seeded_sucursal_id(client) -> str:
-    response = await client.get("/api/v1/sucursales")
+async def _seeded_sucursal_id(client_autenticado) -> str:
+    response = await client_autenticado.get("/api/v1/sucursales")
     return response.json()["items"][0]["id"]
 
 
-async def _articulo_con_existencia(client, sucursal_id: str, sku: str, cantidad: str) -> str:
-    response = await client.post(
+async def _articulo_con_existencia(client_autenticado, sucursal_id: str, sku: str, cantidad: str) -> str:
+    response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
@@ -30,11 +30,11 @@ async def _articulo_con_existencia(client, sucursal_id: str, sku: str, cantidad:
     return response.json()["articulo"]["id"]
 
 
-async def test_create_venta_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    articulo_id = await _articulo_con_existencia(client, sucursal_id, sku="VTA-001", cantidad="10")
+async def test_create_venta_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="VTA-001", cantidad="10")
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
             "sucursal_id": sucursal_id,
@@ -68,11 +68,11 @@ async def test_create_venta_happy_path(client):
     assert body["lineas"][0]["cantidad"] == "2.000"
 
 
-async def test_create_venta_decrements_inventario_and_creates_movimiento(client, session):
-    sucursal_id = await _seeded_sucursal_id(client)
-    articulo_id = await _articulo_con_existencia(client, sucursal_id, sku="VTA-002", cantidad="10")
+async def test_create_venta_decrements_inventario_and_creates_movimiento(client_autenticado, session):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="VTA-002", cantidad="10")
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
             "sucursal_id": sucursal_id,
@@ -117,10 +117,10 @@ async def test_create_venta_decrements_inventario_and_creates_movimiento(client,
     assert movimiento.cantidad == 3
 
 
-async def test_create_venta_without_lineas_returns_422(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_venta_without_lineas_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
             "sucursal_id": sucursal_id,
@@ -137,10 +137,10 @@ async def test_create_venta_without_lineas_returns_422(client):
     assert response.status_code == 422
 
 
-async def test_create_venta_articulo_id_inexistente_returns_404(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_venta_articulo_id_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
             "sucursal_id": sucursal_id,

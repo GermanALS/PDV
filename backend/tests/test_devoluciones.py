@@ -1,13 +1,13 @@
 import uuid
 
 
-async def _seeded_sucursal_id(client) -> str:
-    response = await client.get("/api/v1/sucursales")
+async def _seeded_sucursal_id(client_autenticado) -> str:
+    response = await client_autenticado.get("/api/v1/sucursales")
     return response.json()["items"][0]["id"]
 
 
-async def _articulo_con_existencia(client, sucursal_id: str, sku: str, cantidad: str) -> str:
-    response = await client.post(
+async def _articulo_con_existencia(client_autenticado, sucursal_id: str, sku: str, cantidad: str) -> str:
+    response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
@@ -25,8 +25,8 @@ async def _articulo_con_existencia(client, sucursal_id: str, sku: str, cantidad:
     return response.json()["articulo"]["id"]
 
 
-async def _venta_registrada(client, sucursal_id: str, articulo_id: str, folio: str) -> str:
-    response = await client.post(
+async def _venta_registrada(client_autenticado, sucursal_id: str, articulo_id: str, folio: str) -> str:
+    response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
             "sucursal_id": sucursal_id,
@@ -49,12 +49,12 @@ async def _venta_registrada(client, sucursal_id: str, articulo_id: str, folio: s
     return response.json()["id"]
 
 
-async def test_create_devolucion_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    articulo_id = await _articulo_con_existencia(client, sucursal_id, sku="DEV-001", cantidad="10")
-    venta_id = await _venta_registrada(client, sucursal_id, articulo_id, folio="F-DEV-001")
+async def test_create_devolucion_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-001", cantidad="10")
+    venta_id = await _venta_registrada(client_autenticado, sucursal_id, articulo_id, folio="F-DEV-001")
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
             "sucursal_id": sucursal_id,
@@ -86,11 +86,11 @@ async def test_create_devolucion_happy_path(client):
     assert body["lineas"][0]["condicion"] == "defectuoso"
 
 
-async def test_create_devolucion_sin_venta_original_happy_path(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    articulo_id = await _articulo_con_existencia(client, sucursal_id, sku="DEV-002", cantidad="5")
+async def test_create_devolucion_sin_venta_original_happy_path(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-002", cantidad="5")
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
             "sucursal_id": sucursal_id,
@@ -113,10 +113,10 @@ async def test_create_devolucion_sin_venta_original_happy_path(client):
     assert body["lineas"][0]["condicion"] is None
 
 
-async def test_create_devolucion_without_lineas_returns_422(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_devolucion_without_lineas_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
             "sucursal_id": sucursal_id,
@@ -130,10 +130,10 @@ async def test_create_devolucion_without_lineas_returns_422(client):
     assert response.status_code == 422
 
 
-async def test_create_devolucion_articulo_id_inexistente_returns_404(client):
-    sucursal_id = await _seeded_sucursal_id(client)
+async def test_create_devolucion_articulo_id_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
             "sucursal_id": sucursal_id,
@@ -152,11 +152,11 @@ async def test_create_devolucion_articulo_id_inexistente_returns_404(client):
     assert response.status_code == 404
 
 
-async def test_create_devolucion_venta_id_inexistente_returns_404(client):
-    sucursal_id = await _seeded_sucursal_id(client)
-    articulo_id = await _articulo_con_existencia(client, sucursal_id, sku="DEV-005", cantidad="5")
+async def test_create_devolucion_venta_id_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-005", cantidad="5")
 
-    response = await client.post(
+    response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
             "sucursal_id": sucursal_id,

@@ -3432,64 +3432,101 @@ valide).
 ### Checklist
 
 **1. Contrato** (POS-98)
-- [ ] `docs/api-contract.md` §12/§13 actualizado: header
+- [x] `docs/api-contract.md` §12/§13 actualizado: header
   `Authorization: Bearer <access_token>` obligatorio fuera de `/auth/*` y
   `/health`; `401` sin token o con token inválido/expirado; `403` para usuario
   autenticado sin permiso de módulo. El ítem de §13 pasa de "pendiente" a
   "implementado". Criterio: sección revisada y aprobada antes de tocar código
-  (CLAUDE.md §9). `needs-approval`
-- [ ] Ejemplos de request/response de `401` y `403` en el formato
+  (CLAUDE.md §9). `needs-approval` — aprobado por el usuario 2026-09-01.
+- [x] Ejemplos de request/response de `401` y `403` en el formato
   `{ "detail": ... }` de §12.
 
 **2. Dependencia de auth en FastAPI** (POS-99)
-- [ ] `usuario_actual` (dependencia): `HTTPBearer` -> `jwt.decode` con
+- [x] `usuario_actual` (dependencia): `HTTPBearer` -> `jwt.decode` con
   `JWT_SECRET_KEY`/`JWT_ALGORITHM` -> carga `Usuario` por `sub`, `deleted_at IS
   NULL` y `activo`. `401` en cualquier fallo (token ausente, firma inválida,
   expirado, usuario inexistente/inactivo). Criterio: `pytest` de la dependencia
   aislada (token válido, expirado, firma mala, usuario borrado).
-- [ ] Aplicada como `dependencies=[Depends(usuario_actual)]` a nivel de
+  `backend/app/dependencies.py` + `backend/tests/test_auth_dependency.py` (7 casos).
+- [x] Aplicada como `dependencies=[Depends(usuario_actual)]` a nivel de
   `APIRouter` en todos los routers salvo `auth` y `health`. Criterio: `pytest` -
   cada endpoint existente gana un caso `401` sin header; los happy-path
   existentes se ajustan para enviar el header (fixture `client_autenticado`).
-- [ ] `pytest` completo en verde tras el ajuste de todos los tests existentes.
-  `jvm-tests` (backend: mostrar salida de `pytest`).
+  Sub-router `protected` en `backend/app/main.py`;
+  `backend/tests/test_auth_enforcement.py` parametriza las 25 rutas + guarda de
+  regresión que introspecciona `app.routes`.
+- [x] `pytest` completo en verde tras el ajuste de todos los tests existentes.
+  `jvm-tests` (backend: mostrar salida de `pytest`). 125 passed (2026-09-01).
 
 **3. Cliente Android adjunta el token** (POS-100)
-- [ ] `Session`/`SessionManager` conservan el `accessToken` del login remoto
+- [x] `Session`/`SessionManager` conservan el `accessToken` del login remoto
   (hoy `LocalAuthRepository` devuelve `accessToken = null`; `RemoteAuthRepository`
   ya lo recibe). Interceptor OkHttp en `di/NetworkModule.kt` que agrega
   `Authorization: Bearer` cuando hay sesión con token. Criterio:
   `./gradlew testDebugUnitTest` con el interceptor probado (con token / sin
   token). `jvm-tests`
-- [ ] En `401` del backend, la app cierra la sesión y vuelve a `LoginScreen`
+  `Session.accessToken` + `AuthInterceptor` (nuevo) cableado en `NetworkModule`;
+  `AuthInterceptorTest` (7 casos) + `LoginViewModelTest`. 335 tests, 0 fallos
+  (2026-09-02).
+- [x] En `401` del backend, la app cierra la sesión y vuelve a `LoginScreen`
   (misma reacción que sesión nula). Criterio: prueba de ViewModel con `401`
   mockeado.
+  El 401 -> logout se centraliza en `AuthInterceptor` (chokepoint único, no en
+  8 ViewModels); `MainActivity` ya reacciona a `session == null`. Excluye
+  `/auth/login` por ruta (la reautenticación de `onGuardarPromptIa` no debe
+  expulsar). Cubierto por `AuthInterceptorTest` (`clears the session on a 401`,
+  `a 401 from auth login does not clear an active session`). Desviación de la
+  literalidad "prueba de ViewModel" confirmada con el usuario.
 
 **4. Permisos server-side** (POS-101, absorbe M-10)
-- [ ] Los endpoints sensibles (`usuarios`, `roles`, y los de escritura que
+- [x] Los endpoints sensibles (`usuarios`, `roles`, y los de escritura que
   correspondan) verifican que `usuario_actual` tenga el módulo requerido en su
   rol; `403` si no. Criterio: `pytest` - usuario con rol sin `usuarios` recibe
   `403` en `POST /usuarios`.
-- [ ] El mapeo endpoint -> módulo requerido queda en un solo lugar, no repetido
+  `verificar_modulo` en `backend/app/permissions.py`, sumado a `dependencies=`
+  del router `protected`. Solo escrituras (`POST`/`PATCH`/`DELETE`); los `GET`
+  solo exigen token (api-contract.md §12). `backend/tests/test_permisos.py`
+  (17 casos). 142 tests, 0 fallos (2026-09-02).
+- [x] El mapeo endpoint -> módulo requerido queda en un solo lugar, no repetido
   por ruta.
+  Dict central `_ESCRITURA_MODULO` en `backend/app/permissions.py`; cero líneas
+  por ruta (una sola declaración en `main.py`).
 
 **5. Verificación en dispositivo** (POS-102)
-- [ ] Modo REMOTO: login exigido, el header viaja en cada request, un token
+- [x] Modo REMOTO: login exigido, el header viaja en cada request, un token
   manipulado da `401` y expulsa al login. Modos LOCAL / LOCAL_CON_SINCRONIZACION:
-  sin cambios (Room, sin token). `needs-device`
+  sin cambios (Room, sin token). `needs-device` — verificado por el usuario en
+  el Xiaomi (2026-09-02), tras rebuild del contenedor `pdv-backend` (la imagen
+  en ejecución era anterior a la Parte 21 y no enforceaba).
 
 ### Decisiones abiertas
 
-- [ ] ¿Modo LOCAL / LOCAL_CON_SINCRONIZACION queda explícitamente exento (no hay
+- [x] ¿Modo LOCAL / LOCAL_CON_SINCRONIZACION queda explícitamente exento (no hay
   backend que valide) y solo REMOTO exige token? (propuesta: sí).
-- [ ] ¿Se agrega `refresh_token` ahora o se difiere? `docs/api-contract.md` §13
+  **Resuelto: sí (exención conceptual).** Solo REMOTO adjunta el token; LOCAL y
+  LOCAL_CON_SINCRONIZACION no cambian porque sus caminos de cliente no llaman
+  endpoints de negocio hoy. El backend igual exige en toda ruta no-auth/health.
+  Se agrega nota al contrato: el push diferido (Parte 23+) autenticará con el
+  mismo header.
+- [x] ¿Se agrega `refresh_token` ahora o se difiere? `docs/api-contract.md` §13
   ya lo lista como genuinamente abierto (propuesta: diferir; mantener el JWT de
   24 h y re-login al expirar).
-- [ ] ¿La dependencia de auth se aplica router por router, o como
+  **Resuelto: diferir.** JWT único de 24 h, re-login ante `401`. Sin endpoints ni
+  esquema nuevos. Se documenta en el contrato que el refresh queda diferido hasta
+  que exista persistencia de sesión.
+- [x] ¿La dependencia de auth se aplica router por router, o como
   `dependencies=` global de la app excluyendo `auth`/`health`? (afecta cómo se
   montan `health` y `auth`).
-- [ ] ¿`401` por token expirado se distingue de `401` por credenciales, para que
+  **Resuelto: sub-router protegido.** `protected = APIRouter(dependencies=[Depends(
+  usuario_actual)])` que incluye los routers de negocio; `health` y `auth` se
+  montan aparte sin la dependencia. Enforcement declarado en un solo lugar, sin
+  matcheo de strings de path.
+- [x] ¿`401` por token expirado se distingue de `401` por credenciales, para que
   la app muestre "sesión expirada" en vez de "credenciales inválidas"?
+  **Resuelto: no distinguir.** Los dos escenarios ya se separan por qué llamada
+  falló: `401` de `/auth/login` = "credenciales inválidas"; `401` de cualquier
+  otra ruta = "sesión expirada" + logout. Detalle genérico único
+  (`{"detail": "token invalido o expirado"}`).
 
 ---
 

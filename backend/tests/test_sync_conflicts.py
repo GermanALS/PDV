@@ -18,10 +18,10 @@ def _payload(**overrides) -> dict:
     return base
 
 
-async def test_create_sync_conflict_happy_path(client):
+async def test_create_sync_conflict_happy_path(client_autenticado):
     payload = _payload()
 
-    response = await client.post("/api/v1/sync-conflicts", json=payload)
+    response = await client_autenticado.post("/api/v1/sync-conflicts", json=payload)
 
     assert response.status_code == 201
     body = response.json()
@@ -32,13 +32,13 @@ async def test_create_sync_conflict_happy_path(client):
     assert body["resuelto_automaticamente"] is False
 
 
-async def test_list_sync_conflicts_returns_uploaded_conflicts_newest_first(client):
+async def test_list_sync_conflicts_returns_uploaded_conflicts_newest_first(client_autenticado):
     viejo = _payload(fecha_deteccion="2026-08-27T09:00:00Z")
     nuevo = _payload(fecha_deteccion="2026-08-28T18:30:00Z")
-    await client.post("/api/v1/sync-conflicts", json=viejo)
-    await client.post("/api/v1/sync-conflicts", json=nuevo)
+    await client_autenticado.post("/api/v1/sync-conflicts", json=viejo)
+    await client_autenticado.post("/api/v1/sync-conflicts", json=nuevo)
 
-    response = await client.get("/api/v1/sync-conflicts?page_size=100")
+    response = await client_autenticado.get("/api/v1/sync-conflicts?page_size=100")
 
     assert response.status_code == 200
     ids = [item["id"] for item in response.json()["items"]]
@@ -47,11 +47,11 @@ async def test_list_sync_conflicts_returns_uploaded_conflicts_newest_first(clien
     assert ids.index(nuevo["id"]) < ids.index(viejo["id"])
 
 
-async def test_upload_sync_conflict_is_idempotent(client):
+async def test_upload_sync_conflict_is_idempotent(client_autenticado):
     payload = _payload()
 
-    primera = await client.post("/api/v1/sync-conflicts", json=payload)
-    segunda = await client.post(
+    primera = await client_autenticado.post("/api/v1/sync-conflicts", json=payload)
+    segunda = await client_autenticado.post(
         "/api/v1/sync-conflicts",
         json={**payload, "valor_resuelto": {"cantidad": 999}},
     )
@@ -61,26 +61,26 @@ async def test_upload_sync_conflict_is_idempotent(client):
     # La segunda subida no sobreescribe: devuelve la fila original.
     assert segunda.json()["valor_resuelto"] == {"cantidad": -1}
 
-    listado = await client.get("/api/v1/sync-conflicts?page_size=100")
+    listado = await client_autenticado.get("/api/v1/sync-conflicts?page_size=100")
     coincidencias = [item for item in listado.json()["items"] if item["id"] == payload["id"]]
     assert len(coincidencias) == 1
 
 
-async def test_list_sync_conflicts_filters_by_resuelto_automaticamente(client):
+async def test_list_sync_conflicts_filters_by_resuelto_automaticamente(client_autenticado):
     automatico = _payload(resuelto_automaticamente=True)
     manual = _payload(resuelto_automaticamente=False)
-    await client.post("/api/v1/sync-conflicts", json=automatico)
-    await client.post("/api/v1/sync-conflicts", json=manual)
+    await client_autenticado.post("/api/v1/sync-conflicts", json=automatico)
+    await client_autenticado.post("/api/v1/sync-conflicts", json=manual)
 
-    response = await client.get("/api/v1/sync-conflicts?resuelto_automaticamente=true&page_size=100")
+    response = await client_autenticado.get("/api/v1/sync-conflicts?resuelto_automaticamente=true&page_size=100")
 
     ids = [item["id"] for item in response.json()["items"]]
     assert automatico["id"] in ids
     assert manual["id"] not in ids
 
 
-async def test_upload_sync_conflict_with_invalid_politica_returns_422(client):
-    response = await client.post(
+async def test_upload_sync_conflict_with_invalid_politica_returns_422(client_autenticado):
+    response = await client_autenticado.post(
         "/api/v1/sync-conflicts",
         json=_payload(politica_aplicada="merge_magico"),
     )

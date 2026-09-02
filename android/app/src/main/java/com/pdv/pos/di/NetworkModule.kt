@@ -2,6 +2,7 @@ package com.pdv.pos.di
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.pdv.pos.data.remote.AuthApiService
+import com.pdv.pos.data.remote.AuthInterceptor
 import com.pdv.pos.data.remote.CajaApiService
 import com.pdv.pos.data.remote.DevolucionApiService
 import com.pdv.pos.data.remote.DynamicHostInterceptor
@@ -42,9 +43,13 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(dynamicHostInterceptor: DynamicHostInterceptor): OkHttpClient =
+    fun provideOkHttpClient(
+        dynamicHostInterceptor: DynamicHostInterceptor,
+        authInterceptor: AuthInterceptor,
+    ): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(dynamicHostInterceptor)
+            .addInterceptor(authInterceptor)
             .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
             .build()
 

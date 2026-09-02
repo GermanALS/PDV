@@ -1,5 +1,5 @@
-async def test_list_sucursales_returns_at_least_the_seeded_default(client):
-    response = await client.get("/api/v1/sucursales")
+async def test_list_sucursales_returns_at_least_the_seeded_default(client_autenticado):
+    response = await client_autenticado.get("/api/v1/sucursales")
 
     assert response.status_code == 200
     body = response.json()
@@ -7,14 +7,14 @@ async def test_list_sucursales_returns_at_least_the_seeded_default(client):
     assert "Sucursal principal" in nombres
 
 
-async def test_list_sucursales_rejects_invalid_page(client):
-    response = await client.get("/api/v1/sucursales?page=0")
+async def test_list_sucursales_rejects_invalid_page(client_autenticado):
+    response = await client_autenticado.get("/api/v1/sucursales?page=0")
 
     assert response.status_code == 422
 
 
-async def test_create_sucursal_happy_path(client):
-    response = await client.post(
+async def test_create_sucursal_happy_path(client_autenticado):
+    response = await client_autenticado.post(
         "/api/v1/sucursales",
         json={"local_id": None, "nombre": "Sucursal Test", "direccion": "Calle Falsa 123", "activa": True},
     )
@@ -26,12 +26,12 @@ async def test_create_sucursal_happy_path(client):
     assert body["is_synced"] is True
     assert body["id"] is not None
 
-    listado = await client.get("/api/v1/sucursales?page_size=100")
+    listado = await client_autenticado.get("/api/v1/sucursales?page_size=100")
     nombres = [item["nombre"] for item in listado.json()["items"]]
     assert "Sucursal Test" in nombres
 
 
-async def test_create_sucursal_without_nombre_returns_422(client):
-    response = await client.post("/api/v1/sucursales", json={"direccion": "Calle Falsa 123"})
+async def test_create_sucursal_without_nombre_returns_422(client_autenticado):
+    response = await client_autenticado.post("/api/v1/sucursales", json={"direccion": "Calle Falsa 123"})
 
     assert response.status_code == 422
