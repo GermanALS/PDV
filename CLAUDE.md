@@ -15,7 +15,13 @@ mantén este archivo enfocado (evita que crezca de forma descontrolada).
   sincronizarse con un backend FastAPI remoto compartido entre sucursales;
   incluye un asistente de IA (DeepSeek) opcional para consultas y
   actualizaciones asistidas del punto de venta.
-- **Estado**: proyecto nuevo, en fase de scaffolding inicial.
+- **Estado**: Partes 1-20 de `docs/PLAN.md` implementadas y mergeadas — app
+  offline-first corriendo en el Xiaomi (venta, entrada, inventario, caja,
+  devoluciones, usuarios/roles reales, motor de sync last-write-wins + eventos
+  aditivos, panel de conflictos, chat IA + FAQ curado, tickets PDF); backend
+  con 10 routers `/api/v1`, 65 tests y 11 migraciones Alembic. Partes 21-29
+  pendientes (hallazgos de `docs/review_code.md`, revisión del 2026-08-30). El
+  detalle por Parte vive en `docs/PLAN.md`.
 
 ## 2. Estructura del repositorio
 
@@ -27,8 +33,11 @@ PDV/
 ├── backend/     -> API FastAPI (Python)
 ├── scripts/     -> Scripts multiplataforma de arranque/detención del backend
 └── docs/
-    ├── api-contract.md   -> Contrato de endpoints (fuente de verdad compartida)
-    └── PLAN.md            -> Diseño en desarrollo (features no estabilizados aún)
+    ├── api-contract.md       -> Contrato de endpoints (fuente de verdad compartida)
+    ├── PLAN.md               -> Diseño en desarrollo (features no estabilizados aún)
+    ├── schema-pos.json       -> Esquema de datos compartido (3er artefacto de la compuerta schema-parity, sec. 9)
+    ├── review_code.md        -> Revisión de código del 2026-08-30 (fuente de las Partes 21-29)
+    └── inventario-inicial.csv -> Catálogo de ejemplo para la importación CSV
 ```
 
 Todos los documentos necesarios para planificar y ejecutar este proyecto se
@@ -53,8 +62,9 @@ y `docs/PLAN.md` queda como bitácora histórica de esa sección.
 - Kotlin, Jetpack Compose (UI declarativa)
 - Arquitectura: MVVM (ViewModel + StateFlow/UiState)
 - Inyección de dependencias: Hilt
-- Networking: Retrofit + kotlinx.serialization (o Ktor si se decide luego)
+- Networking: Retrofit + kotlinx.serialization
 - Persistencia local: Room (SQLite) — fuente de datos del modo local/offline
+- CameraX + ML Kit barcode scanning — escaneo de código de barras en Venta/Entrada
 - WorkManager — dispara sincronización diferida en background cuando hay conectividad
 - DataStore — guarda la preferencia de `BackendMode` (local/remoto) y estado de sync
 - Corrutinas para concurrencia estructurada (nunca `GlobalScope`)
@@ -162,13 +172,13 @@ dispositivo no está disponible.
 ### Convenciones
 - Endpoints agrupados por `APIRouter` en `app/routers/`.
 - Esquemas de entrada/salida en `app/schemas/` (Pydantic), nunca reutilizar modelos ORM directamente como response_model.
-- Manejo de errores centralizado con `HTTPException` + un exception handler global.
+- Manejo de errores centralizado con `HTTPException` + un exception handler global (pendiente, PLAN.md Parte 25).
 - Todas las rutas versionadas bajo `/api/v1/...`.
 
 ### Logging
 - Módulo `logging` estándar de Python, nunca `print()`.
 - Nivel `INFO` por defecto; `ERROR` en excepciones no capturadas por el
-  exception handler global.
+  exception handler global (pendiente, PLAN.md Parte 25).
 - Salida a stdout/stderr (el contenedor Docker la captura); sin archivos
   propios ni rotación — es logging operativo del servidor, distinto del
   sistema de auditoría de la app Android (`docs/PLAN.md`, módulo Logs), que
@@ -224,7 +234,8 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
 - **Android**: por ahora, builds locales (`./gradlew assembleDebug`).
   [TODO: definir cuándo se sube a Play Console Internal Testing]
 - Aún no hay CI/CD configurado — es una tarea pendiente de priorizar
-  (sugerencia: GitHub Actions con un workflow por módulo).
+  (sugerencia: GitHub Actions con un workflow por módulo). Trackeado en
+  PLAN.md Parte 26.
 
 ## 8. Convenciones de nombres
 
@@ -328,7 +339,10 @@ Evita que un módulo con ~14 checkboxes dispare el límite de 12 stories por
 ### feature-dev
 
 Del plugin se usan únicamente sus subagentes, delegados desde el comando
-`/parte` en las Partes 6, 7, 13 y 15 de `docs/PLAN.md`: las que implican
-decisiones de arquitectura compartida por varios módulos. El comando
-`/feature-dev` no se invoca; su flujo de 7 fases duplica las compuertas de
-aprobación que los checklists ya definen.
+`/parte` en las Partes 6, 7, 13, 15, 21, 23 y 25 de `docs/PLAN.md`: las que
+implican decisiones de arquitectura compartida por varios módulos (6/7/13/15 ya
+completadas; 21 = auth JWT backend + cliente Android, 23 = idempotencia de sync
+backend + contrato + motor de sync, 25 = enums de dominio compartidos entre
+Pydantic, constantes Kotlin y `schema-pos.json`). El comando `/feature-dev` no
+se invoca; su flujo de 7 fases duplica las compuertas de aprobación que los
+checklists ya definen.
