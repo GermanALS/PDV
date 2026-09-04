@@ -3548,20 +3548,20 @@ Objetivo: secretos rotados, `.env` fuera del repo (o reducido a un
 ### Checklist
 
 **1. Rotación de credenciales** (POS-104)
-- [ ] PAT de GitHub revocado y regenerado. Criterio: el token anterior deja de
+- [x] PAT de GitHub revocado y regenerado. Criterio: el token anterior deja de
   autenticar (verificación manual). `needs-device`
-- [ ] API key de DeepSeek rotada. Criterio: la key anterior deja de responder;
+- [x] API key de DeepSeek rotada. Criterio: la key anterior deja de responder;
   la nueva se inyecta por variable de entorno donde se necesite. `needs-device`
 
 **2. Saneamiento del repo** (POS-105)
-- [ ] Confirmado si `.env` hace falta en runtime. Si no, se elimina; si sí, se
+- [x] Confirmado si `.env` hace falta en runtime. Si no, se elimina; si sí, se
   reemplaza por `.env.example` sin valores y se documenta en `CLAUDE.md` /
   `README.md` que la inyección es por entorno. Criterio: `git status` limpio y
   ningún secreto real versionado.
-- [ ] `.gitignore` revisado para cubrir `.env` en todos los subdirectorios.
+- [x] `.gitignore` revisado para cubrir `.env` en todos los subdirectorios.
 
 **3. Higiene de config de despliegue** (POS-106, = B-3)
-- [ ] `docker-compose.yml`: `JWT_SECRET_KEY` explícito por entorno (no el default
+- [x] `docker-compose.yml`: `JWT_SECRET_KEY` explícito por entorno (no el default
   `dev-secret-key-cambiar-en-produccion` de `security.py`); credenciales de
   Postgres fuera de `pdv/pdv` para cualquier entorno no-local; revisada la
   exposición del puerto `5432:5432`. Criterio: `docker compose config` no muestra
@@ -3569,11 +3569,13 @@ Objetivo: secretos rotados, `.env` fuera del repo (o reducido a un
 
 ### Decisiones abiertas
 
-- [ ] ¿`.env` se elimina del repo por completo, o se conserva un `.env.example`
-  documentado?
-- [ ] ¿La config de despliegue no-local se maneja con un `docker-compose` de
+- [x] ¿`.env` se elimina del repo por completo, o se conserva un `.env.example`
+  documentado? — Resuelto: se elimina por completo (nada lo consume en runtime).
+- [x] ¿La config de despliegue no-local se maneja con un `docker-compose` de
   override, variables de entorno del host, o un gestor de secretos? (hoy no hay
-  destino de despliegue definido - `CLAUDE.md` §7).
+  destino de despliegue definido - `CLAUDE.md` §7). — Resuelto: override
+  `docker-compose.prod.yml` (gitignoreado) a partir de
+  `docker-compose.prod.yml.example`.
 
 ---
 

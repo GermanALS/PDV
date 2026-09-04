@@ -1,0 +1,14 @@
+# DATABASE_URL en backend debe reflejar a mano las mismas credenciales que
+# db.environment: docker compose no propaga variables entre servicios.
+services:
+  db:
+    environment:
+      POSTGRES_USER: cambiar-en-produccion
+      POSTGRES_PASSWORD: cambiar-en-produccion
+      POSTGRES_DB: pdv
+    ports: !override []
+
+  backend:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cambiar-en-produccion:cambiar-en-produccion@db:5432/pdv
+      JWT_SECRET_KEY: cambiar-en-produccion
