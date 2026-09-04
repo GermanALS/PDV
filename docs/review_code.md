@@ -18,8 +18,9 @@ comentarios que explican el "por qué" incluyendo hallazgos de revisiones previa
 Los puntos a atender antes de exponer el backend fuera de la red local o de distribuir la app a
 comercios reales son, en orden:
 
-1. **Ningún endpoint del backend valida el JWT** (ya está en el checklist del contrato, sección 1).
-2. **`.env` en la raíz contiene secretos reales** (PAT de GitHub y API key de DeepSeek).
+1. ~~**Ningún endpoint del backend valida el JWT**~~ — RESUELTO en la Parte 21 (PR #30).
+2. ~~**`.env` en la raíz contiene secretos reales** (PAT de GitHub y API key de DeepSeek).~~ —
+   RESUELTO en la Parte 22.
 3. **Los POST de sincronización no son idempotentes** (ventas, entradas, cortes, retiros): un reintento
    de red duplica datos.
 4. **`fallbackToDestructiveMigration(dropAllTables = true)` + `exportSchema = false`** en una app cuya
@@ -55,7 +56,14 @@ Severidad: **A** = atender antes de exponer/distribuir · **M** = atender pronto
 
 ### Backend
 
-#### A-1. Ningún endpoint valida el `access_token`
+#### ~~A-1. Ningún endpoint valida el `access_token`~~ — RESUELTO
+
+**RESUELTO** en la Parte 21 (`docs/PLAN.md`), PR #30 (merge `3cbde60`, 2026-09-02).
+Dependencia `usuario_actual` (`backend/app/dependencies.py`) aplicada al router
+`protected` de `app/main.py` (todos los routers salvo `auth` y `health`); el
+cliente Android adjunta `Authorization: Bearer` vía `AuthInterceptor` en modo
+REMOTO. Texto original del hallazgo abajo.
+
 `backend/app/security.py` genera el JWT en `create_access_token`, pero no existe ninguna dependencia
 (`get_current_user` o similar) ni `jwt.decode` en todo `backend/app/`. Todos los routers salvo
 `/auth/login` y `/health` están abiertos. Combinado con que `POST /usuarios` y `POST /roles` tampoco
@@ -70,7 +78,11 @@ Recomendación: agregar `HTTPBearer` + una dependencia `usuario_actual` que haga
 Añadir en Android un `Interceptor` que agregue `Authorization: Bearer` (hoy no se envía en ninguna
 request; `RemoteVentaRepository` y pares no lo incluyen).
 
-#### A-2. Secretos reales versionados en el working tree
+#### ~~A-2. Secretos reales versionados en el working tree~~ — RESUELTO
+
+**RESUELTO** en la Parte 22 (`docs/PLAN.md`): PAT de GitHub y API key de DeepSeek rotados, `.env`
+eliminado del working tree (nunca estuvo en el historial de git). Texto original del hallazgo abajo.
+
 `.env` (raíz) contiene un Personal Access Token de GitHub (`github_pat_...`) y una API key de DeepSeek
 (`sk-...`) en texto plano. El archivo está en `.gitignore` y **no aparece en el historial de git**
 (verificado), pero:
@@ -152,7 +164,13 @@ modelo/migración (el gate `schema-parity` de `CLAUDE.md`) pasaría verde. Recom
 haga `alembic upgrade head` sobre una base de test dedicada (o al menos un test que compare
 `Base.metadata` con el resultado de las migraciones).
 
-#### B-3. `docker-compose.yml`: Postgres expuesto con credenciales triviales
+#### ~~B-3. `docker-compose.yml`: Postgres expuesto con credenciales triviales~~ — RESUELTO
+
+**RESUELTO** en la Parte 22 (`docs/PLAN.md`): `docker-compose.yml` parametriza credenciales de Postgres
+y `JWT_SECRET_KEY` con `${VAR:-default-local}`; `docker-compose.prod.yml.example` documenta el override
+no-local (gitignoreado) que fija valores reales y quita la publicación de `5432` al host. Texto original
+del hallazgo abajo.
+
 `pdv/pdv` y `ports: 5432:5432`. Aceptable en local; no debe llegar así a ningún entorno compartido. El
 backend en compose no define `JWT_SECRET_KEY`, así que usa el default hardcodeado de `security.py`.
 
@@ -195,7 +213,13 @@ Para catálogos e historiales grandes esto escala mal (memoria y latencia). Opci
 paralela para agregación/orden, o mover esas consultas al backend cuando el modo lo permita (ya existe
 `GET /cortes-caja/totales` que agrega en Postgres con `Numeric`; falta el equivalente para stock).
 
-#### M-10. Enforcement de permisos sólo en UI
+#### ~~M-10. Enforcement de permisos sólo en UI~~ — RESUELTO
+
+**RESUELTO** en la Parte 21 (`docs/PLAN.md`), PR #30 (merge `3cbde60`, 2026-09-02).
+`verificar_modulo` + dict central `_ESCRITURA_MODULO` (`backend/app/permissions.py`)
+chequean el módulo del rol del usuario autenticado en las escrituras server-side
+(`403` si falta). Texto original del hallazgo abajo.
+
 `HelloScreen` oculta botones según `modulosPermitidos` y `HelloViewModel.onIntentoNavegar` valida, pero
 las pantallas se montan por callback: no hay una compuerta única. Con el backend sin auth (A-1), la
 única barrera real de un usuario sin permiso "usuarios" es que no vea el botón. Aceptable en modo
@@ -236,8 +260,8 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 
 | # | Acción | Módulo | Severidad |
 |---|--------|--------|-----------|
-| 1 | Revocar el PAT de GitHub y rotar la API key de DeepSeek de `.env`; confirmar si el archivo sigue haciendo falta | raíz | A |
-| 2 | Dependencia de auth (`HTTPBearer` + `jwt.decode`) en todos los routers salvo `/auth` y `/health`; interceptor `Authorization: Bearer` en Android | backend + android | A |
+| 1 | ~~Revocar el PAT de GitHub y rotar la API key de DeepSeek de `.env`; confirmar si el archivo sigue haciendo falta~~ **RESUELTO (Parte 22)** | raíz | A |
+| 2 | ~~Dependencia de auth (`HTTPBearer` + `jwt.decode`) en todos los routers salvo `/auth` y `/health`; interceptor `Authorization: Bearer` en Android~~ **RESUELTO (Parte 21, PR #30)** — incluye el enforcement de permisos por módulo server-side (M-10) | backend + android | A |
 | 3 | Hacer idempotentes los POST de venta/entrada/corte/retiro (id del dispositivo como clave, igual que `sync_conflicts`) | backend | A |
 | 4 | `exportSchema = true`, versionar esquemas, empezar migraciones de Room, quitar `fallbackToDestructiveMigration` | android | A |
 | 5 | Bloqueo de fila / `UPDATE` atómico en el decremento de inventario | backend | M |
@@ -259,3 +283,6 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 - El historial de git se revisó para confirmar que `.env` nunca fue commiteado: no aparece.
 - Los hallazgos A-1 y M-11 ya figuran como pendientes en `docs/api-contract.md` y `CLAUDE.md`
   respectivamente; se incluyen aquí por su impacto, no como omisión del equipo.
+- **Actualización 2026-09-02**: A-1 y M-10 resueltos en la Parte 21 (`docs/PLAN.md`),
+  PR #30 (merge `3cbde60`).
+- **Actualización 2026-09-04**: A-2 y B-3 resueltos en la Parte 22 (`docs/PLAN.md`).

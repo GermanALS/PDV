@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: pdv
-      POSTGRES_PASSWORD: pdv
-      POSTGRES_DB: pdv
+      POSTGRES_USER: ${POSTGRES_USER:-pdv}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pdv}
+      POSTGRES_DB: ${POSTGRES_DB:-pdv}
     ports:
       - "5432:5432"
     volumes:
       - pdv_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pdv"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,7 +20,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://pdv:pdv@db:5432/pdv
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pdv}:${POSTGRES_PASSWORD:-pdv}@db:5432/${POSTGRES_DB:-pdv}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-cambiar-en-produccion}
     depends_on:
       db:
         condition: service_healthy

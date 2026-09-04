@@ -241,6 +241,16 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
   (`start-mac.sh`/`stop-mac.sh`, `start-linux.sh`/`stop-linux.sh`,
   `start-windows.ps1`/`stop-windows.ps1`), disponible en
   `http://localhost:8000`. [TODO: definir destino final — Render/Fly.io/AWS/otro]
+- **Secretos de despliegue**: `docker-compose.yml` usa defaults solo-local
+  (`pdv`/`pdv`, `JWT_SECRET_KEY` de desarrollo) vía `${VAR:-default}`. Para
+  cualquier entorno no-local, copiar `docker-compose.prod.yml.example` a
+  `docker-compose.prod.yml` (gitignoreado, nunca versionado) con credenciales
+  reales y levantar con
+  `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
+  El override fija `JWT_SECRET_KEY` y credenciales de Postgres, y quita la
+  publicación del puerto `5432` al host. `DATABASE_URL` en `backend` debe
+  reflejar a mano las mismas credenciales que `db` — Compose no propaga
+  variables entre servicios.
 - **Android**: por ahora, builds locales (`./gradlew assembleDebug`).
   [TODO: definir cuándo se sube a Play Console Internal Testing]
 - Aún no hay CI/CD configurado — es una tarea pendiente de priorizar
