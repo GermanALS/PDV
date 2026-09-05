@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class CorteCajaCreateSchema(BaseModel):
-    local_id: uuid.UUID | None = None
+    local_id: uuid.UUID
     sucursal_id: uuid.UUID
     usuario_id: str = Field(min_length=1, max_length=120)
     tipo: Literal["parcial", "final"]
@@ -43,7 +43,7 @@ class CorteCajaResponseSchema(BaseModel):
 
 
 class RetiroEfectivoCreateSchema(BaseModel):
-    local_id: uuid.UUID | None = None
+    local_id: uuid.UUID
     sucursal_id: uuid.UUID
     usuario_id: str = Field(min_length=1, max_length=120)
     monto: Decimal = Field(gt=0)

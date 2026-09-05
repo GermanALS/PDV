@@ -12,7 +12,10 @@ class Movimiento(Base):
     __tablename__ = "movimientos"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    local_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # UNIQUE (permite multiples NULL): clave de idempotencia de POST /entradas
+    # (PLAN.md Parte 23) - migracion 0012. Las filas de venta/ajuste no
+    # llevan local_id, asi que no participan de la deduplicacion.
+    local_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, unique=True)
     sucursal_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sucursales.id"))
     articulo_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("articulos.id"))
     usuario_id: Mapped[str] = mapped_column(String(120))

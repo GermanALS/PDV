@@ -255,6 +255,15 @@ directo, mismo principio que `POST /entradas` (sección 6). Por eso cada
 verificación), `inventario.articulo_id`/`movimientos.articulo_id` sí la
 tienen.
 
+**Idempotente por `local_id`** (PLAN.md Parte 23, hallazgo A-3 de
+`docs/review_code.md`): `local_id` es obligatorio en el body y tiene
+constraint `UNIQUE` a nivel de tabla `ventas`. Reintentar el POST con el
+mismo `local_id` no crea una segunda venta, no vuelve a decrementar
+inventario ni a insertar movimientos — devuelve `200 OK` con la venta ya
+persistida (mismo shape que el `201`), igual criterio que
+`POST /sync-conflicts` (sección 3.2), salvo que aquí el `id` lo sigue
+generando el servidor (`local_id` es la clave de idempotencia, no la PK).
+
 ### 5.1 Registrar venta
 
 **POST** `/ventas`
@@ -267,7 +276,7 @@ crudo — evita perder precisión decimal en el viaje de ida y vuelta;
 Request body
 ```json
 {
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "folio": "string",
@@ -291,11 +300,17 @@ Request body
 ```
 `lineas` requiere al menos un elemento.
 
-Response `201 Created`
+Response `201 Created` → se creó una venta nueva.
+
+Response `200 OK` → ya existía una venta con ese `local_id` (reintento de
+sync); devuelve la fila existente sin duplicar ni volver a mover
+inventario.
+
+Ambos casos devuelven el mismo shape:
 ```json
 {
   "id": "uuid",
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "folio": "string",
@@ -323,7 +338,7 @@ Response `201 Created`
 ```
 
 Response `422 Unprocessable Entity` — `lineas` vacío, o falta
-`sucursal_id`/`usuario_id`/`folio`/`metodo_pago`.
+`local_id`/`sucursal_id`/`usuario_id`/`folio`/`metodo_pago`.
 
 Response `404 Not Found` — algún `articulo_id` de `lineas` no corresponde a
 ningún artículo existente.
@@ -351,6 +366,15 @@ Exactamente uno de `articulo_id` (artículo existente) o `articulo_nuevo`
 (artículo a dar de alta) debe venir en el body — nunca ambos, nunca
 ninguno.
 
+**Idempotente por `local_id`** (PLAN.md Parte 23, hallazgo A-3 de
+`docs/review_code.md`): el `local_id` de tope (no el de `articulo_nuevo`,
+que sigue siendo la correlación aparte del artículo) es obligatorio y se
+aplica al `movimiento` insertado — tiene constraint `UNIQUE` a nivel de
+tabla `movimientos`. Reintentar el POST con el mismo `local_id` no vuelve
+a incrementar inventario, no da de alta el artículo de nuevo, y no inserta
+un segundo movimiento — devuelve `200 OK` con `movimiento`/`inventario`/
+`articulo` ya persistidos (mismo shape que el `201`).
+
 ### 6.1 Registrar entrada
 
 **POST** `/entradas`
@@ -358,7 +382,7 @@ ninguno.
 Request body — artículo existente:
 ```json
 {
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "fecha": "2026-08-19T12:00:00Z",
@@ -371,7 +395,7 @@ Request body — artículo existente:
 Request body — artículo nuevo:
 ```json
 {
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "fecha": "2026-08-19T12:00:00Z",
@@ -391,12 +415,17 @@ Request body — artículo nuevo:
 }
 ```
 
-Response `201 Created`
+Response `201 Created` → se creó una entrada nueva.
+
+Response `200 OK` → ya existía un movimiento con ese `local_id` (reintento
+de sync); devuelve el estado ya persistido sin duplicar.
+
+Ambos casos devuelven el mismo shape:
 ```json
 {
   "movimiento": {
     "id": "uuid",
-    "local_id": "uuid o null",
+    "local_id": "uuid",
     "sucursal_id": "uuid",
     "articulo_id": "uuid",
     "usuario_id": "admin",
@@ -442,9 +471,9 @@ Response `201 Created`
 `articulo` es `null` cuando la entrada fue de un artículo existente
 (`articulo_id`), ya que no hubo alta de catálogo.
 
-Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
-`cantidad`, o el body trae tanto `articulo_id` como `articulo_nuevo` (o
-ninguno de los dos).
+Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
+`usuario_id`/`cantidad`, o el body trae tanto `articulo_id` como
+`articulo_nuevo` (o ninguno de los dos).
 
 Response `404 Not Found` — `articulo_id` no corresponde a ningún artículo
 existente.
@@ -619,6 +648,13 @@ FK real entre `retiros_efectivo` y `cortes_caja` — se relacionan por rango
 de fecha del lado del dispositivo, nunca por referencia (PLAN.md Parte 10,
 "Decisiones abiertas").
 
+**Idempotentes por `local_id`** (PLAN.md Parte 23, hallazgo A-3 de
+`docs/review_code.md`): en ambas rutas `local_id` es obligatorio y tiene
+constraint `UNIQUE` a nivel de tabla (`cortes_caja` / `retiros_efectivo`
+respectivamente). Reintentar cualquiera de los dos POST con el mismo
+`local_id` no duplica la fila — devuelve `200 OK` con la fila ya
+persistida (mismo shape que el `201`).
+
 ### 8.1 Registrar corte de caja
 
 **POST** `/cortes-caja`
@@ -629,7 +665,7 @@ sección 5).
 Request body
 ```json
 {
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "tipo": "parcial",
@@ -647,11 +683,16 @@ Request body
 `tipo` es `"parcial"` o `"final"`. `monto_contado`/`diferencia` son `null`
 si el corte se guarda sin contar el efectivo físico todavía.
 
-Response `201 Created`
+Response `201 Created` → se creó un corte nuevo.
+
+Response `200 OK` → ya existía un corte con ese `local_id` (reintento de
+sync); devuelve la fila existente sin duplicar.
+
+Ambos casos devuelven el mismo shape:
 ```json
 {
   "id": "uuid",
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "tipo": "parcial",
@@ -670,9 +711,10 @@ Response `201 Created`
 }
 ```
 
-Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
-`tipo`/`fecha_inicio`/`fecha_fin`/`total_ventas`/`total_efectivo`/
-`total_tarjeta`/`monto_esperado`, o `tipo` no es `"parcial"`/`"final"`.
+Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
+`usuario_id`/`tipo`/`fecha_inicio`/`fecha_fin`/`total_ventas`/
+`total_efectivo`/`total_tarjeta`/`monto_esperado`, o `tipo` no es
+`"parcial"`/`"final"`.
 
 ### 8.2 Registrar retiro de efectivo
 
@@ -681,7 +723,7 @@ Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
 Request body
 ```json
 {
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "monto": "100.00",
@@ -690,11 +732,16 @@ Request body
 }
 ```
 
-Response `201 Created`
+Response `201 Created` → se creó un retiro nuevo.
+
+Response `200 OK` → ya existía un retiro con ese `local_id` (reintento de
+sync); devuelve la fila existente sin duplicar.
+
+Ambos casos devuelven el mismo shape:
 ```json
 {
   "id": "uuid",
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "monto": "100.00",
@@ -706,8 +753,8 @@ Response `201 Created`
 }
 ```
 
-Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
-`monto`/`fecha`, o `monto` no es mayor que `0`.
+Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
+`usuario_id`/`monto`/`fecha`, o `monto` no es mayor que `0`.
 
 ### 8.3 Totales de un periodo (para calcular un corte)
 

@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import case, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -61,7 +62,9 @@ def _retiro_to_response(retiro: RetiroEfectivo) -> RetiroEfectivoResponseSchema:
 # persiste el corte ya calculado, sin recalcular nada del lado del
 # servidor (mismo criterio que POST /sucursales).
 @router.post("/cortes-caja", response_model=CorteCajaResponseSchema, status_code=201)
-async def create_corte_caja(payload: CorteCajaCreateSchema, db: AsyncSession = Depends(get_db)) -> CorteCajaResponseSchema:
+async def create_corte_caja(
+    payload: CorteCajaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+) -> CorteCajaResponseSchema:
     corte = CorteCaja(
         local_id=payload.local_id,
         sucursal_id=payload.sucursal_id,
@@ -78,7 +81,18 @@ async def create_corte_caja(payload: CorteCajaCreateSchema, db: AsyncSession = D
         diferencia=payload.diferencia,
     )
     db.add(corte)
-    await db.commit()
+    # Idempotente por local_id (PLAN.md Parte 23): UNIQUE(local_id) en
+    # cortes_caja - un reintento choca al commitear y se resuelve
+    # devolviendo la fila ya persistida en vez de duplicar.
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existente = (
+            await db.execute(select(CorteCaja).where(CorteCaja.local_id == payload.local_id))
+        ).scalar_one()
+        response.status_code = 200
+        return _corte_to_response(existente)
     await db.refresh(corte)
     return _corte_to_response(corte)
 
@@ -163,7 +177,7 @@ async def get_totales_corte(
 
 @router.post("/retiros-efectivo", response_model=RetiroEfectivoResponseSchema, status_code=201)
 async def create_retiro_efectivo(
-    payload: RetiroEfectivoCreateSchema, db: AsyncSession = Depends(get_db)
+    payload: RetiroEfectivoCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
 ) -> RetiroEfectivoResponseSchema:
     retiro = RetiroEfectivo(
         local_id=payload.local_id,
@@ -174,7 +188,17 @@ async def create_retiro_efectivo(
         fecha=payload.fecha,
     )
     db.add(retiro)
-    await db.commit()
+    # Idempotente por local_id (PLAN.md Parte 23): UNIQUE(local_id) en
+    # retiros_efectivo, mismo criterio que POST /cortes-caja.
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existente = (
+            await db.execute(select(RetiroEfectivo).where(RetiroEfectivo.local_id == payload.local_id))
+        ).scalar_one()
+        response.status_code = 200
+        return _retiro_to_response(existente)
     await db.refresh(retiro)
     return _retiro_to_response(retiro)
 
