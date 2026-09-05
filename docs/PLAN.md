@@ -3598,21 +3598,21 @@ datos y devuelve la entidad ya persistida.
 ### Checklist
 
 **1. Contrato** (POS-108)
-- [ ] `docs/api-contract.md` secciones 5 (ventas), 6 (entradas) y 8
+- [x] `docs/api-contract.md` secciones 5 (ventas), 6 (entradas) y 8
   (cortes/retiros): POST idempotente por `local_id`; `201` cuando se crea, `200`
   cuando ya existía (mismo shape de respuesta que `sync-conflicts` §3.2).
   Criterio: secciones revisadas y aprobadas antes de tocar código. `needs-approval`
 
 **2. Backend** (POS-109)
-- [ ] En cada uno de los 4 POST: chequeo previo por `local_id` -> si existe,
+- [x] En cada uno de los 4 POST: chequeo previo por `local_id` -> si existe,
   `200` con la fila existente sin insertar ni recalcular inventario/movimientos;
   si no, el camino actual. Criterio: `pytest` por ruta - "POST repetido con el
   mismo `local_id` devuelve `200`, no duplica la fila, no vuelve a mover
   inventario".
-- [ ] Si se elige el constraint `UNIQUE(local_id)` (ver Decisiones abiertas):
+- [x] Si se elige el constraint `UNIQUE(local_id)` (ver Decisiones abiertas):
   migración Alembic en las 4 tablas + captura de `IntegrityError`. `schema-parity`
   (JSON de `docs/` + entidad Room + migración Alembic alineados).
-- [ ] `pytest` completo en verde. `jvm-tests`
+- [x] `pytest` completo en verde. `jvm-tests` (149/149, 2026-09-04)
 
 **3. Verificación end-to-end** (POS-110)
 - [ ] Sincronización con corte de red simulado entre el commit del servidor y la
@@ -3621,13 +3621,17 @@ datos y devuelve la entidad ya persistida.
 
 ### Decisiones abiertas
 
-- [ ] ¿Pre-chequeo con `db.get(local_id)` (sin cambio de esquema, más simple) o
+- [x] ¿Pre-chequeo con `db.get(local_id)` (sin cambio de esquema, más simple) o
   `UNIQUE(local_id)` + `IntegrityError` (robusto ante dos reintentos concurrentes,
-  requiere migración en 4 tablas)? Propuesta: `UNIQUE(local_id)`.
-- [ ] ¿`local_id` pasa a ser obligatorio (no-null) en el body de esos 4 POST, o
-  sigue nullable y la idempotencia solo aplica cuando viene?
-- [ ] ¿Alcance solo backend, o el motor de sync de Android también debe marcar la
+  requiere migración en 4 tablas)? **Resuelto: `UNIQUE(local_id)`** (migración 0012).
+- [x] ¿`local_id` pasa a ser obligatorio (no-null) en el body de esos 4 POST, o
+  sigue nullable y la idempotencia solo aplica cuando viene? **Resuelto: obligatorio**
+  en los 4 `*CreateSchema` de tope (no en `VentaDetalleCreateSchema.local_id` ni
+  `ArticuloNuevoSchema.local_id`, que siguen opcionales).
+- [x] ¿Alcance solo backend, o el motor de sync de Android también debe marcar la
   entidad como sincronizada al recibir el `200` (hoy podría re-encolarla)?
+  **Resuelto: solo backend** - no existe todavía motor de push/reintento en el
+  cliente Android.
 
 ---
 
