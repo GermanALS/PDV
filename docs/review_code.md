@@ -23,8 +23,8 @@ comercios reales son, en orden:
    RESUELTO en la Parte 22.
 3. **Los POST de sincronización no son idempotentes** (ventas, entradas, cortes, retiros): un reintento
    de red duplica datos.
-4. **`fallbackToDestructiveMigration(dropAllTables = true)` + `exportSchema = false`** en una app cuya
-   base local es la fuente de verdad.
+4. ~~**`fallbackToDestructiveMigration(dropAllTables = true)` + `exportSchema = false`** en una app cuya
+   base local es la fuente de verdad.~~ — RESUELTO en la Parte 24.
 5. **Condición de carrera en el decremento de inventario** del backend (read-modify-write sin bloqueo).
 
 Ninguno es un defecto de diseño de fondo; son piezas pendientes coherentes con el estado "scaffolding".
@@ -185,7 +185,16 @@ Añadir un usuario no privilegiado (`RUN adduser ... && USER app`).
 
 ### Android
 
-#### A-4. Migración destructiva + `exportSchema = false`
+#### ~~A-4. Migración destructiva + `exportSchema = false`~~ — RESUELTO
+
+**RESUELTO** en la Parte 24 (`docs/PLAN.md`, POS-111): `exportSchema = true` +
+`room.schemaLocation` en `app/build.gradle.kts` (JSON de esquema v7 versionado en git);
+`fallbackToDestructiveMigration` eliminado de `DatabaseModule.kt`. Línea base v7 (sin
+datos de producción que preservar); la primera migración real (7 -> 8, con su test
+`MigrationTestHelper` instrumentado) queda para la próxima Parte que toque el esquema.
+Verificado en dispositivo: instalación sobre datos previos (ventas/inventario/cortes)
+sin pérdida. Texto original del hallazgo abajo.
+
 `di/DatabaseModule.kt`: `.fallbackToDestructiveMigration(dropAllTables = true)`. `PdvDatabase` está en
 `version = 7` con `exportSchema = false`. En una app offline-first donde Room **es** la fuente de
 verdad, el primer cambio de esquema tras tener datos reales en un dispositivo borra todo el inventario,
@@ -269,7 +278,7 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 | 1 | ~~Revocar el PAT de GitHub y rotar la API key de DeepSeek de `.env`; confirmar si el archivo sigue haciendo falta~~ **RESUELTO (Parte 22)** | raíz | A |
 | 2 | ~~Dependencia de auth (`HTTPBearer` + `jwt.decode`) en todos los routers salvo `/auth` y `/health`; interceptor `Authorization: Bearer` en Android~~ **RESUELTO (Parte 21, PR #30)** — incluye el enforcement de permisos por módulo server-side (M-10) | backend + android | A |
 | 3 | Hacer idempotentes los POST de venta/entrada/corte/retiro (id del dispositivo como clave, igual que `sync_conflicts`) | backend | A |
-| 4 | `exportSchema = true`, versionar esquemas, empezar migraciones de Room, quitar `fallbackToDestructiveMigration` | android | A |
+| 4 | ~~`exportSchema = true`, versionar esquemas, empezar migraciones de Room, quitar `fallbackToDestructiveMigration`~~ **RESUELTO (Parte 24)** | android | A |
 | 5 | Bloqueo de fila / `UPDATE` atómico en el decremento de inventario | backend | M |
 | 6 | `Literal`/enum para `metodo_pago` y `estado` de venta, alineado con las queries de caja y con Android | backend + android | M |
 | 7 | Exception handler global + `CORSMiddleware`; capturar `IntegrityError` en `entradas` | backend | M |
@@ -292,3 +301,4 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 - **Actualización 2026-09-02**: A-1 y M-10 resueltos en la Parte 21 (`docs/PLAN.md`),
   PR #30 (merge `3cbde60`).
 - **Actualización 2026-09-04**: A-2 y B-3 resueltos en la Parte 22 (`docs/PLAN.md`).
+- **Actualización 2026-09-04**: A-4 resuelto en la Parte 24 (`docs/PLAN.md`, POS-111).
