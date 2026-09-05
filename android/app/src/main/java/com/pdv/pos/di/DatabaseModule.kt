@@ -27,12 +27,7 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun providePdvDatabase(@ApplicationContext context: Context): PdvDatabase =
-        Room.databaseBuilder(context, PdvDatabase::class.java, "pdv.db")
-            // Sin migraciones formales todavia (proyecto en desarrollo activo,
-            // sin datos de produccion que preservar) - un cambio de version
-            // recrea el esquema en vez de crashear en el siguiente arranque.
-            .fallbackToDestructiveMigration(dropAllTables = true)
-            .build()
+        Room.databaseBuilder(context, PdvDatabase::class.java, "pdv.db").build()
 
     @Provides
     fun provideSucursalDao(database: PdvDatabase): SucursalDao = database.sucursalDao()

@@ -3659,19 +3659,22 @@ distribución a un comercio.
 ### Checklist
 
 **1. Exportar y versionar el esquema** (POS-112)
-- [ ] `exportSchema = true` en `@Database` + `room.schemaLocation` configurado en
+- [x] `exportSchema = true` en `@Database` + `room.schemaLocation` configurado en
   `app/build.gradle.kts`; los JSON generados quedan versionados en git. Criterio:
   `./gradlew build` genera `app/schemas/com.pdv.pos.data.local.PdvDatabase/7.json`.
 
 **2. Línea base y migraciones** (POS-113)
-- [ ] Definida la línea base (ver Decisiones abiertas) y escrito el andamiaje de
+- [x] Definida la línea base (ver Decisiones abiertas) y escrito el andamiaje de
   `Migration` (aunque la primera sea 7 -> 8 en la próxima Parte que toque
   esquema). `fallbackToDestructiveMigration` eliminado; `Room.databaseBuilder`
   registra las migraciones. Criterio: `./gradlew build` en verde y arranque
   limpio sobre una `pdv.db` existente en v7.
 - [ ] Test de migración con `MigrationTestHelper` para la primera migración real.
   Criterio: el test aplica la migración y valida el esquema resultante.
-  `jvm-tests` o `needs-device` según el runner elegido.
+  `jvm-tests` o `needs-device` según el runner elegido. Diferido: con línea
+  base v7 no hay ninguna migración real todavía que testear (la primera es
+  7 -> 8, en la próxima Parte que toque el esquema); se cierra ese ítem ahí,
+  como instrumentado (`needs-device`, ver decisión abajo).
 
 **3. Verificación en dispositivo** (POS-114)
 - [ ] Instalar una versión con esquema nuevo sobre una instalación previa con
@@ -3679,14 +3682,17 @@ distribución a un comercio.
 
 ### Decisiones abiertas
 
-- [ ] ¿Línea base en la v7 actual (nadie tiene datos de producción que preservar;
+- [x] ¿Línea base en la v7 actual (nadie tiene datos de producción que preservar;
   se asume v7 como punto de partida y se escriben migraciones de v7 en adelante),
-  o se reconstruye el historial 1 -> 7? Propuesta: línea base v7.
-- [ ] Tests de migración: ¿instrumentados (`connectedAndroidTest`, `needs-device`,
+  o se reconstruye el historial 1 -> 7? Propuesta: línea base v7. **Resuelto:
+  línea base v7.**
+- [x] Tests de migración: ¿instrumentados (`connectedAndroidTest`, `needs-device`,
   sin dependencia nueva) o Robolectric (corre en JVM, `jvm-tests`, pero es
-  dependencia nueva - CLAUDE.md §9)?
-- [ ] ¿Se aprovecha esta Parte para dejar `exportSchema` como gate permanente
+  dependencia nueva - CLAUDE.md §9)? **Resuelto: instrumentados
+  (`connectedAndroidTest`), sin dependencia nueva.**
+- [x] ¿Se aprovecha esta Parte para dejar `exportSchema` como gate permanente
   (CI que falla si el JSON no está commiteado)? (se cruza con la Parte 26).
+  **Resuelto: no, queda para la Parte 26 (CI de Android, POS-123).**
 
 ---
 
