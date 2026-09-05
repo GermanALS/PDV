@@ -65,7 +65,7 @@ class MovimientoResponseSchema(BaseModel):
 
 
 class EntradaCreateSchema(BaseModel):
-    local_id: uuid.UUID | None = None
+    local_id: uuid.UUID
     sucursal_id: uuid.UUID
     usuario_id: str = Field(min_length=1, max_length=120)
     fecha: datetime

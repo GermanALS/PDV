@@ -23,7 +23,7 @@ class VentaDetalleResponseSchema(BaseModel):
 
 
 class VentaCreateSchema(BaseModel):
-    local_id: uuid.UUID | None = None
+    local_id: uuid.UUID
     sucursal_id: uuid.UUID
     usuario_id: str = Field(min_length=1, max_length=120)
     folio: str = Field(min_length=1, max_length=60)

@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
+from app.models.venta import Venta
 
 
 async def _seeded_sucursal_id(client_autenticado) -> str:
@@ -15,6 +16,7 @@ async def _articulo_con_existencia(client_autenticado, sucursal_id: str, sku: st
     response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "fecha": "2026-08-19T12:00:00Z",
@@ -37,6 +39,7 @@ async def test_create_venta_happy_path(client_autenticado):
     response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "folio": "F-001",
@@ -75,6 +78,7 @@ async def test_create_venta_decrements_inventario_and_creates_movimiento(client_
     response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "folio": "F-003",
@@ -123,6 +127,7 @@ async def test_create_venta_without_lineas_returns_422(client_autenticado):
     response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "folio": "F-002",
@@ -143,6 +148,7 @@ async def test_create_venta_articulo_id_inexistente_returns_404(client_autentica
     response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "folio": "F-004",
@@ -162,3 +168,77 @@ async def test_create_venta_articulo_id_inexistente_returns_404(client_autentica
     )
 
     assert response.status_code == 404
+
+
+async def test_create_venta_sin_local_id_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.post(
+        "/api/v1/ventas",
+        json={
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "folio": "F-005",
+            "fecha": "2026-08-19T12:00:00Z",
+            "subtotal": "50.00",
+            "total": "50.00",
+            "metodo_pago": "efectivo",
+            "lineas": [
+                {
+                    "articulo_id": str(uuid.uuid4()),
+                    "cantidad": "1",
+                    "precio_unitario": "50.00",
+                    "subtotal": "50.00",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+
+
+async def test_create_venta_reintento_con_mismo_local_id_es_idempotente(client_autenticado, session):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="VTA-005", cantidad="10")
+    payload = {
+        "local_id": str(uuid.uuid4()),
+        "sucursal_id": sucursal_id,
+        "usuario_id": "admin",
+        "folio": "F-006",
+        "fecha": "2026-08-19T12:00:00Z",
+        "subtotal": "150.00",
+        "total": "150.00",
+        "metodo_pago": "efectivo",
+        "lineas": [
+            {
+                "articulo_id": articulo_id,
+                "cantidad": "3",
+                "precio_unitario": "50.00",
+                "subtotal": "150.00",
+            }
+        ],
+    }
+
+    primera = await client_autenticado.post("/api/v1/ventas", json=payload)
+    segunda = await client_autenticado.post("/api/v1/ventas", json=payload)
+
+    assert primera.status_code == 201
+    assert segunda.status_code == 200
+    assert segunda.json()["id"] == primera.json()["id"]
+
+    ventas = (
+        await session.execute(
+            select(Venta).where(Venta.local_id == uuid.UUID(payload["local_id"]))
+        )
+    ).scalars().all()
+    assert len(ventas) == 1
+
+    inventario = (
+        await session.execute(
+            select(Inventario).where(
+                Inventario.sucursal_id == uuid.UUID(sucursal_id),
+                Inventario.articulo_id == uuid.UUID(articulo_id),
+            )
+        )
+    ).scalar_one()
+    assert inventario.cantidad == 7

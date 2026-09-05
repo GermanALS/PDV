@@ -94,7 +94,13 @@ eliminado del working tree (nunca estuvo en el historial de git). Texto original
   `API_KEY_DEEPSEEK` sólo si algo lo lee (no se encontró uso en `backend/app/`). Aclarar si el archivo
   sigue siendo necesario; si no, eliminarlo.
 
-#### A-3. POST de sincronización no idempotentes
+#### ~~A-3. POST de sincronización no idempotentes~~ — RESUELTO
+
+**RESUELTO** en la Parte 23 (`docs/PLAN.md`, POS-107): `UNIQUE(local_id)` (migración Alembic 0012) +
+captura de `IntegrityError` en los 4 routers, devolviendo `200` con la fila existente en reintentos.
+Verificado con `pytest` (149/149) y manualmente contra Docker (2 POST consecutivos por ruta, sin
+duplicados). Texto original del hallazgo abajo.
+
 `POST /ventas`, `POST /entradas`, `POST /cortes-caja`, `POST /retiros-efectivo` generan un `id` nuevo
 en el servidor (`default=uuid.uuid4`) e ignoran `local_id` salvo para guardarlo. Un dispositivo que
 envía una venta, el servidor la persiste, y la respuesta se pierde por corte de red -> el reintento

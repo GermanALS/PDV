@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.articulo import Articulo
@@ -46,7 +48,9 @@ def _to_response(venta: Venta) -> VentaResponseSchema:
 
 
 @router.post("/ventas", response_model=VentaResponseSchema, status_code=201)
-async def create_venta(payload: VentaCreateSchema, db: AsyncSession = Depends(get_db)) -> VentaResponseSchema:
+async def create_venta(
+    payload: VentaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+) -> VentaResponseSchema:
     for linea in payload.lineas:
         if await db.get(Articulo, linea.articulo_id) is None:
             raise HTTPException(status_code=404, detail=f"articulo no encontrado: {linea.articulo_id}")
@@ -75,7 +79,20 @@ async def create_venta(payload: VentaCreateSchema, db: AsyncSession = Depends(ge
         ],
     )
     db.add(venta)
-    await db.flush()
+    # Idempotente por local_id (PLAN.md Parte 23): UNIQUE(local_id) en
+    # ventas. Un reintento choca aca, antes de tocar inventario/movimientos
+    # - se resuelve devolviendo la venta ya persistida en vez de duplicar.
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        existente = (
+            await db.execute(
+                select(Venta).options(selectinload(Venta.lineas)).where(Venta.local_id == payload.local_id)
+            )
+        ).scalar_one()
+        response.status_code = 200
+        return _to_response(existente)
 
     # Decremento real de inventario.cantidad + movimiento de salida por
     # linea, en la misma transaccion que la venta (PLAN.md Parte 9, gap

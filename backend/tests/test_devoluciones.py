@@ -10,6 +10,7 @@ async def _articulo_con_existencia(client_autenticado, sucursal_id: str, sku: st
     response = await client_autenticado.post(
         "/api/v1/entradas",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "fecha": "2026-08-20T12:00:00Z",
@@ -29,6 +30,7 @@ async def _venta_registrada(client_autenticado, sucursal_id: str, articulo_id: s
     response = await client_autenticado.post(
         "/api/v1/ventas",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "folio": folio,

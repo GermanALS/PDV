@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -69,58 +70,101 @@ def _movimiento_to_response(movimiento: Movimiento) -> MovimientoResponseSchema:
     )
 
 
-@router.post("/entradas", response_model=EntradaResponseSchema, status_code=201)
-async def create_entrada(payload: EntradaCreateSchema, db: AsyncSession = Depends(get_db)) -> EntradaResponseSchema:
-    articulo: Articulo | None = None
-    if payload.articulo_nuevo is not None:
-        articulo = Articulo(**payload.articulo_nuevo.model_dump())
-        db.add(articulo)
-        await db.flush()
-        articulo_id = articulo.id
-    else:
-        articulo_id = payload.articulo_id
-        existente = await db.get(Articulo, articulo_id)
-        if existente is None:
-            raise HTTPException(status_code=404, detail="articulo no encontrado")
-
-    resultado_inventario = await db.execute(
-        select(Inventario).where(
-            Inventario.sucursal_id == payload.sucursal_id,
-            Inventario.articulo_id == articulo_id,
+async def _entrada_existente_response(
+    db: AsyncSession, payload: EntradaCreateSchema
+) -> EntradaResponseSchema:
+    movimiento = (
+        await db.execute(select(Movimiento).where(Movimiento.local_id == payload.local_id))
+    ).scalar_one()
+    inventario = (
+        await db.execute(
+            select(Inventario).where(
+                Inventario.sucursal_id == movimiento.sucursal_id,
+                Inventario.articulo_id == movimiento.articulo_id,
+            )
         )
+    ).scalar_one()
+    articulo = await db.get(Articulo, movimiento.articulo_id) if payload.articulo_nuevo is not None else None
+    return EntradaResponseSchema(
+        movimiento=_movimiento_to_response(movimiento),
+        inventario=_inventario_to_response(inventario),
+        articulo=_articulo_to_response(articulo) if articulo is not None else None,
     )
-    inventario = resultado_inventario.scalar_one_or_none()
-    if inventario is None:
-        inventario = Inventario(
+
+
+@router.post("/entradas", response_model=EntradaResponseSchema, status_code=201)
+async def create_entrada(
+    payload: EntradaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+) -> EntradaResponseSchema:
+    articulo: Articulo | None = None
+    # Idempotente por local_id (PLAN.md Parte 23): UNIQUE(local_id) en
+    # movimientos. Todo el flujo de escritura (alta de articulo, upsert de
+    # inventario, insert de movimiento) va en un solo try - en un reintento
+    # con articulo_nuevo, el primer choque de UNIQUE puede darse antes en el
+    # flush intermedio del articulo (UNIQUE en sku), no en el commit final.
+    # El rollback deshace toda la transaccion (incluido el alta de
+    # articulo/inventario), y se devuelve el estado ya persistido en vez de
+    # duplicar - salvo que el conflicto no corresponda a un reintento (ej.
+    # sku duplicado real), en cuyo caso se relanza el error original.
+    try:
+        if payload.articulo_nuevo is not None:
+            articulo = Articulo(**payload.articulo_nuevo.model_dump())
+            db.add(articulo)
+            await db.flush()
+            articulo_id = articulo.id
+        else:
+            articulo_id = payload.articulo_id
+            existente = await db.get(Articulo, articulo_id)
+            if existente is None:
+                raise HTTPException(status_code=404, detail="articulo no encontrado")
+
+        resultado_inventario = await db.execute(
+            select(Inventario).where(
+                Inventario.sucursal_id == payload.sucursal_id,
+                Inventario.articulo_id == articulo_id,
+            )
+        )
+        inventario = resultado_inventario.scalar_one_or_none()
+        if inventario is None:
+            inventario = Inventario(
+                sucursal_id=payload.sucursal_id,
+                articulo_id=articulo_id,
+                cantidad=payload.cantidad,
+                ubicacion=payload.ubicacion,
+            )
+            db.add(inventario)
+        else:
+            # Delta con signo, nunca un UPDATE cantidad = X directo (mismo
+            # principio que EventoAditivoCombiner del lado Android, PLAN.md
+            # Parte 6).
+            inventario.cantidad = inventario.cantidad + payload.cantidad
+            if payload.ubicacion is not None:
+                inventario.ubicacion = payload.ubicacion
+
+        movimiento = Movimiento(
+            local_id=payload.local_id,
             sucursal_id=payload.sucursal_id,
             articulo_id=articulo_id,
+            usuario_id=payload.usuario_id,
+            tipo=TIPO_MOVIMIENTO_ENTRADA,
             cantidad=payload.cantidad,
             ubicacion=payload.ubicacion,
+            referencia_tipo=REFERENCIA_ENTRADA_MANUAL,
+            referencia_id=None,
+            fecha=payload.fecha,
         )
-        db.add(inventario)
-    else:
-        # Delta con signo, nunca un UPDATE cantidad = X directo (mismo
-        # principio que EventoAditivoCombiner del lado Android, PLAN.md
-        # Parte 6).
-        inventario.cantidad = inventario.cantidad + payload.cantidad
-        if payload.ubicacion is not None:
-            inventario.ubicacion = payload.ubicacion
+        db.add(movimiento)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existente_movimiento = (
+            await db.execute(select(Movimiento).where(Movimiento.local_id == payload.local_id))
+        ).scalar_one_or_none()
+        if existente_movimiento is None:
+            raise
+        response.status_code = 200
+        return await _entrada_existente_response(db, payload)
 
-    movimiento = Movimiento(
-        local_id=payload.local_id,
-        sucursal_id=payload.sucursal_id,
-        articulo_id=articulo_id,
-        usuario_id=payload.usuario_id,
-        tipo=TIPO_MOVIMIENTO_ENTRADA,
-        cantidad=payload.cantidad,
-        ubicacion=payload.ubicacion,
-        referencia_tipo=REFERENCIA_ENTRADA_MANUAL,
-        referencia_id=None,
-        fecha=payload.fecha,
-    )
-    db.add(movimiento)
-
-    await db.commit()
     await db.refresh(movimiento)
     await db.refresh(inventario)
     if articulo is not None:
