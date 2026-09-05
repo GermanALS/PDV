@@ -3677,7 +3677,7 @@ distribución a un comercio.
   como instrumentado (`needs-device`, ver decisión abajo).
 
 **3. Verificación en dispositivo** (POS-114)
-- [ ] Instalar una versión con esquema nuevo sobre una instalación previa con
+- [x] Instalar una versión con esquema nuevo sobre una instalación previa con
   datos (ventas, inventario, cortes) y confirmar que se conservan. `needs-device`
 
 ### Decisiones abiertas
