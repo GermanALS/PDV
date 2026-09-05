@@ -3615,9 +3615,14 @@ datos y devuelve la entidad ya persistida.
 - [x] `pytest` completo en verde. `jvm-tests` (149/149, 2026-09-04)
 
 **3. Verificación end-to-end** (POS-110)
-- [ ] Sincronización con corte de red simulado entre el commit del servidor y la
+- [x] Sincronización con corte de red simulado entre el commit del servidor y la
   recepción de la respuesta: no se generan duplicados al reintentar.
-  `needs-device`
+  `needs-device` **Verificado 2026-09-05** contra el contenedor Docker (backend +
+  Postgres reales): 2 POST consecutivos con el mismo `local_id` en cada una de
+  las 4 rutas -> `201` la primera vez, `200` con el mismo `id` la segunda;
+  confirmado por consulta directa a la base que no hay fila duplicada en
+  `ventas`/`movimientos`/`cortes_caja`/`retiros_efectivo` y que el inventario
+  solo se movió una vez en `/entradas`.
 
 ### Decisiones abiertas
 
