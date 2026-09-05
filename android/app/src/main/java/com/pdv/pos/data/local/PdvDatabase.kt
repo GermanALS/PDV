@@ -21,7 +21,7 @@ import androidx.room.TypeConverters
         RolEntity::class,
     ],
     version = 7,
-    exportSchema = false,
+    exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class PdvDatabase : RoomDatabase() {
