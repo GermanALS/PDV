@@ -25,7 +25,8 @@ comercios reales son, en orden:
    de red duplica datos.
 4. ~~**`fallbackToDestructiveMigration(dropAllTables = true)` + `exportSchema = false`** en una app cuya
    base local es la fuente de verdad.~~ — RESUELTO en la Parte 24.
-5. **Condición de carrera en el decremento de inventario** del backend (read-modify-write sin bloqueo).
+5. ~~**Condición de carrera en el decremento de inventario** del backend (read-modify-write sin bloqueo).~~ —
+   RESUELTO en la Parte 25.
 
 Ninguno es un defecto de diseño de fondo; son piezas pendientes coherentes con el estado "scaffolding".
 
@@ -111,7 +112,14 @@ Recomendación: aceptar el `id`/`local_id` del dispositivo como clave, y en cada
 `db.get(...)` previo -> si existe, devolver 200 con la fila existente en lugar de insertar. Alternativa:
 constraint `UNIQUE(local_id)` + captura de `IntegrityError` devolviendo la fila previa.
 
-#### M-1. Condición de carrera en el decremento de inventario
+#### ~~M-1. Condición de carrera en el decremento de inventario~~ — RESUELTO
+
+**RESUELTO** en la Parte 25 (`docs/PLAN.md`, POS-116). `select(Inventario)...with_for_update()`
+en `ventas.create_venta` y `entradas.create_entrada` bloquea la fila hasta el commit de la
+transacción. Verificado con un test de concurrencia real (dos conexiones/transacciones
+independientes vía `asyncio.gather`) que se confirmó manualmente falla sin el fix (lost update:
+`7.000` en vez de `4.000`) y pasa con él. Texto original del hallazgo abajo.
+
 `ventas.create_venta` y `entradas.create_entrada` hacen `SELECT` de `Inventario`, calculan
 `cantidad - linea.cantidad` en Python y `UPDATE`. Dos requests concurrentes para el mismo
 `(sucursal, articulo)` pueden leer el mismo valor y perder un decremento (lost update). En un backend
@@ -121,12 +129,33 @@ Recomendación: `select(Inventario).where(...).with_for_update()` dentro de la t
 `UPDATE inventario SET cantidad = cantidad - :n WHERE ...` atómico (mismo principio de "delta con
 signo" que ya siguen, pero ejecutado en la base).
 
-#### M-2. `create_venta`: N+1 en la validación de artículos
+Nota de alcance (no resuelta): el lock solo protege la fila cuando ya existe. Dos requests
+concurrentes que sean la *primera* entrada/venta jamás registrada para un `(sucursal, articulo)`
+compiten por el mismo `INSERT` y la segunda choca con `uq_inventario_sucursal_articulo`, sin manejo
+especial (se propaga como `500`, igual que antes de este fix) — fuera del criterio explícito de M-1,
+que es sobre no perder un decremento en inventario ya existente.
+
+#### ~~M-2. `create_venta`: N+1 en la validación de artículos~~ — RESUELTO
+
+**RESUELTO** en la Parte 25 (`docs/PLAN.md`, POS-117). `create_venta` valida los `articulo_id` de
+las líneas con un único `select(Articulo.id).where(Articulo.id.in_(ids))` + diferencia de conjuntos.
+Texto original del hallazgo abajo.
+
 Líneas 50-52 de `ventas.py`: un `await db.get(Articulo, ...)` por línea dentro de un `for`. Para
 tickets grandes son N roundtrips. Un único `select(Articulo.id).where(Articulo.id.in_(ids))` y
 comparación de conjuntos resuelve la validación en una query.
 
-#### M-3. Enums de dominio validados de forma inconsistente
+#### ~~M-3. Enums de dominio validados de forma inconsistente~~ — RESUELTO
+
+**RESUELTO** en la Parte 25 (`docs/PLAN.md`, POS-117). `metodo_pago`/`estado` de
+`VentaCreateSchema` pasaron a `Literal[...]` con constantes de módulo en `schemas/venta.py`
+(`METODO_PAGO_EFECTIVO`/`METODO_PAGO_TARJETA`/`ESTADO_VENTA_COMPLETADA`), reutilizadas por
+`caja.get_totales_corte` en vez de las strings sueltas — cierra el riesgo de divergencia en la
+raíz, no solo con validación en el borde. `estado` quedó restringido a solo `"completada"` (se
+confirmó que ninguna capa del proyecto implementa cancelación de venta); `docs/schema-pos.json` se
+actualizó para dejar de documentar `"cancelada"` como valor vigente. Texto original del hallazgo
+abajo.
+
 `schemas/caja.py` usa `Literal["parcial", "final"]` para `tipo` (correcto), pero `schemas/venta.py`
 deja `metodo_pago` y `estado` como `str` libres. `caja.get_totales_corte` filtra por
 `metodo_pago == "efectivo"` / `"tarjeta"` y `estado == "completada"` con literales exactos: una venta
@@ -145,7 +174,16 @@ contenedor no tiene forma de ejecutar `alembic upgrade head` (coincide con la no
 que resolverlo (COPY de `alembic/` + `alembic.ini`, y un entrypoint que corra las migraciones o un job
 separado).
 
-#### M-5. Sin exception handler global ni CORS
+#### ~~M-5. Sin exception handler global ni CORS~~ — RESUELTO
+
+**RESUELTO** en la Parte 25 (`docs/PLAN.md`, POS-118). `@app.exception_handler(Exception)` en
+`app/main.py` devuelve `{"detail": "error interno del servidor"}` con `500` y loguea a nivel
+`ERROR`, sin interferir con el manejo ya existente de `HTTPException`/`422`. `CORSMiddleware`
+agregado con orígenes `*` (sin cliente web propio todavía). Documentado en `docs/api-contract.md`
+§12, incluyendo la nota de que los `500` del handler global no llevan headers CORS por cómo
+Starlette posiciona `ServerErrorMiddleware` fuera de `CORSMiddleware` en el stack — sin impacto hoy,
+a revisar el día que exista un cliente web real. Texto original del hallazgo abajo.
+
 `CLAUDE.md` sección 4 pide "manejo de errores centralizado con `HTTPException` + un exception handler
 global". No hay `@app.exception_handler` ni `add_middleware` en `app/main.py`. Consecuencias: una
 excepción no prevista (p. ej. `IntegrityError` no capturado en `entradas.create_entrada` cuando
@@ -153,7 +191,15 @@ excepción no prevista (p. ej. `IntegrityError` no capturado en `entradas.create
 de error consistente con la sección 12 del contrato. Falta también `CORSMiddleware` (necesario si
 alguna vez hay un cliente web).
 
-#### M-6. `entradas.create_entrada` no maneja colisión de `sku`/`codigo_barras`
+#### ~~M-6. `entradas.create_entrada` no maneja colisión de `sku`/`codigo_barras`~~ — RESUELTO
+
+**RESUELTO** en la Parte 25 (`docs/PLAN.md`, POS-116). `entradas.create_entrada` re-verifica el
+`sku` contra la tabla antes de atribuir el `409` (evita que un `IntegrityError` no relacionado, ej.
+un `sucursal_id` inexistente, se malinterprete como colisión de sku), con `rollback` igual que
+`usuarios`/`roles`. `codigo_barras` no tiene `UNIQUE` en el modelo (`Articulo.sku` es la única
+columna con esa restricción), así que el hallazgo aplicaba solo a `sku` en la práctica. Texto
+original del hallazgo abajo.
+
 Con `articulo_nuevo`, un `sku` duplicado dispara `IntegrityError` -> 500 (a diferencia de
 `usuarios`/`roles` que sí capturan y devuelven 409). Añadir el mismo `try/except IntegrityError` +
 `rollback` + 409.
@@ -279,9 +325,9 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 | 2 | ~~Dependencia de auth (`HTTPBearer` + `jwt.decode`) en todos los routers salvo `/auth` y `/health`; interceptor `Authorization: Bearer` en Android~~ **RESUELTO (Parte 21, PR #30)** — incluye el enforcement de permisos por módulo server-side (M-10) | backend + android | A |
 | 3 | Hacer idempotentes los POST de venta/entrada/corte/retiro (id del dispositivo como clave, igual que `sync_conflicts`) | backend | A |
 | 4 | ~~`exportSchema = true`, versionar esquemas, empezar migraciones de Room, quitar `fallbackToDestructiveMigration`~~ **RESUELTO (Parte 24)** | android | A |
-| 5 | Bloqueo de fila / `UPDATE` atómico en el decremento de inventario | backend | M |
-| 6 | `Literal`/enum para `metodo_pago` y `estado` de venta, alineado con las queries de caja y con Android | backend + android | M |
-| 7 | Exception handler global + `CORSMiddleware`; capturar `IntegrityError` en `entradas` | backend | M |
+| 5 | ~~Bloqueo de fila / `UPDATE` atómico en el decremento de inventario~~ **RESUELTO (Parte 25)** | backend | M |
+| 6 | ~~`Literal`/enum para `metodo_pago` y `estado` de venta, alineado con las queries de caja y con Android~~ **RESUELTO (Parte 25)** | backend + android | M |
+| 7 | ~~Exception handler global + `CORSMiddleware`; capturar `IntegrityError` en `entradas`~~ **RESUELTO (Parte 25)** | backend | M |
 | 8 | Incluir `alembic/` en la imagen Docker + entrypoint/job de migración | backend | M |
 | 9 | Tests de backend contra base dedicada y esquema por `alembic upgrade head` | backend | M |
 | 10 | Migrar a Navigation-Compose | android | M |
@@ -302,3 +348,5 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
   PR #30 (merge `3cbde60`).
 - **Actualización 2026-09-04**: A-2 y B-3 resueltos en la Parte 22 (`docs/PLAN.md`).
 - **Actualización 2026-09-04**: A-4 resuelto en la Parte 24 (`docs/PLAN.md`, POS-111).
+- **Actualización 2026-09-06**: M-1, M-2, M-3, M-5 y M-6 resueltos en la Parte 25 (`docs/PLAN.md`,
+  POS-115/116/117/118).
