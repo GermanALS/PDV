@@ -1181,6 +1181,21 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   ```json
   { "detail": "mensaje legible para debug/log" }
   ```
+- **Excepciones no previstas** (PLAN.md Parte 25, hallazgo M-5): un
+  exception handler global en `app/main.py` captura cualquier excepción sin
+  manejar y devuelve `500` con el mismo shape (`{ "detail": "error interno
+  del servidor" }`, mensaje genérico, sin traceback), con el error completo
+  logueado a nivel `ERROR` del lado del servidor (CLAUDE.md sección 4). No
+  reemplaza el manejo de `HTTPException`/`422` de validación, que siguen su
+  propio shape ya documentado arriba.
+- **CORS**: `CORSMiddleware` habilitado con orígenes `*` (no hay cliente web
+  propio todavía, toda la app es Android nativo) — revisar esta política el
+  día que exista un cliente web real. Los `500` del exception handler global
+  (punto anterior) no llevan headers CORS: Starlette posiciona
+  `ServerErrorMiddleware` fuera de `CORSMiddleware` en el stack, así que un
+  fetch desde un cliente web futuro vería un fallo de CORS opaco en vez de
+  leer el `detail` — sin impacto hoy (Android no interpreta CORS), pero a
+  tener en cuenta junto con la revisión de esta política.
 - **`sucursal_id`** (uuid): obligatorio en el body y la response de toda
   entidad transaccional (`inventario`, `ventas`, `cortes_caja`,
   `devoluciones`, `movimientos`) — arquitectura multi-sucursal, ver

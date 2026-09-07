@@ -51,9 +51,15 @@ def _to_response(venta: Venta) -> VentaResponseSchema:
 async def create_venta(
     payload: VentaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
 ) -> VentaResponseSchema:
-    for linea in payload.lineas:
-        if await db.get(Articulo, linea.articulo_id) is None:
-            raise HTTPException(status_code=404, detail=f"articulo no encontrado: {linea.articulo_id}")
+    # Una sola query IN (PLAN.md Parte 25, hallazgo M-2) en vez de un
+    # db.get() por linea.
+    articulo_ids = {linea.articulo_id for linea in payload.lineas}
+    ids_existentes = (
+        await db.execute(select(Articulo.id).where(Articulo.id.in_(articulo_ids)))
+    ).scalars().all()
+    ids_faltantes = articulo_ids - set(ids_existentes)
+    if ids_faltantes:
+        raise HTTPException(status_code=404, detail=f"articulo no encontrado: {ids_faltantes.pop()}")
 
     venta = Venta(
         local_id=payload.local_id,
@@ -101,11 +107,17 @@ async def create_venta(
     # lado del dispositivo). Delta con signo, nunca un UPDATE cantidad = X
     # directo (mismo principio que POST /entradas).
     for linea in payload.lineas:
+        # with_for_update(): bloquea la fila hasta el commit de esta
+        # transaccion, para que dos ventas concurrentes del mismo articulo no
+        # lean el mismo cantidad y pierdan un decremento (PLAN.md Parte 25,
+        # hallazgo M-1 de docs/review_code.md).
         resultado_inventario = await db.execute(
-            select(Inventario).where(
+            select(Inventario)
+            .where(
                 Inventario.sucursal_id == payload.sucursal_id,
                 Inventario.articulo_id == linea.articulo_id,
             )
+            .with_for_update()
         )
         inventario = resultado_inventario.scalar_one_or_none()
         if inventario is None:

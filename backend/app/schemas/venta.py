@@ -1,8 +1,19 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+# Valores validos de metodo_pago/estado (PLAN.md Parte 25, hallazgo M-3):
+# caja.get_totales_corte filtra por estos mismos literales, asi que un
+# valor libre (ej. "Efectivo") producia una diferencia de caja silenciosa.
+# Se importan en caja.py en vez de repetir las strings alli, y coinciden
+# con METODO_PAGO_EFECTIVO/METODO_PAGO_TARJETA de LocalCajaRepository.kt
+# (Android).
+METODO_PAGO_EFECTIVO = "efectivo"
+METODO_PAGO_TARJETA = "tarjeta"
+ESTADO_VENTA_COMPLETADA = "completada"
 
 
 class VentaDetalleCreateSchema(BaseModel):
@@ -32,8 +43,8 @@ class VentaCreateSchema(BaseModel):
     descuento: Decimal = Field(default=Decimal("0"), ge=0)
     impuestos: Decimal = Field(default=Decimal("0"), ge=0)
     total: Decimal = Field(ge=0)
-    metodo_pago: str = Field(min_length=1, max_length=30)
-    estado: str = Field(default="completada", max_length=30)
+    metodo_pago: Literal[METODO_PAGO_EFECTIVO, METODO_PAGO_TARJETA]
+    estado: Literal[ESTADO_VENTA_COMPLETADA] = ESTADO_VENTA_COMPLETADA
     lineas: list[VentaDetalleCreateSchema] = Field(min_length=1)
 
 

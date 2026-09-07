@@ -18,6 +18,7 @@ from app.schemas.caja import (
     RetiroEfectivoResponseSchema,
     TotalesCorteResponseSchema,
 )
+from app.schemas.venta import ESTADO_VENTA_COMPLETADA, METODO_PAGO_EFECTIVO, METODO_PAGO_TARJETA
 
 router = APIRouter(tags=["caja"])
 
@@ -144,11 +145,11 @@ async def get_totales_corte(
     ventas_result = await db.execute(
         select(
             func.coalesce(func.sum(Venta.total), 0),
-            func.coalesce(func.sum(case((Venta.metodo_pago == "efectivo", Venta.total), else_=0)), 0),
-            func.coalesce(func.sum(case((Venta.metodo_pago == "tarjeta", Venta.total), else_=0)), 0),
+            func.coalesce(func.sum(case((Venta.metodo_pago == METODO_PAGO_EFECTIVO, Venta.total), else_=0)), 0),
+            func.coalesce(func.sum(case((Venta.metodo_pago == METODO_PAGO_TARJETA, Venta.total), else_=0)), 0),
         ).where(
             Venta.sucursal_id == sucursal_id,
-            Venta.estado == "completada",
+            Venta.estado == ESTADO_VENTA_COMPLETADA,
             Venta.deleted_at.is_(None),
             Venta.fecha >= fecha_inicio,
             Venta.fecha <= fecha_fin,
