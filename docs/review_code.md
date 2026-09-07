@@ -267,7 +267,18 @@ ventas y cortes locales de ese equipo. Antes de la primera distribución a un co
 - `exportSchema = true` + versionar los JSON de esquema (habilita tests de migración de Room).
 - Empezar a escribir `Migration` reales; quitar el `fallbackToDestructiveMigration`.
 
-#### M-7. Navegación hecha a mano sin back stack
+#### ~~M-7. Navegación hecha a mano sin back stack~~ — RESUELTO
+
+**RESUELTO** en la Parte 27 (`docs/PLAN.md`, POS-125/126/127). `MainActivity` usa `NavHost` +
+`NavController` de `androidx.navigation:navigation-compose` con una ruta por pantalla, en vez del
+`enum Pantalla` + `when`. Los `onBack` fijos se reemplazaron por `navController.popBackStack()`
+(corrige que "volver" desde `ROLES` iba siempre a `USUARIOS`), y el botón físico de atrás del sistema
+ahora navega el stack real en vez de cerrar la app. El gate de permiso por pantalla
+(`HelloViewModel.onIntentoNavegar` / `ConfiguracionViewModel.onIntentoAbrirConflictos`) y
+`AsistenteIaWidget` montado una sola vez se conservaron sin cambios de comportamiento. Verificado con
+`./gradlew build`/`testDebugUnitTest` en verde y recorrido manual de las 11 pantallas en el Xiaomi.
+Texto original del hallazgo abajo.
+
 `MainActivity` usa `enum Pantalla` + `when`. No hay pila de navegación (cada pantalla vuelve a `HELLO`
 con un callback `onBack` fijo), ni transiciones, ni deep links, ni `SavedStateHandle` de navegación. La
 dependencia `androidx.hilt:hilt-navigation-compose` ya está; falta `androidx.navigation:navigation-compose`.
@@ -382,3 +393,4 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
   POS-115/116/117/118).
 - **Actualización 2026-09-07**: M-4, B-2 y M-11 resueltos en la Parte 26 (`docs/PLAN.md`,
   POS-119/120/121/122/123), PR #35.
+- **Actualización 2026-09-07**: M-7 resuelto en la Parte 27 (`docs/PLAN.md`, POS-124/125/126/127).

@@ -3834,24 +3834,24 @@ comportamiento de los ViewModels ni de `AsistenteIaWidget`.
 ### Checklist
 
 **1. Grafo de navegación** (POS-125)
-- [ ] `NavHost` con una ruta por pantalla (las 11 de `Pantalla`).
+- [x] `NavHost` con una ruta por pantalla (las 11 de `Pantalla`).
   `AsistenteIaWidget` sigue montado una sola vez fuera del `NavHost` (como hoy
   fuera del `when`), con la misma instancia de `ChatViewModel` durante la vida de
   la Activity. Criterio: `./gradlew build` en verde; todas las pantallas
   navegables desde donde lo eran antes.
-- [ ] El gate de permiso por pantalla (hoy en `HelloViewModel.onIntentoNavegar` /
+- [x] El gate de permiso por pantalla (hoy en `HelloViewModel.onIntentoNavegar` /
   `ConfiguracionViewModel.onIntentoAbrirConflictos`) se conserva. Criterio:
   pruebas de esos ViewModels sin cambios de comportamiento.
 
 **2. Back stack real** (POS-126)
-- [ ] El botón de atrás del sistema navega hacia atrás en el stack; se retiran
+- [x] El botón de atrás del sistema navega hacia atrás en el stack; se retiran
   los `onBack: () -> Unit` fijos de cada `*Screen` en favor del `NavController`.
   Criterio: `./gradlew testDebugUnitTest` en verde; revisión manual del stack
   (ej. `USUARIOS -> ROLES -> atrás` vuelve a `USUARIOS`; desde `HELLO`, atrás
   sale de la app).
 
 **3. Verificación en dispositivo** (POS-127)
-- [ ] Recorrer las 11 pantallas y el botón de atrás en cada una; el widget de IA
+- [x] Recorrer las 11 pantallas y el botón de atrás en cada una; el widget de IA
   sigue accesible desde todas. `needs-device`
 
 ### Decisiones abiertas

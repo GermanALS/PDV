@@ -5,12 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.pdv.pos.auth.LoginScreen
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.caja.CajaScreen
@@ -47,44 +49,71 @@ class MainActivity : ComponentActivity() {
                 if (session == null) {
                     LoginScreen()
                 } else {
-                    var pantalla by rememberSaveable { mutableStateOf(Pantalla.HELLO) }
+                    val navController = rememberNavController()
                     // Box en vez de renderizar cada pantalla suelta: el widget de
                     // IA (PLAN.md Parte 16) se monta una sola vez aca, fuera del
-                    // `when`, para quedar accesible desde cualquier pantalla sin
+                    // NavHost, para quedar accesible desde cualquier pantalla sin
                     // agregarlo a cada una.
                     Box(modifier = Modifier.fillMaxSize()) {
-                        when (pantalla) {
-                            Pantalla.HELLO -> HelloScreen(
-                                onNavigateToConfiguracion = { pantalla = Pantalla.CONFIGURACION },
-                                onNavigateToVenta = { pantalla = Pantalla.VENTA },
-                                onNavigateToEntrada = { pantalla = Pantalla.ENTRADA },
-                                onNavigateToInventario = { pantalla = Pantalla.INVENTARIO },
-                                onNavigateToCaja = { pantalla = Pantalla.CAJA },
-                                onNavigateToDevoluciones = { pantalla = Pantalla.DEVOLUCIONES },
-                                onNavigateToUsuarios = { pantalla = Pantalla.USUARIOS },
-                            )
-                            Pantalla.CONFIGURACION -> ConfiguracionScreen(
-                                onBack = { pantalla = Pantalla.HELLO },
-                                onNavigateToImportarCatalogo = { pantalla = Pantalla.IMPORTAR_CATALOGO },
-                                onNavigateToConflictos = { pantalla = Pantalla.CONFLICTOS },
-                            )
-                            Pantalla.VENTA -> VentaScreen(onBack = { pantalla = Pantalla.HELLO })
-                            Pantalla.ENTRADA -> EntradaScreen(onBack = { pantalla = Pantalla.HELLO })
-                            Pantalla.INVENTARIO -> InventarioScreen(onBack = { pantalla = Pantalla.HELLO })
-                            Pantalla.CAJA -> CajaScreen(onBack = { pantalla = Pantalla.HELLO })
-                            Pantalla.DEVOLUCIONES -> DevolucionScreen(onBack = { pantalla = Pantalla.HELLO })
-                            Pantalla.USUARIOS -> UsuarioScreen(
-                                onBack = { pantalla = Pantalla.HELLO },
-                                onNavigateToRoles = { pantalla = Pantalla.ROLES },
-                            )
-                            Pantalla.ROLES -> RolScreen(onBack = { pantalla = Pantalla.USUARIOS })
-                            Pantalla.IMPORTAR_CATALOGO -> ImportarCatalogoScreen(onBack = { pantalla = Pantalla.CONFIGURACION })
-                            Pantalla.CONFLICTOS -> RevisionConflictosScreen(onBack = { pantalla = Pantalla.CONFIGURACION })
-                        }
+                        PdvNavHost(navController)
                         AsistenteIaWidget()
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PdvNavHost(navController: NavHostController) {
+    NavHost(navController = navController, startDestination = Pantalla.HELLO.name) {
+        composable(Pantalla.HELLO.name) {
+            HelloScreen(
+                onNavigateToConfiguracion = { navController.navigate(Pantalla.CONFIGURACION.name) },
+                onNavigateToVenta = { navController.navigate(Pantalla.VENTA.name) },
+                onNavigateToEntrada = { navController.navigate(Pantalla.ENTRADA.name) },
+                onNavigateToInventario = { navController.navigate(Pantalla.INVENTARIO.name) },
+                onNavigateToCaja = { navController.navigate(Pantalla.CAJA.name) },
+                onNavigateToDevoluciones = { navController.navigate(Pantalla.DEVOLUCIONES.name) },
+                onNavigateToUsuarios = { navController.navigate(Pantalla.USUARIOS.name) },
+            )
+        }
+        composable(Pantalla.CONFIGURACION.name) {
+            ConfiguracionScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToImportarCatalogo = { navController.navigate(Pantalla.IMPORTAR_CATALOGO.name) },
+                onNavigateToConflictos = { navController.navigate(Pantalla.CONFLICTOS.name) },
+            )
+        }
+        composable(Pantalla.VENTA.name) {
+            VentaScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Pantalla.ENTRADA.name) {
+            EntradaScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Pantalla.INVENTARIO.name) {
+            InventarioScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Pantalla.CAJA.name) {
+            CajaScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Pantalla.DEVOLUCIONES.name) {
+            DevolucionScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Pantalla.USUARIOS.name) {
+            UsuarioScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToRoles = { navController.navigate(Pantalla.ROLES.name) },
+            )
+        }
+        composable(Pantalla.ROLES.name) {
+            RolScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Pantalla.IMPORTAR_CATALOGO.name) {
+            ImportarCatalogoScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Pantalla.CONFLICTOS.name) {
+            RevisionConflictosScreen(onBack = { navController.popBackStack() })
         }
     }
 }
