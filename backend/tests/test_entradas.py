@@ -173,6 +173,47 @@ async def test_create_entrada_reintento_con_mismo_local_id_es_idempotente(client
     assert len(articulos) == 1
 
 
+async def test_create_entrada_sku_duplicado_returns_409(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    primera = await client_autenticado.post(
+        "/api/v1/entradas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "fecha": "2026-08-19T12:00:00Z",
+            "cantidad": "10",
+            "articulo_nuevo": {
+                "sku": "DUP-001",
+                "nombre": "Articulo original",
+                "unidad_medida": "pieza",
+                "precio_venta": "20.00",
+            },
+        },
+    )
+    assert primera.status_code == 201
+
+    segunda = await client_autenticado.post(
+        "/api/v1/entradas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "fecha": "2026-08-19T13:00:00Z",
+            "cantidad": "5",
+            "articulo_nuevo": {
+                "sku": "DUP-001",
+                "nombre": "Articulo con sku repetido",
+                "unidad_medida": "pieza",
+                "precio_venta": "22.00",
+            },
+        },
+    )
+
+    assert segunda.status_code == 409
+
+
 async def test_create_entrada_articulo_existente_reintento_con_mismo_local_id_es_idempotente(
     client_autenticado, session
 ):

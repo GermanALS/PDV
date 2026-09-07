@@ -118,11 +118,16 @@ async def create_entrada(
             if existente is None:
                 raise HTTPException(status_code=404, detail="articulo no encontrado")
 
+        # with_for_update(): mismo principio que POST /ventas (PLAN.md Parte
+        # 25, hallazgo M-1) - bloquea la fila hasta el commit para que dos
+        # entradas concurrentes del mismo articulo no pierdan un incremento.
         resultado_inventario = await db.execute(
-            select(Inventario).where(
+            select(Inventario)
+            .where(
                 Inventario.sucursal_id == payload.sucursal_id,
                 Inventario.articulo_id == articulo_id,
             )
+            .with_for_update()
         )
         inventario = resultado_inventario.scalar_one_or_none()
         if inventario is None:
@@ -161,6 +166,20 @@ async def create_entrada(
             await db.execute(select(Movimiento).where(Movimiento.local_id == payload.local_id))
         ).scalar_one_or_none()
         if existente_movimiento is None:
+            sku_colisiona = payload.articulo_nuevo is not None and (
+                await db.execute(select(Articulo.id).where(Articulo.sku == payload.articulo_nuevo.sku))
+            ).scalar_one_or_none() is not None
+            if sku_colisiona:
+                # No es un reintento (PLAN.md Parte 25, hallazgo M-6): el
+                # articulo_nuevo choco con el UNIQUE de sku -> 409, mismo
+                # patron que usuarios/roles, en vez de propagar el
+                # IntegrityError. Se confirma releyendo el sku (en vez de
+                # asumir que cualquier IntegrityError en este bloque es la
+                # colision) porque el try tambien cubre los FK de
+                # inventario/movimiento hacia sucursal_id.
+                raise HTTPException(
+                    status_code=409, detail=f"ya existe un articulo con sku={payload.articulo_nuevo.sku}"
+                )
             raise
         response.status_code = 200
         return await _entrada_existente_response(db, payload)

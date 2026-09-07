@@ -3711,48 +3711,57 @@ queda fuera del total de efectivo del corte.
 ### Checklist
 
 **1. Concurrencia e integridad de inventario** (POS-116, M-1 + M-6)
-- [ ] Decremento/incremento de inventario en `ventas.create_venta` y
+- [x] Decremento/incremento de inventario en `ventas.create_venta` y
   `entradas.create_entrada` sin read-modify-write en Python: `select(...)
   .with_for_update()` dentro de la transacción, o `UPDATE inventario SET cantidad
   = cantidad - :n WHERE ...` atómico (mismo principio de "delta con signo" que ya
   siguen). Criterio: `pytest` con dos requests concurrentes para el mismo
   `(sucursal, articulo)` no pierde un decremento.
-- [ ] `entradas.create_entrada` captura `IntegrityError` cuando `articulo_nuevo`
+- [x] `entradas.create_entrada` captura `IntegrityError` cuando `articulo_nuevo`
   colisiona con el `UNIQUE` de `sku`/`codigo_barras` -> `409` (hoy -> `500`),
   con `rollback` (mismo patrón que `usuarios`/`roles`). Criterio: `pytest` -
   `sku` duplicado devuelve `409`.
 
 **2. Validación de dominio** (POS-117, M-2 + M-3)
-- [ ] `create_venta` valida los artículos de las líneas con un único
+- [x] `create_venta` valida los artículos de las líneas con un único
   `select(Articulo.id).where(Articulo.id.in_(ids))` + diferencia de conjuntos,
   en vez de N `await db.get` en un `for`. Criterio: `pytest` happy path y "línea
   con `articulo_id` inexistente -> `404`" siguen pasando.
-- [ ] `metodo_pago` y `estado` de `VentaCreateSchema` pasan a `Literal[...]`
+- [x] `metodo_pago` y `estado` de `VentaCreateSchema` pasan a `Literal[...]`
   (o `enum.StrEnum`) con los valores que usan las queries de `caja`
   (`efectivo`/`tarjeta`; `completada`/...). `schema-parity`: alineado con
   `docs/schema-pos.json`, el modelo SQLAlchemy y las constantes de Android
   (`METODO_PAGO_EFECTIVO` / `METODO_PAGO_TARJETA` en `LocalCajaRepository`,
   `estado` de venta). Criterio: `pytest` - `metodo_pago` inválido -> `422`;
   el total de efectivo del corte incluye todas las ventas en efectivo.
-- [ ] `pytest` completo en verde. `jvm-tests`
+- [x] `pytest` completo en verde. `jvm-tests`
 
 **3. Manejo de errores centralizado** (POS-118, M-5)
-- [ ] `@app.exception_handler` global que devuelve el shape `{ "detail": ... }`
+- [x] `@app.exception_handler` global que devuelve el shape `{ "detail": ... }`
   de `docs/api-contract.md` §12 para excepciones no previstas, con log a nivel
   `ERROR` (CLAUDE.md §4). Criterio: `pytest` - una excepción no prevista devuelve
   JSON consistente, no traceback.
-- [ ] `CORSMiddleware` agregado en `app/main.py`. Criterio: preflight `OPTIONS`
+- [x] `CORSMiddleware` agregado en `app/main.py`. Criterio: preflight `OPTIONS`
   responde con los headers CORS.
 
 ### Decisiones abiertas
 
-- [ ] M-3: ¿`enum.StrEnum` en Pydantic (y constantes equivalentes en Kotlin), o
+- [x] M-3: ¿`enum.StrEnum` en Pydantic (y constantes equivalentes en Kotlin), o
   solo `Literal[...]` en Pydantic reutilizando las constantes que Android ya
   tiene? Propuesta: `Literal` + constantes existentes, sin infra nueva.
-- [ ] ¿Qué valores válidos tiene `estado` de venta además de `completada`
+  **Resuelto 2026-09-06**: `Literal` + constantes de módulo en
+  `schemas/venta.py`, reutilizadas por `caja.py` (sin `enum.StrEnum`).
+- [x] ¿Qué valores válidos tiene `estado` de venta además de `completada`
   (`cancelada`, `devuelta`)? Confirmar antes de fijar el `Literal`.
-- [ ] `CORSMiddleware`: ¿orígenes `*` por ahora (no hay cliente web), o lista
-  explícita vacía hasta que exista uno?
+  **Resuelto 2026-09-06**: solo `"completada"` — ninguna capa del proyecto
+  (Android ni backend) implementa cancelación de venta. `docs/schema-pos.json`
+  se actualizó para dejar de documentar `"cancelada"` como valor vigente.
+- [x] `CORSMiddleware`: ¿orígenes `*` por ahora (no hay cliente web), o lista
+  explícita vacía hasta que exista uno? **Resuelto 2026-09-06**: orígenes `*`
+  (sin cliente web todavía); nota agregada en `docs/api-contract.md` sobre
+  que los `500` del exception handler global no llevan headers CORS por
+  cómo Starlette posiciona `ServerErrorMiddleware`, a revisar junto con esta
+  política el día que exista un cliente web real.
 
 ---
 

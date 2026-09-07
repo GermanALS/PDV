@@ -101,8 +101,8 @@
         { "name": "descuento", "type": "decimal", "nullable": false, "default": 0 },
         { "name": "impuestos", "type": "decimal", "nullable": false, "default": 0 },
         { "name": "total", "type": "decimal", "nullable": false },
-        { "name": "metodo_pago", "type": "string", "nullable": false, "description": "ej. \"efectivo\", \"tarjeta\"" },
-        { "name": "estado", "type": "string", "nullable": false, "default": "completada", "description": "\"completada\" / \"cancelada\"" }
+        { "name": "metodo_pago", "type": "string", "nullable": false, "description": "\"efectivo\" / \"tarjeta\" (Literal en VentaCreateSchema, PLAN.md Parte 25)" },
+        { "name": "estado", "type": "string", "nullable": false, "default": "completada", "description": "\"completada\" (unico valor implementado; \"cancelada\" no tiene feature detras en ningun modulo - PLAN.md Parte 25, decision M-3)" }
       ]
     },
     "venta_detalle": {
