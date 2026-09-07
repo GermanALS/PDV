@@ -166,7 +166,15 @@ Recomendación: `Literal[...]` (o `enum.StrEnum` compartido) para `metodo_pago` 
 `VentaCreateSchema`, alineado con las constantes que usan las queries de caja y con el lado Android
 (`METODO_PAGO_EFECTIVO` / `METODO_PAGO_TARJETA` en `LocalCajaRepository`).
 
-#### M-4. La imagen Docker no puede correr migraciones
+#### ~~M-4. La imagen Docker no puede correr migraciones~~ — RESUELTO
+
+**RESUELTO** en la Parte 26 (`docs/PLAN.md`, POS-120). `backend/Dockerfile` copia `alembic/` +
+`alembic.ini` a la imagen. `docker-compose.yml` agrega un servicio `migrate` (`alembic upgrade
+head`, `restart: on-failure`) del que `backend` depende con `condition:
+service_completed_successfully` — job separado, sin condición de carrera entre workers. Verificado
+con `docker compose up -d --build` sobre un volumen limpio: las 12 migraciones corren y el backend
+queda sano sin intervención del host. Texto original del hallazgo abajo.
+
 `backend/Dockerfile` hace `COPY app ./app` únicamente: no incluye `alembic/`, `alembic.ini` ni
 `requirements` de migración quedan sin `alembic` disponible en el contenedor. El despliegue del
 contenedor no tiene forma de ejecutar `alembic upgrade head` (coincide con la nota de memoria
@@ -208,7 +216,17 @@ Con `articulo_nuevo`, un `sku` duplicado dispara `IntegrityError` -> 500 (a dife
 `backend/requirements.txt` usa `>=` en todo y no hay lockfile. Un build reproducible necesita versiones
 fijas (`==`) o `uv`/`pip-tools` con lock. Relevante para Docker y para CI cuando se agregue.
 
-#### B-2. Tests contra la base de desarrollo, esquema por `create_all`
+#### ~~B-2. Tests contra la base de desarrollo, esquema por `create_all`~~ — RESUELTO
+
+**RESUELTO** en la Parte 26 (`docs/PLAN.md`, POS-121). `tests/conftest.py` corre contra `pdv_test`
+(base dedicada, distinta de la de desarrollo) y construye el esquema aplicando `alembic upgrade
+head` in-process, no `Base.metadata.create_all`. `tests/test_schema_parity.py` (nuevo) compara el
+esquema real post-migraciones contra `Base.metadata` vía `alembic.autogenerate.compare_metadata` y
+falla si divergen — verificado agregando temporalmente una columna sin migración a un modelo y
+confirmando que el test la detecta. De paso se corrigió que `alembic/env.py` deshabilitaba el logger
+del exception handler global al correr Alembic in-process (`fileConfig(...,
+disable_existing_loggers=False)`). `pytest`: 156 passed. Texto original del hallazgo abajo.
+
 `tests/conftest.py` corre contra `localhost:5432/pdv` (la misma base de dev, con rollback por test) y
 crea el esquema con `Base.metadata.create_all`, **no** con las migraciones de Alembic. La suite nunca
 verifica que las migraciones produzcan el esquema que los modelos esperan: una divergencia
@@ -306,7 +324,19 @@ Siguen en `1` / `"0.1"` tras 20 Partes. Definir cómo se versiona cada release (
 
 ### Transversal
 
-#### M-11. Sin CI/CD
+#### ~~M-11. Sin CI/CD~~ — RESUELTO
+
+**RESUELTO** en la Parte 26 (`docs/PLAN.md`, POS-122, POS-123). Un workflow por módulo:
+`.github/workflows/backend-ci.yml` (Postgres 16 como service container, `alembic upgrade head` +
+`alembic check` + `pytest`) y `.github/workflows/android-ci.yml` (`./gradlew test lint
+--max-workers=1` + verificación de que el JSON de esquema de Room commiteado sigue vigente;
+`--max-workers=1` evita la carrera transitoria de KSP debug/release entre notada en la Parte 24).
+Ambos pasos replicados localmente en verde (backend: 156 tests, `alembic check` sin diferencias;
+Android: 670 tests, lint sin errores, diff de schemas limpio), y confirmados en verde también en
+GitHub Actions en el PR #35 (tras corregir el bit ejecutable de `android/gradlew`, perdido por un
+commit original desde Windows, y actualizar las Actions a versiones sin warnings de Node
+deprecado). Texto original del hallazgo abajo.
+
 Reconocido en `CLAUDE.md` sección 7. Con 386 pruebas entre ambos módulos, un workflow por módulo
 (GitHub Actions: `./gradlew test lint` y `pytest` + `alembic upgrade head` contra un Postgres de
 servicio) daría mucho valor y cerraría de paso B-2 y el gate `schema-parity`.
@@ -350,3 +380,5 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 - **Actualización 2026-09-04**: A-4 resuelto en la Parte 24 (`docs/PLAN.md`, POS-111).
 - **Actualización 2026-09-06**: M-1, M-2, M-3, M-5 y M-6 resueltos en la Parte 25 (`docs/PLAN.md`,
   POS-115/116/117/118).
+- **Actualización 2026-09-07**: M-4, B-2 y M-11 resueltos en la Parte 26 (`docs/PLAN.md`,
+  POS-119/120/121/122/123), PR #35.

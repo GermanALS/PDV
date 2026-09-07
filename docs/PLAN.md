@@ -3781,26 +3781,26 @@ una divergencia modelo/migración pasa verde.
 ### Checklist
 
 **1. Migraciones dentro de la imagen** (POS-120, M-4)
-- [ ] `Dockerfile` copia `alembic/` + `alembic.ini`; `alembic` disponible en la
+- [x] `Dockerfile` copia `alembic/` + `alembic.ini`; `alembic` disponible en la
   imagen. Migración vía entrypoint (`alembic upgrade head` antes de `uvicorn`) o
   servicio/job separado en `docker-compose.yml`. Criterio: `docker compose up`
   sobre una base vacía deja el esquema aplicado sin intervención del host.
 
 **2. Fixture de test por migraciones** (POS-121, B-2)
-- [ ] `tests/conftest.py` deja de usar `Base.metadata.create_all` y aplica
+- [x] `tests/conftest.py` deja de usar `Base.metadata.create_all` y aplica
   `alembic upgrade head` sobre una base de test dedicada (no la de desarrollo).
   Criterio: `pytest` en verde con el nuevo fixture; un modelo cambiado sin su
   migración correspondiente rompe la suite. `jvm-tests`
-- [ ] Test explícito de paridad esquema-migraciones (`alembic check` /
+- [x] Test explícito de paridad esquema-migraciones (`alembic check` /
   comparación de `Base.metadata` contra el resultado de las migraciones).
 
 **3. Workflow de CI backend** (POS-122)
-- [ ] GitHub Actions: `pytest` + `alembic upgrade head` + `alembic check` contra
+- [x] GitHub Actions: `pytest` + `alembic upgrade head` + `alembic check` contra
   un Postgres de servicio. Criterio: el workflow corre en verde en un PR de
   prueba y falla si `pytest` o `alembic check` fallan.
 
 **4. Workflow de CI Android** (POS-123)
-- [ ] GitHub Actions: `./gradlew test lint` (y verificación de que los JSON de
+- [x] GitHub Actions: `./gradlew test lint` (y verificación de que los JSON de
   esquema de Room están commiteados, si la Parte 24 ya está). Criterio: verde en
   un PR de prueba.
 
