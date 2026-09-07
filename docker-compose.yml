@@ -15,6 +15,16 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pdv}:${POSTGRES_PASSWORD:-pdv}@db:5432/${POSTGRES_DB:-pdv}
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
   backend:
     build: ./backend
     ports:
@@ -25,6 +35,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
       interval: 10s

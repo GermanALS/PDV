@@ -1,16 +1,41 @@
+import asyncio
 import os
+from pathlib import Path
 
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://pdv:pdv@localhost:5432/pdv")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql+asyncpg://pdv:pdv@localhost:5432/pdv_test"
+)
 
+import asyncpg
+import pytest
 import pytest_asyncio
+from alembic import command
+from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from app.database import Base, get_db
+from app.database import DATABASE_URL, get_db
 from app.main import app
 from app.models.rol import Rol
 from app.models.usuario import Usuario
 from app.security import create_access_token
+
+_ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
+
+
+async def _ensure_test_database_exists(database_url: str) -> None:
+    base_url, _, dbname = database_url.rpartition("/")
+    admin_url = (base_url + "/postgres").replace("+asyncpg", "")
+    conn = await asyncpg.connect(admin_url)
+    try:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM pg_database WHERE datname = $1", dbname
+        )
+        if not exists:
+            await conn.execute(f'CREATE DATABASE "{dbname}"')
+    finally:
+        await conn.close()
+
 
 _TODOS_LOS_MODULOS = [
     "venta",
@@ -24,13 +49,17 @@ _TODOS_LOS_MODULOS = [
 ]
 
 
-@pytest_asyncio.fixture(scope="session")
-async def engine():
-    test_engine = create_async_engine(os.environ["DATABASE_URL"])
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+# La base de test es dedicada (pdv_test, distinta de la de desarrollo) y su
+# esquema se construye corriendo las migraciones de Alembic, no
+# Base.metadata.create_all: un modelo cambiado sin su migración correspondiente
+# rompe la suite en vez de pasar en verde con un esquema que no es el real.
+@pytest.fixture(scope="session")
+def engine():
+    asyncio.run(_ensure_test_database_exists(DATABASE_URL))
+    command.upgrade(Config(str(_ALEMBIC_INI)), "head")
+    test_engine = create_async_engine(DATABASE_URL)
     yield test_engine
-    await test_engine.dispose()
+    asyncio.run(test_engine.dispose())
 
 
 # Cada test corre en su propia transaccion, revertida al final (rollback):
