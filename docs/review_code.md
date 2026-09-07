@@ -332,8 +332,10 @@ Siguen en `1` / `"0.1"` tras 20 Partes. Definir cómo se versiona cada release (
 --max-workers=1` + verificación de que el JSON de esquema de Room commiteado sigue vigente;
 `--max-workers=1` evita la carrera transitoria de KSP debug/release entre notada en la Parte 24).
 Ambos pasos replicados localmente en verde (backend: 156 tests, `alembic check` sin diferencias;
-Android: 670 tests, lint sin errores, diff de schemas limpio) — la corrida real en GitHub Actions
-queda pendiente de confirmar en el primer PR de esta Parte. Texto original del hallazgo abajo.
+Android: 670 tests, lint sin errores, diff de schemas limpio), y confirmados en verde también en
+GitHub Actions en el PR #35 (tras corregir el bit ejecutable de `android/gradlew`, perdido por un
+commit original desde Windows, y actualizar las Actions a versiones sin warnings de Node
+deprecado). Texto original del hallazgo abajo.
 
 Reconocido en `CLAUDE.md` sección 7. Con 386 pruebas entre ambos módulos, un workflow por módulo
 (GitHub Actions: `./gradlew test lint` y `pytest` + `alembic upgrade head` contra un Postgres de
@@ -378,3 +380,5 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 - **Actualización 2026-09-04**: A-4 resuelto en la Parte 24 (`docs/PLAN.md`, POS-111).
 - **Actualización 2026-09-06**: M-1, M-2, M-3, M-5 y M-6 resueltos en la Parte 25 (`docs/PLAN.md`,
   POS-115/116/117/118).
+- **Actualización 2026-09-07**: M-4, B-2 y M-11 resueltos en la Parte 26 (`docs/PLAN.md`,
+  POS-119/120/121/122/123), PR #35.
