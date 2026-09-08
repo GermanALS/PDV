@@ -13,6 +13,7 @@ import com.pdv.pos.domain.repository.EntradaRepository
 import com.pdv.pos.domain.repository.InventarioRepository
 import com.pdv.pos.domain.repository.RetiroEfectivoRepository
 import com.pdv.pos.inventario.BuscadorArticuloExistente
+import com.pdv.pos.inventario.formatoCantidad
 import com.pdv.pos.inventario.export.ArchivoExportado
 import com.pdv.pos.inventario.export.InventarioExportManager
 import com.pdv.pos.logging.AppLogger
@@ -352,19 +353,21 @@ class EjecutorAccionesIa @Inject constructor(
         )
     }
 
+    // Total de existencias agregado en la fuente de datos (M-9): un escalar,
+    // no enumera el catalogo. La descripcion aun distingue articulo/categoria
+    // solo para el texto de la respuesta.
     private suspend fun ejecutarConsultarStock(accion: AccionIaDto, sucursalId: String): ResultadoAccionIa {
         val p = json.decodeFromJsonElement<ParametrosConsultarStockDto>(accion.parametros)
         val articulo = p.articulo?.trim()?.takeIf { it.isNotBlank() }
         val categoria = p.categoria?.trim()?.takeIf { it.isNotBlank() }
-        val items = itemsFiltrados(sucursalId, articulo = articulo, categoria = categoria, textoLibre = null)
-        val total = items.sumOf { it.cantidad }
+        val total = inventarioRepository.sumarStock(sucursalId, termino = articulo.orEmpty(), categoria = categoria)
         val descripcion = when {
             categoria != null && articulo != null -> "\"$articulo\" en la categoría \"$categoria\""
             categoria != null -> "la categoría \"$categoria\""
             articulo != null -> "\"$articulo\""
             else -> "el inventario total"
         }
-        return ResultadoAccionIa.Ejecutada("El stock de $descripcion es $total.")
+        return ResultadoAccionIa.Ejecutada("El stock de $descripcion es ${total.formatoCantidad()}.")
     }
 
     // Consulta de solo lectura (PLAN.md Parte 20): el modelo elige el
@@ -410,16 +413,18 @@ class EjecutorAccionesIa @Inject constructor(
     private suspend fun itemsPorCategoria(sucursalId: String, categoria: String): List<InventarioItem> =
         todosLosItems(sucursalId, "").filter { it.articulo.categoria.equals(categoria, ignoreCase = true) }
 
-    // Mismo criterio de paginacion que InventarioViewModel.obtenerTodosLosItemsFiltrados
-    // (Parte 9/18): esta clase nunca depende de otro ViewModel, asi que
-    // recorre InventarioRepository directamente en vez de reusar ese metodo
-    // privado.
+    // Enumera todas las filas que coinciden para armar el archivo de
+    // exportacion - inherentemente O(coincidencias). Usa la lectura ordenada
+    // por cantidad (M-9), mismo criterio de paginacion que
+    // InventarioViewModel.obtenerTodosLosItemsFiltrados (Parte 9/18); esta
+    // clase nunca depende de otro ViewModel, asi que recorre el repositorio
+    // directamente.
     private suspend fun todosLosItems(sucursalId: String, busqueda: String): List<InventarioItem> {
         val tamanioPagina = 100
         val items = mutableListOf<InventarioItem>()
         var pagina = 1
         while (true) {
-            val resultado = inventarioRepository.observarInventario(sucursalId, busqueda, pagina, tamanioPagina).first()
+            val resultado = inventarioRepository.observarInventarioParaExport(sucursalId, busqueda, pagina, tamanioPagina).first()
             items += resultado.items
             if (resultado.items.isEmpty() || items.size >= resultado.total) break
             pagina++

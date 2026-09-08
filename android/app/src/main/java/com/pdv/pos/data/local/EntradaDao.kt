@@ -7,7 +7,6 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.pdv.pos.sync.EventoAditivoCombiner
 import java.math.BigDecimal
-import java.util.UUID
 
 @Dao
 interface EntradaDao {
@@ -48,26 +47,19 @@ interface EntradaDao {
         val existente = getInventario(sucursalId, articuloId)
         if (existente == null) {
             insertInventario(
-                InventarioEntity(
-                    localId = UUID.randomUUID().toString(),
-                    remoteId = null,
+                nuevoInventario(
                     sucursalId = sucursalId,
                     articuloId = articuloId,
                     cantidad = EventoAditivoCombiner.combinar(BigDecimal.ZERO, deltaCantidad, BigDecimal.ZERO),
                     ubicacion = ubicacion,
-                    updatedAt = now,
-                    isSynced = false,
-                    deletedAt = null,
+                    now = now,
                 ),
             )
         } else {
             updateInventario(
-                existente.copy(
-                    cantidad = EventoAditivoCombiner.combinar(existente.cantidad, deltaCantidad, BigDecimal.ZERO),
-                    ubicacion = ubicacion ?: existente.ubicacion,
-                    updatedAt = now,
-                    isSynced = false,
-                ),
+                existente
+                    .conCantidad(EventoAditivoCombiner.combinar(existente.cantidad, deltaCantidad, BigDecimal.ZERO), now)
+                    .copy(ubicacion = ubicacion ?: existente.ubicacion),
             )
         }
 

@@ -49,6 +49,47 @@ interface InventarioDao {
     )
     fun observarTotal(sucursalId: String, termino: String): Flow<Int>
 
+    // Suma de existencias en SQL sobre cantidadNum (M-9): un escalar, no
+    // depende del tamano del catalogo. termino = '' desactiva el LIKE;
+    // categoria = null desactiva el filtro por categoria.
+    @Query(
+        """
+        SELECT COALESCE(SUM(i.cantidadNum), 0.0) FROM inventario i
+        INNER JOIN articulos a ON a.localId = i.articuloId
+        WHERE i.sucursalId = :sucursalId AND i.deletedAt IS NULL AND a.deletedAt IS NULL
+          AND (:termino = '' OR a.nombre LIKE '%' || :termino || '%' OR a.sku LIKE '%' || :termino || '%'
+               OR a.codigoBarras LIKE '%' || :termino || '%')
+          AND (:categoria IS NULL OR a.categoria = :categoria COLLATE NOCASE)
+        """,
+    )
+    suspend fun sumarCantidad(sucursalId: String, termino: String, categoria: String?): Double
+
+    // Misma pagina que observarPagina pero ordenada por cantidad numerica
+    // (cantidadNum), no por nombre - la usa el camino de exportacion (M-9)
+    // para que el CSV/Excel salga por existencia ascendente y el orden sea
+    // fiable (el ORDER BY sobre el TEXT de cantidad seria lexicografico).
+    @Query(
+        """
+        SELECT a.localId AS articuloLocalId, a.codigoBarras AS codigoBarras, a.sku AS sku, a.nombre AS nombre,
+               a.descripcion AS descripcion, a.categoria AS categoria, a.unidadMedida AS unidadMedida,
+               a.precioVenta AS precioVenta, a.costo AS costo, a.activo AS activo,
+               i.cantidad AS cantidad, i.ubicacion AS ubicacion
+        FROM inventario i
+        INNER JOIN articulos a ON a.localId = i.articuloId
+        WHERE i.sucursalId = :sucursalId AND i.deletedAt IS NULL AND a.deletedAt IS NULL
+          AND (:termino = '' OR a.nombre LIKE '%' || :termino || '%' OR a.sku LIKE '%' || :termino || '%'
+               OR a.codigoBarras LIKE '%' || :termino || '%')
+        ORDER BY i.cantidadNum ASC, a.nombre
+        LIMIT :limite OFFSET :desplazamiento
+        """,
+    )
+    fun observarPaginaExport(
+        sucursalId: String,
+        termino: String,
+        limite: Int,
+        desplazamiento: Int,
+    ): Flow<List<InventarioConArticuloRow>>
+
     @Query("SELECT DISTINCT categoria FROM articulos WHERE categoria IS NOT NULL AND deletedAt IS NULL ORDER BY categoria")
     fun observarCategorias(): Flow<List<String>>
 
@@ -107,26 +148,19 @@ interface InventarioDao {
 
         if (existente == null) {
             insertInventario(
-                InventarioEntity(
-                    localId = UUID.randomUUID().toString(),
-                    remoteId = null,
+                nuevoInventario(
                     sucursalId = sucursalId,
                     articuloId = articulo.localId,
                     cantidad = EventoAditivoCombiner.combinar(BigDecimal.ZERO, delta, BigDecimal.ZERO),
                     ubicacion = ubicacion,
-                    updatedAt = now,
-                    isSynced = false,
-                    deletedAt = null,
+                    now = now,
                 ),
             )
         } else {
             updateInventario(
-                existente.copy(
-                    cantidad = EventoAditivoCombiner.combinar(existente.cantidad, delta, BigDecimal.ZERO),
-                    ubicacion = ubicacion,
-                    updatedAt = now,
-                    isSynced = false,
-                ),
+                existente
+                    .conCantidad(EventoAditivoCombiner.combinar(existente.cantidad, delta, BigDecimal.ZERO), now)
+                    .copy(ubicacion = ubicacion),
             )
         }
 

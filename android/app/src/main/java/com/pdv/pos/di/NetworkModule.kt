@@ -1,6 +1,7 @@
 package com.pdv.pos.di
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.pdv.pos.BuildConfig
 import com.pdv.pos.data.remote.AuthApiService
 import com.pdv.pos.data.remote.AuthInterceptor
 import com.pdv.pos.data.remote.CajaApiService
@@ -20,6 +21,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -32,6 +34,26 @@ import javax.inject.Singleton
 // IP/Puerto guardados, DynamicHostInterceptor reescribe el host de cada
 // request y este valor solo aporta el esquema y el path base.
 private const val BASE_URL = "http://localhost:8000/api/v1/"
+
+// HttpLoggingInterceptor (nivel BASIC: metodo/URL/estado, sin cuerpos ni
+// headers) solo se agrega en builds debug (M-8). El flag entra como
+// parametro explicito en vez de leer BuildConfig aca dentro para poder
+// cubrir ambos casos en test. El cliente de IA (LlmNetworkModule) nunca
+// tiene interceptor de logging y no pasa por aca.
+internal fun buildOkHttpClient(
+    dynamicHostInterceptor: Interceptor,
+    authInterceptor: Interceptor,
+    includeNetworkLogging: Boolean,
+): OkHttpClient =
+    OkHttpClient.Builder()
+        .addInterceptor(dynamicHostInterceptor)
+        .addInterceptor(authInterceptor)
+        .apply {
+            if (includeNetworkLogging) {
+                addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            }
+        }
+        .build()
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -47,11 +69,7 @@ object NetworkModule {
         dynamicHostInterceptor: DynamicHostInterceptor,
         authInterceptor: AuthInterceptor,
     ): OkHttpClient =
-        OkHttpClient.Builder()
-            .addInterceptor(dynamicHostInterceptor)
-            .addInterceptor(authInterceptor)
-            .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
-            .build()
+        buildOkHttpClient(dynamicHostInterceptor, authInterceptor, includeNetworkLogging = BuildConfig.DEBUG)
 
     @Provides
     @Singleton

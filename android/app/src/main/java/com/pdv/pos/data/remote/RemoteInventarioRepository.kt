@@ -17,6 +17,8 @@ import java.math.BigDecimal
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val PAGINA_AGREGACION = 200
+
 // Las lecturas (observar*) propagan fallas de red por el Flow sin
 // capturarlas aca, mismo criterio que RemoteSucursalRepository (Parte 6).
 // El logging ERROR/WARN de esta Parte se concentra en actualizarArticulo,
@@ -45,6 +47,40 @@ class RemoteInventarioRepository @Inject constructor(
             ),
         )
     }
+
+    // El backend agrega con Numeric (sin el problema lexicografico de
+    // SQLite), pero hoy no expone un GET /inventario/totales analogo a
+    // /cortes-caja/totales, asi que en modo REMOTO se recorren las paginas y
+    // se suma en Kotlin. El costo escala con el catalogo remoto; un endpoint
+    // de agregacion queda fuera del alcance de M-9 (PLAN.md Parte 28,
+    // Decisiones abiertas).
+    override suspend fun sumarStock(sucursalId: String, termino: String, categoria: String?): BigDecimal {
+        val q = termino.trim().ifBlank { null }
+        val cat = categoria?.trim()?.ifBlank { null }
+        var pagina = 1
+        var suma = BigDecimal.ZERO
+        var vistos = 0
+        while (true) {
+            val respuesta = api.getInventario(sucursalId = sucursalId, q = q, page = pagina, pageSize = PAGINA_AGREGACION)
+            respuesta.items
+                .filter { cat == null || it.categoria.equals(cat, ignoreCase = true) }
+                .forEach { suma += BigDecimal(it.cantidad) }
+            vistos += respuesta.items.size
+            if (respuesta.items.isEmpty() || vistos >= respuesta.total) break
+            pagina++
+        }
+        return suma
+    }
+
+    // El backend no ordena por cantidad; el orden del CSV en modo REMOTO no
+    // es critico (el problema lexicografico es solo de SQLite) - se reusa la
+    // misma lectura paginada que observarInventario.
+    override fun observarInventarioParaExport(
+        sucursalId: String,
+        busqueda: String,
+        pagina: Int,
+        tamanioPagina: Int,
+    ): Flow<PaginaInventario> = observarInventario(sucursalId, busqueda, pagina, tamanioPagina)
 
     override fun observarCategorias(): Flow<List<String>> = flow { emit(api.getCategorias().valores) }
 

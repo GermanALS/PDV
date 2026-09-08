@@ -20,7 +20,7 @@ import androidx.room.TypeConverters
         UsuarioEntity::class,
         RolEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

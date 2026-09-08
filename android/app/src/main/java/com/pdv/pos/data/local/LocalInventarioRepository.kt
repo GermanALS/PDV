@@ -9,6 +9,7 @@ import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import java.math.BigDecimal
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,6 +29,30 @@ class LocalInventarioRepository @Inject constructor(
         val desplazamiento = (pagina - 1).coerceAtLeast(0) * tamanioPagina
         return combine(
             dao.observarPagina(sucursalId, termino, tamanioPagina, desplazamiento),
+            dao.observarTotal(sucursalId, termino),
+        ) { filas, total ->
+            PaginaInventario(
+                items = filas.map { it.toDomain() },
+                pagina = pagina,
+                tamanioPagina = tamanioPagina,
+                total = total,
+            )
+        }
+    }
+
+    override suspend fun sumarStock(sucursalId: String, termino: String, categoria: String?): BigDecimal =
+        BigDecimal.valueOf(dao.sumarCantidad(sucursalId, termino.trim(), categoria?.trim()?.ifBlank { null }))
+
+    override fun observarInventarioParaExport(
+        sucursalId: String,
+        busqueda: String,
+        pagina: Int,
+        tamanioPagina: Int,
+    ): Flow<PaginaInventario> {
+        val termino = busqueda.trim()
+        val desplazamiento = (pagina - 1).coerceAtLeast(0) * tamanioPagina
+        return combine(
+            dao.observarPaginaExport(sucursalId, termino, tamanioPagina, desplazamiento),
             dao.observarTotal(sucursalId, termino),
         ) { filas, total ->
             PaginaInventario(

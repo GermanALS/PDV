@@ -37,6 +37,9 @@ android {
 
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG gatea el HttpLoggingInterceptor de red (M-8,
+        // NetworkModule). Desde AGP 8 la generacion de BuildConfig es opt-in.
+        buildConfig = true
     }
 
     testOptions {

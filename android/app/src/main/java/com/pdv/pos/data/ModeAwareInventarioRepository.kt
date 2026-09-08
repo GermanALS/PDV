@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import java.math.BigDecimal
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,6 +40,26 @@ class ModeAwareInventarioRepository @Inject constructor(
             BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION ->
                 local.observarInventario(sucursalId, busqueda, pagina, tamanioPagina)
             BackendMode.REMOTO -> remote.observarInventario(sucursalId, busqueda, pagina, tamanioPagina)
+        }
+    }
+
+    override suspend fun sumarStock(sucursalId: String, termino: String, categoria: String?): BigDecimal =
+        when (preferences.deviceConfig.first().backendMode) {
+            BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION -> local.sumarStock(sucursalId, termino, categoria)
+            BackendMode.REMOTO -> remote.sumarStock(sucursalId, termino, categoria)
+        }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun observarInventarioParaExport(
+        sucursalId: String,
+        busqueda: String,
+        pagina: Int,
+        tamanioPagina: Int,
+    ): Flow<PaginaInventario> = modo().flatMapLatest { modo ->
+        when (modo) {
+            BackendMode.LOCAL, BackendMode.LOCAL_CON_SINCRONIZACION ->
+                local.observarInventarioParaExport(sucursalId, busqueda, pagina, tamanioPagina)
+            BackendMode.REMOTO -> remote.observarInventarioParaExport(sucursalId, busqueda, pagina, tamanioPagina)
         }
     }
 
