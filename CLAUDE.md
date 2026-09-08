@@ -34,9 +34,10 @@ PDV/
 ├── scripts/     -> Scripts multiplataforma de arranque/detención del backend
 └── docs/
     ├── api-contract.md       -> Contrato de endpoints (fuente de verdad compartida)
-    ├── PLAN.md               -> Diseño en desarrollo (features no estabilizados aún)
+    ├── PLAN.md               -> Diseño en desarrollo (solo Partes activas: 29-30 + Backlog)
+    ├── PLAN-historico.md     -> Bitácora de las Partes 1-28, ya cerradas y mergeadas
     ├── schema-pos.json       -> Esquema de datos compartido (3er artefacto de la compuerta schema-parity, sec. 9)
-    ├── review_code.md        -> Revisión de código del 2026-08-30 (fuente de las Partes 21-29)
+    ├── review_code.md        -> Revisión de código del 2026-08-30 (fuente de las Partes 21-30)
     └── inventario-inicial.csv -> Catálogo de ejemplo para la importación CSV
 ```
 
@@ -53,8 +54,11 @@ Cuando cambies un endpoint, actualiza primero el contrato y luego ambos lados.
 
 `docs/PLAN.md` documenta features en diseño activo (opciones evaluadas,
 decisiones pendientes, fases de implementación). Cuando un feature ahí
-descrito se estabiliza, su resumen final se migra a este archivo (CLAUDE.md)
-y `docs/PLAN.md` queda como bitácora histórica de esa sección.
+descrito se estabiliza, su resumen final se migra a este archivo (CLAUDE.md).
+Las Partes ya cerradas y mergeadas se archivan en `docs/PLAN-historico.md`
+(sus checklists finales, decisiones resueltas y notas de verificación) para
+mantener `docs/PLAN.md` enfocado en lo activo — es solo lectura de consulta,
+no se edita.
 
 ## 3. Módulo Android (`android/`)
 
@@ -253,6 +257,18 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
   variables entre servicios.
 - **Android**: por ahora, builds locales (`./gradlew assembleDebug`).
   [TODO: definir cuándo se sube a Play Console Internal Testing]
+- **Versionado de la app Android** (`android/app/build.gradle.kts`):
+  - `versionName` sigue SemVer `MAJOR.MINOR.PATCH` como cadena legible del
+    alcance publicado (`MAJOR` = hito de producto, `MINOR` = features nuevas
+    entregadas, `PATCH` = correcciones). Se sube a mano en el commit que
+    prepara cada release, no por Parte del plan.
+  - `versionCode` es un entero monotónico derivado de `versionName`:
+    `MAJOR * 10000 + MINOR * 100 + PATCH` (ej. `0.1.0` -> `100`,
+    `1.2.3` -> `10203`). Nunca decrece; dos APKs distribuidos nunca
+    comparten `versionCode`.
+  - Hasta el primer release a Play Console siguen en `versionCode = 1` /
+    `versionName = "0.1"`; el esquema aplica desde el primer build
+    distribuido.
 - Aún no hay CI/CD configurado — es una tarea pendiente de priorizar
   (sugerencia: GitHub Actions con un workflow por módulo). Trackeado en
   PLAN.md Parte 26.

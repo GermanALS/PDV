@@ -21,8 +21,8 @@ comercios reales son, en orden:
 1. ~~**Ningún endpoint del backend valida el JWT**~~ — RESUELTO en la Parte 21 (PR #30).
 2. ~~**`.env` en la raíz contiene secretos reales** (PAT de GitHub y API key de DeepSeek).~~ —
    RESUELTO en la Parte 22.
-3. **Los POST de sincronización no son idempotentes** (ventas, entradas, cortes, retiros): un reintento
-   de red duplica datos.
+3. ~~**Los POST de sincronización no son idempotentes** (ventas, entradas, cortes, retiros): un reintento
+   de red duplica datos.~~ — RESUELTO en la Parte 23 (PR #32).
 4. ~~**`fallbackToDestructiveMigration(dropAllTables = true)` + `exportSchema = false`** en una app cuya
    base local es la fuente de verdad.~~ — RESUELTO en la Parte 24.
 5. ~~**Condición de carrera en el decremento de inventario** del backend (read-modify-write sin bloqueo).~~ —
@@ -212,7 +212,16 @@ Con `articulo_nuevo`, un `sku` duplicado dispara `IntegrityError` -> 500 (a dife
 `usuarios`/`roles` que sí capturan y devuelven 409). Añadir el mismo `try/except IntegrityError` +
 `rollback` + 409.
 
-#### B-1. Dependencias sin fijar
+#### ~~B-1. Dependencias sin fijar~~ — RESUELTO
+
+**RESUELTO** en la Parte 29 (`docs/PLAN.md`, POS-132). `backend/requirements.txt` fija con `==` las 10
+dependencias directas más 26 transitivas, congeladas del árbol resuelto del contenedor; comentario de
+cabecera con el comando para regenerarlas. Verificado: `docker compose build backend` sin conflictos,
+`pip check` limpio, y `pip freeze` de la imagen nueva coincide exacto con `requirements.txt` (salvo
+`pip`/`setuptools`/`wheel`, tooling del base image). La migración a `uv` + lockfile (lock transitivo con
+hashes) se planificó aparte como Parte 30 (POS-135), por tocar `Dockerfile`, scripts y CI. Texto
+original del hallazgo abajo.
+
 `backend/requirements.txt` usa `>=` en todo y no hay lockfile. Un build reproducible necesita versiones
 fijas (`==`) o `uv`/`pip-tools` con lock. Relevante para Docker y para CI cuando se agregue.
 
@@ -244,7 +253,14 @@ del hallazgo abajo.
 `pdv/pdv` y `ports: 5432:5432`. Aceptable en local; no debe llegar así a ningún entorno compartido. El
 backend en compose no define `JWT_SECRET_KEY`, así que usa el default hardcodeado de `security.py`.
 
-#### B-4. Dockerfile corre como root
+#### ~~B-4. Dockerfile corre como root~~ — RESUELTO
+
+**RESUELTO** en la Parte 29 (`docs/PLAN.md`, POS-132). `backend/Dockerfile` añade
+`RUN adduser --system --group --no-create-home app && chown -R app:app /app` + `USER app` tras copiar el
+fuente. Verificado: `docker run --entrypoint whoami` -> `app`, `docker compose exec backend whoami` ->
+`app`; `migrate` (`alembic upgrade head`) y `backend` (`/api/v1/health` -> `ok`) corren como no-root.
+Texto original del hallazgo abajo.
+
 Añadir un usuario no privilegiado (`RUN adduser ... && USER app`).
 
 ### Android
@@ -335,21 +351,51 @@ las pantallas se montan por callback: no hay una compuerta única. Con el backen
 única barrera real de un usuario sin permiso "usuarios" es que no vea el botón. Aceptable en modo
 LOCAL; para REMOTO depende de A-1.
 
-#### B-5. `DynamicHostInterceptor` lee DataStore en cada request
+#### ~~B-5. `DynamicHostInterceptor` lee DataStore en cada request~~ — RESUELTO
+
+**RESUELTO** en la Parte 29 (`docs/PLAN.md`, POS-133). El interceptor mantiene un campo `@Volatile
+config` sembrado una sola vez de forma bloqueante al construir el singleton, y actualizado por un
+colector en un scope propio; `intercept()` ya no llama `runBlocking`. `DynamicHostInterceptorTest` 3/3
+en verde, incluida una prueba nueva de que el cache se refresca ante un cambio de conexión posterior a
+la construcción. Texto original del hallazgo abajo.
+
 `runBlocking { preferences.deviceConfig.first() }` en el hilo de dispatch de OkHttp por request. El
 comentario dice que DataStore cachea en memoria tras la primera lectura, lo cual es cierto, pero
 `.first()` sobre el `Flow` reejecuta el pipeline. Un `StateFlow` cacheado en el interceptor (o
 `data.first()` una vez + observación) evita el `runBlocking` repetido.
 
-#### B-6. `Converters.toModulosPermitidos` parte por `,`
+#### ~~B-6. `Converters.toModulosPermitidos` parte por `,`~~ — RESUELTO
+
+**RESUELTO** en la Parte 29 (`docs/PLAN.md`, POS-133). El separador pasó de `,` a `""` (Unit
+Separator, carácter de control que no puede aparecer en una clave de módulo ni en texto del usuario),
+vía la constante `Converters.MODULO_SEPARATOR`. `ConvertersTest` 4/4 en verde, incluida
+`a key containing the old comma separator is preserved as one element`. Sin migración de datos: los
+roles de sistema se auto-corrigen al siguiente `observeRoles()` y un rol personalizado con el formato
+viejo se re-guarda al editarlo — etapa de desarrollo (`CLAUDE.md` §9). Texto original del hallazgo
+abajo.
+
 Si una clave de módulo llegara a contener una coma, el split la rompe. Está comentado ("sin comas, un
 join simple alcanza"). Un separador improbable (``) o JSON serían más robustos; deuda menor.
 
-#### B-7. Build de release sin R8/shrinking
+#### B-7. Build de release sin R8/shrinking — DIFERIDO
+
+**DIFERIDO** en la Parte 29 (`docs/PLAN.md`, POS-133, decisión abierta B-7, 2026-09-07): se pospone
+hasta que haya distribución real. Activar R8 obliga a mantener reglas Proguard de varias librerías
+(Room/Hilt/kotlinx-serialization/Retrofit) y a re-verificar en dispositivo cada release, sin que haya
+distribución todavía — mismo criterio con el que se difirió el destino de despliegue en `CLAUDE.md`
+§7. El ítem queda abierto en el checklist de la Parte 29. Texto original del hallazgo abajo.
+
 `app/build.gradle.kts`: `isMinifyEnabled = false`. Para distribuir una app de POS conviene activar R8
 (shrink + ofuscación) y validar con las reglas de Proguard de Room/Hilt/kotlinx-serialization.
 
-#### B-8. `versionCode` / `versionName` estáticos
+#### ~~B-8. `versionCode` / `versionName` estáticos~~ — RESUELTO
+
+**RESUELTO** en la Parte 29 (`docs/PLAN.md`, POS-133). `CLAUDE.md` §7 documenta el esquema:
+`versionName` SemVer `MAJOR.MINOR.PATCH` (sube a mano en el commit que prepara cada release),
+`versionCode = MAJOR*10000 + MINOR*100 + PATCH` (monotónico, sin colisiones entre APKs distribuidos);
+comentario en `android/app/build.gradle.kts` que apunta al esquema. Los valores siguen en `1` / `"0.1"`
+hasta el primer release a Play Console. Texto original del hallazgo abajo.
+
 Siguen en `1` / `"0.1"` tras 20 Partes. Definir cómo se versiona cada release (parte del TODO de
 "Play Console Internal Testing" en `CLAUDE.md` sección 7).
 
@@ -372,7 +418,15 @@ Reconocido en `CLAUDE.md` sección 7. Con 386 pruebas entre ambos módulos, un w
 (GitHub Actions: `./gradlew test lint` y `pytest` + `alembic upgrade head` contra un Postgres de
 servicio) daría mucho valor y cerraría de paso B-2 y el gate `schema-parity`.
 
-#### B-9. `docs/PLAN.md` en 3447 líneas
+#### ~~B-9. `docs/PLAN.md` en 3447 líneas~~ — RESUELTO
+
+**RESUELTO** en la Parte 29 (`docs/PLAN.md`, POS-134). Las Partes 1-28 (todas mergeadas) se movieron a
+`docs/PLAN-historico.md` (~3940 líneas) con sus checklists finales y decisiones resueltas; `docs/PLAN.md`
+quedó en ~250 líneas (encabezado + Parte 29 + Parte 30 + Backlog + Historial de decisiones). El
+encabezado de `PLAN.md` — que seguía diciendo "16 Partes" / "Partes 2-16" / "Partes 1-20 implementadas"
+— se reescribió; `CLAUDE.md` §2 lista el archivo nuevo y aclara que es solo lectura de consulta. Texto
+original del hallazgo abajo.
+
 `CLAUDE.md` pide mantener los docs "enfocados". `PLAN.md` es bitácora histórica de 20 Partes; considerar
 archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 
@@ -393,7 +447,7 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 | 9 | ~~Tests de backend contra base dedicada y esquema por `alembic upgrade head`~~ **RESUELTO (Parte 26, PR #35)** | backend | M |
 | 10 | ~~Migrar a Navigation-Compose~~ **RESUELTO (Parte 27)** | android | M |
 | 11 | ~~Configurar CI (un workflow por módulo)~~ **RESUELTO (Parte 26, PR #35)** | transversal | M |
-| 12 | ~~Gatear `HttpLoggingInterceptor` con `BuildConfig.DEBUG`~~ **RESUELTO (Parte 28)**; fijar versiones en `requirements.txt` (B-1); R8 en release (B-7) | ambos | B |
+| 12 | ~~Gatear `HttpLoggingInterceptor` con `BuildConfig.DEBUG`~~ **RESUELTO (Parte 28)**; ~~fijar versiones en `requirements.txt` (B-1)~~ **RESUELTO (Parte 29)** — resto de la deuda tipo B (B-4/B-5/B-6/B-8/B-9) también cerrada en la Parte 29; R8 en release (B-7) **DIFERIDO** hasta distribución real | ambos | B |
 
 ---
 
@@ -416,3 +470,7 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
   POS-119/120/121/122/123), PR #35.
 - **Actualización 2026-09-07**: M-7 resuelto en la Parte 27 (`docs/PLAN.md`, POS-124/125/126/127).
 - **Actualización 2026-09-07**: M-8 y M-9 resueltos en la Parte 28 (`docs/PLAN.md`, POS-128/129/130).
+- **Actualización 2026-09-07**: B-1, B-4, B-5, B-6, B-8 y B-9 resueltos en la Parte 29 (`docs/PLAN.md`,
+  POS-131/132/133/134). B-7 (R8 en release) DIFERIDO hasta que haya distribución real. Con esto todos
+  los hallazgos de la revisión quedan resueltos salvo B-7 (diferido). La migración del backend a `uv` +
+  lockfile, derivada de B-1, se planificó como Parte 30 (POS-135).

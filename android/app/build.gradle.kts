@@ -15,6 +15,9 @@ android {
         applicationId = "com.pdv.pos"
         minSdk = 26
         targetSdk = 36
+        // Esquema de versionado en CLAUDE.md seccion 7: versionName SemVer
+        // MAJOR.MINOR.PATCH; versionCode = MAJOR*10000 + MINOR*100 + PATCH.
+        // Ambos se suben a mano en el commit que prepara cada release.
         versionCode = 1
         versionName = "0.1"
     }

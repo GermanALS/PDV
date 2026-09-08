@@ -6,7 +6,9 @@ import io.mockk.CapturingSlot
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Interceptor
 import okhttp3.Protocol
 import okhttp3.Request
@@ -61,5 +63,30 @@ class DynamicHostInterceptorTest {
 
         assertEquals("localhost", enviado.captured.url.host)
         assertEquals(8000, enviado.captured.url.port)
+    }
+
+    @Test
+    fun `refreshes the cached config when the connection changes after construction`(@TempDir tempDir: File) {
+        val preferences = preferences(tempDir)
+        val interceptor = DynamicHostInterceptor(preferences)
+
+        runBlocking { preferences.setConexion(ip = "10.0.0.5", puerto = "7000") }
+
+        // El colector interno corre en Dispatchers.Default; espera a que observe el cambio.
+        val actualizado = runBlocking {
+            withTimeoutOrNull(2_000) {
+                var capturado: Request? = null
+                while (capturado?.url?.host != "10.0.0.5") {
+                    val enviado = slot<Request>()
+                    interceptor.intercept(chainCapturing(enviado))
+                    capturado = enviado.captured
+                    if (capturado.url.host != "10.0.0.5") delay(20)
+                }
+                capturado
+            }
+        }
+
+        assertEquals("10.0.0.5", actualizado?.url?.host)
+        assertEquals(7000, actualizado?.url?.port)
     }
 }
