@@ -1,0 +1,4 @@
+# uv writes these with LF; pin the line ending so a `uv lock` on Windows
+# (core.autocrlf=true) does not leave them spuriously "modified".
+uv.lock text eol=lf
+.python-version text eol=lf
