@@ -286,12 +286,32 @@ Para el tamaño actual (11 pantallas) es manejable, pero conviene migrar antes d
 "volver" desde `ROLES` va siempre a `USUARIOS` aunque se haya entrado desde otro lado, y el botón
 físico de atrás del sistema cierra la app en vez de navegar.
 
-#### M-8. `HttpLoggingInterceptor` activo en release
+#### ~~M-8. `HttpLoggingInterceptor` activo en release~~ — RESUELTO
+
+**RESUELTO** en la Parte 28 (`docs/PLAN.md`, POS-129). Se habilitó `buildConfig = true` (opt-in
+desde AGP 8) y `provideOkHttpClient` delega en `buildOkHttpClient(..., includeNetworkLogging =
+BuildConfig.DEBUG)`: el `HttpLoggingInterceptor(Level.BASIC)` solo se agrega en builds debug.
+`LlmNetworkModule` no lo tenía y no se tocó. `NetworkModuleTest` (release sin interceptor / debug con
+uno en nivel `BASIC`) y `./gradlew testDebugUnitTest` en verde. Texto original del hallazgo abajo.
+
 `di/NetworkModule.kt` agrega `HttpLoggingInterceptor(Level.BASIC)` incondicionalmente. `BASIC` sólo
 registra método/URL/estado (no cuerpos ni headers), así que no filtra el token de IA, pero igual no
 debería estar en builds de release. Gatearlo con `BuildConfig.DEBUG`.
 
-#### M-9. Agregaciones numéricas sólo en memoria
+#### ~~M-9. Agregaciones numéricas sólo en memoria~~ — RESUELTO
+
+**RESUELTO** en la Parte 28 (`docs/PLAN.md`, POS-130). Columna espejo `InventarioEntity.cantidadNum`
+(REAL) junto a `cantidad` (TEXT, sigue siendo la fuente de verdad exacta), con migración de Room
+`MIGRATION_7_8` (`ALTER TABLE` + backfill `CAST`) y `PdvDatabase` v7→v8. `InventarioDao.sumarCantidad`
+(`SUM(cantidadNum)`) y `observarPaginaExport` (`ORDER BY i.cantidadNum`) nuevas, expuestas como
+`InventarioRepository.sumarStock` / `observarInventarioParaExport`; `EjecutorAccionesIa.ejecutarConsultarStock`
+resuelve el total con un escalar (no enumera) y el camino de exportación usa la lectura ordenada por
+cantidad. `LocalCajaRepository.calcularTotales` se deja sumando en Kotlin a propósito (acotado por el
+período de un turno, no por el catálogo), documentado en el código. Hueco conocido: la semántica
+numérica del SQL (`SUM`/`ORDER BY` no lexicográfico) no se cubre con `jvm-tests` porque el módulo
+Android no tiene infra para probar Room en la JVM; queda para el test de migración de Room diferido de
+la Parte 24. `./gradlew testDebugUnitTest` en verde. Texto original del hallazgo abajo.
+
 `Converters` guarda `BigDecimal` como TEXT (`toPlainString`). Correcto para precisión, pero implica:
 
 - No se puede `SUM()`/`ORDER BY`/comparar cantidades en SQL de forma fiable (orden lexicográfico).
@@ -364,16 +384,16 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
 |---|--------|--------|-----------|
 | 1 | ~~Revocar el PAT de GitHub y rotar la API key de DeepSeek de `.env`; confirmar si el archivo sigue haciendo falta~~ **RESUELTO (Parte 22)** | raíz | A |
 | 2 | ~~Dependencia de auth (`HTTPBearer` + `jwt.decode`) en todos los routers salvo `/auth` y `/health`; interceptor `Authorization: Bearer` en Android~~ **RESUELTO (Parte 21, PR #30)** — incluye el enforcement de permisos por módulo server-side (M-10) | backend + android | A |
-| 3 | Hacer idempotentes los POST de venta/entrada/corte/retiro (id del dispositivo como clave, igual que `sync_conflicts`) | backend | A |
+| 3 | ~~Hacer idempotentes los POST de venta/entrada/corte/retiro (id del dispositivo como clave, igual que `sync_conflicts`)~~ **RESUELTO (Parte 23)** | backend | A |
 | 4 | ~~`exportSchema = true`, versionar esquemas, empezar migraciones de Room, quitar `fallbackToDestructiveMigration`~~ **RESUELTO (Parte 24)** | android | A |
 | 5 | ~~Bloqueo de fila / `UPDATE` atómico en el decremento de inventario~~ **RESUELTO (Parte 25)** | backend | M |
 | 6 | ~~`Literal`/enum para `metodo_pago` y `estado` de venta, alineado con las queries de caja y con Android~~ **RESUELTO (Parte 25)** | backend + android | M |
 | 7 | ~~Exception handler global + `CORSMiddleware`; capturar `IntegrityError` en `entradas`~~ **RESUELTO (Parte 25)** | backend | M |
-| 8 | Incluir `alembic/` en la imagen Docker + entrypoint/job de migración | backend | M |
-| 9 | Tests de backend contra base dedicada y esquema por `alembic upgrade head` | backend | M |
-| 10 | Migrar a Navigation-Compose | android | M |
-| 11 | Configurar CI (un workflow por módulo) | transversal | M |
-| 12 | Gatear `HttpLoggingInterceptor` con `BuildConfig.DEBUG`; fijar versiones en `requirements.txt`; R8 en release | ambos | B |
+| 8 | ~~Incluir `alembic/` en la imagen Docker + entrypoint/job de migración~~ **RESUELTO (Parte 26, PR #35)** | backend | M |
+| 9 | ~~Tests de backend contra base dedicada y esquema por `alembic upgrade head`~~ **RESUELTO (Parte 26, PR #35)** | backend | M |
+| 10 | ~~Migrar a Navigation-Compose~~ **RESUELTO (Parte 27)** | android | M |
+| 11 | ~~Configurar CI (un workflow por módulo)~~ **RESUELTO (Parte 26, PR #35)** | transversal | M |
+| 12 | ~~Gatear `HttpLoggingInterceptor` con `BuildConfig.DEBUG`~~ **RESUELTO (Parte 28)**; fijar versiones en `requirements.txt` (B-1); R8 en release (B-7) | ambos | B |
 
 ---
 
@@ -389,8 +409,10 @@ archivar las Partes ya migradas a `CLAUDE.md` en un `docs/PLAN-historico.md`.
   PR #30 (merge `3cbde60`).
 - **Actualización 2026-09-04**: A-2 y B-3 resueltos en la Parte 22 (`docs/PLAN.md`).
 - **Actualización 2026-09-04**: A-4 resuelto en la Parte 24 (`docs/PLAN.md`, POS-111).
+- **Actualización 2026-09-05**: A-3 resuelto en la Parte 23 (`docs/PLAN.md`, POS-107), PR #32.
 - **Actualización 2026-09-06**: M-1, M-2, M-3, M-5 y M-6 resueltos en la Parte 25 (`docs/PLAN.md`,
   POS-115/116/117/118).
 - **Actualización 2026-09-07**: M-4, B-2 y M-11 resueltos en la Parte 26 (`docs/PLAN.md`,
   POS-119/120/121/122/123), PR #35.
 - **Actualización 2026-09-07**: M-7 resuelto en la Parte 27 (`docs/PLAN.md`, POS-124/125/126/127).
+- **Actualización 2026-09-07**: M-8 y M-9 resueltos en la Parte 28 (`docs/PLAN.md`, POS-128/129/130).

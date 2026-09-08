@@ -6,6 +6,7 @@ import com.pdv.pos.data.local.CajaDao
 import com.pdv.pos.data.local.DevolucionDao
 import com.pdv.pos.data.local.EntradaDao
 import com.pdv.pos.data.local.InventarioDao
+import com.pdv.pos.data.local.MIGRATION_7_8
 import com.pdv.pos.data.local.PdvDatabase
 import com.pdv.pos.data.local.RetiroDao
 import com.pdv.pos.data.local.RolDao
@@ -27,7 +28,9 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun providePdvDatabase(@ApplicationContext context: Context): PdvDatabase =
-        Room.databaseBuilder(context, PdvDatabase::class.java, "pdv.db").build()
+        Room.databaseBuilder(context, PdvDatabase::class.java, "pdv.db")
+            .addMigrations(MIGRATION_7_8)
+            .build()
 
     @Provides
     fun provideSucursalDao(database: PdvDatabase): SucursalDao = database.sucursalDao()

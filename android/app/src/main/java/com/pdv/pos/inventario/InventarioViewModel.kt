@@ -203,8 +203,9 @@ class InventarioViewModel @Inject constructor(
     }
 
     // La exportacion cubre todo lo que coincide con la busqueda activa, no
-    // solo la pagina visible - recorre las paginas del repositorio (real
-    // desde el sub-paso 2/3, ya no el catalogo estatico del sub-paso 1).
+    // solo la pagina visible - recorre las paginas del repositorio por la
+    // lectura ordenada por cantidad (M-9), asi el archivo sale por existencia
+    // ascendente con un orden numerico fiable.
     private suspend fun obtenerTodosLosItemsFiltrados(): List<InventarioItem> {
         val id = preferences.deviceConfig.first().sucursalIdSeleccionada ?: return emptyList()
         val busqueda = _uiState.value.busqueda
@@ -212,7 +213,7 @@ class InventarioViewModel @Inject constructor(
         val items = mutableListOf<InventarioItem>()
         var pagina = 1
         while (true) {
-            val resultado = inventarioRepository.observarInventario(id, busqueda, pagina, tamanioPagina).first()
+            val resultado = inventarioRepository.observarInventarioParaExport(id, busqueda, pagina, tamanioPagina).first()
             items += resultado.items
             if (resultado.items.isEmpty() || items.size >= resultado.total) break
             pagina++

@@ -3884,31 +3884,77 @@ grandes.
 ### Checklist
 
 **1. Logging de red solo en debug** (POS-129, M-8)
-- [ ] `HttpLoggingInterceptor` gateado con `BuildConfig.DEBUG` en
+- [x] `HttpLoggingInterceptor` gateado con `BuildConfig.DEBUG` en
   `di/NetworkModule.kt` (el cliente de IA, `LlmNetworkModule`, ya no lo tiene -
   no se toca). Criterio: revisión de que el build de release no incluye el
-  interceptor; `./gradlew testDebugUnitTest` en verde. `jvm-tests`
+  interceptor; `./gradlew testDebugUnitTest` en verde. `jvm-tests` Verificado
+  (2026-09-07): se habilitó `buildConfig = true` (opt-in desde AGP 8);
+  `provideOkHttpClient` delega en `buildOkHttpClient(..., includeNetworkLogging
+  = BuildConfig.DEBUG)` y el `HttpLoggingInterceptor(BASIC)` solo se agrega si
+  el flag es `true`. `NetworkModuleTest` (2 pruebas: release sin interceptor,
+  debug con uno en nivel `BASIC`) y `./gradlew testDebugUnitTest` en verde
+  (`BUILD SUCCESSFUL`).
 
 **2. Agregaciones numéricas de inventario** (POS-130, M-9)
-- [ ] Elegido el enfoque (ver Decisiones abiertas) e implementado el total de
+- [x] Elegido el enfoque (ver Decisiones abiertas) e implementado el total de
   stock y el orden por cantidad sin traer todo el catálogo a memoria.
   `EjecutorAccionesIa.ejecutarConsultarStock` y el camino de exportación usan la
   nueva ruta. Criterio: `jvm-tests` de la nueva agregación; comprobación
   aproximada de que el uso de memoria no crece con el tamaño del catálogo.
-- [ ] `LocalCajaRepository.calcularTotales` revisado bajo el mismo criterio (o
+  `jvm-tests` Verificado (2026-09-07): columna espejo `InventarioEntity.cantidadNum`
+  (REAL) + migración `MIGRATION_7_8` (`ALTER TABLE` + backfill `CAST(cantidad AS
+  REAL)`), `PdvDatabase` v7→v8, `exportSchema` genera `8.json`. Toda escritura de
+  `cantidad` pasa por `nuevoInventario(...)` / `InventarioEntity.conCantidad(...)`
+  (EntradaDao, VentaDao, InventarioDao) para que las dos columnas no se
+  separen. `InventarioDao.sumarCantidad` (`SUM(cantidadNum)` con LIKE + filtro por
+  categoría) y `observarPaginaExport` (`ORDER BY i.cantidadNum ASC`) nuevas;
+  expuestas como `InventarioRepository.sumarStock` / `observarInventarioParaExport`
+  (Local usa el SQL; Remoto reusa el paginado del backend, que ya agrega en
+  `Numeric`). `ejecutarConsultarStock` resuelve el total con `sumarStock` (un
+  escalar, sin enumerar); `EjecutorAccionesIa.todosLosItems` y
+  `InventarioViewModel.obtenerTodosLosItemsFiltrados` usan
+  `observarInventarioParaExport`. Tests (capa Kotlin, DAO mockeado):
+  `EjecutorAccionesIaIntegrationTest` "consultar_stock usa la suma agregada y no
+  enumera el catálogo" (`verify(exactly = 0)` sobre `observarInventario*`) + los
+  3 tests de `consultar_stock` existentes verdes contra el nuevo stub de
+  `sumarStock`; `./gradlew testDebugUnitTest` en verde. **Hueco conocido**: que
+  `SUM(cantidadNum)` sume numérico y que `ORDER BY i.cantidadNum` ordene numérico
+  (no lexicográfico) es una propiedad del SQL que este cierre `jvm-tests` no
+  ejercita — el proyecto no tiene infra para probar Room en la JVM (sin
+  Robolectric ni `room-testing`). Queda para cuando entre el test de migración de
+  Room diferido de la Parte 24 (natural: Parte 29 o una Parte de infra de tests).
+- [x] `LocalCajaRepository.calcularTotales` revisado bajo el mismo criterio (o
   documentado por qué se deja como está). Criterio: `./gradlew testDebugUnitTest`
-  en verde.
+  en verde. Verificado (2026-09-07): se deja sumando en Kotlin, con comentario
+  que explica por qué — el conjunto está acotado por el período de un turno
+  (decenas de ventas), no por el catálogo, así que no justifica una columna
+  numérica espejo en `ventas`/`retiros_efectivo`; los montos ya son `BigDecimal`
+  tipados, sumar en memoria conserva la precisión exacta. `./gradlew
+  testDebugUnitTest` en verde (tests de caja sin cambios).
 
 ### Decisiones abiertas
 
-- [ ] M-9: ¿columna numérica paralela en las entidades Room (para `SUM` / `ORDER
+- [x] M-9: ¿columna numérica paralela en las entidades Room (para `SUM` / `ORDER
   BY` / comparación en SQL, manteniendo la de TEXT para exactitud), o mover
   `consultar_stock` y los totales de stock al backend cuando el modo lo permita
   (análogo a `GET /cortes-caja/totales`, que ya agrega en Postgres con
   `Numeric`)? Propuesta: columna paralela, para no crear dependencia de red en
-  una consulta de solo lectura que hoy funciona offline.
-- [ ] ¿M-8 y M-9 se mantienen en una sola Parte, o M-9 (diseño de esquema) se
-  separa de M-8 (cambio trivial)?
+  una consulta de solo lectura que hoy funciona offline. **Decidido**
+  (2026-09-07): columna `REAL` paralela solo en `InventarioEntity`
+  (`cantidad` en TEXT sigue siendo la fuente de verdad exacta; la nueva
+  columna solo alimenta `SUM`/`ORDER BY`/comparación). `consultar_stock` y
+  el total de stock usan una query agregada nueva en `InventarioDao`, sin
+  paginar el catálogo a memoria. `LocalCajaRepository.calcularTotales` se
+  deja como está (suma en Kotlin) con un comentario que explica por qué:
+  está acotada por el período de un turno, no por el tamaño del catálogo.
+  Es una columna device-only (no se alinea con `schema-pos.json` ni con el
+  backend), así que no lleva etiqueta `schema-parity`; sí implica migración
+  Room v7→v8 con test de `MigrationTestHelper` (cierra el ítem diferido de
+  la Parte 24).
+- [x] ¿M-8 y M-9 se mantienen en una sola Parte, o M-9 (diseño de esquema) se
+  separa de M-8 (cambio trivial)? **Decidido** (2026-09-07): se mantienen
+  juntos en la Parte 28, un solo PR (`feature/POS-128-android-logging-agregaciones`),
+  con compuerta al terminar cada sub-paso.
 
 ---
 

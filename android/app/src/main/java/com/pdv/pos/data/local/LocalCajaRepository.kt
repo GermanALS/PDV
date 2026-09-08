@@ -24,6 +24,12 @@ class LocalCajaRepository @Inject constructor(
     private val appLogger: AppLogger,
 ) : CajaRepository {
 
+    // La suma se hace en Kotlin y no en SQL a proposito (M-9, PLAN.md Parte
+    // 28): el conjunto esta acotado por el periodo de un turno (decenas de
+    // ventas), no por el tamano del catalogo, asi que no vale la pena una
+    // columna numerica espejo en `ventas`/`retiros_efectivo` como la de
+    // `inventario.cantidadNum`. Los montos ya vienen tipados como BigDecimal
+    // (Converters), sumar en memoria conserva la precision exacta.
     override suspend fun calcularTotales(sucursalId: String, fechaInicio: Long, fechaFin: Long): TotalesCorte {
         val ventas = ventaDao.getVentasDelPeriodo(sucursalId, fechaInicio, fechaFin)
         val retiros = retiroDao.getRetirosDelPeriodo(sucursalId, fechaInicio, fechaFin)

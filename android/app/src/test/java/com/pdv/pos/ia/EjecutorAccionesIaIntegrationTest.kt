@@ -32,6 +32,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -103,18 +104,33 @@ class EjecutorAccionesIaIntegrationTest {
     ): InventarioRepository {
         val repo = mockk<InventarioRepository>()
         every { repo.observarCategorias() } returns flowOf(categorias)
-        every { repo.observarInventario(any(), any(), any(), any()) } answers {
-            val termino = secondArg<String>()
-            val filtrados = if (termino.isBlank()) {
-                items
-            } else {
-                items.filter {
-                    it.articulo.nombre.contains(termino, ignoreCase = true) ||
-                        it.articulo.sku.contains(termino, ignoreCase = true) ||
-                        (it.articulo.codigoBarras?.contains(termino, ignoreCase = true) == true)
-                }
+        fun porTermino(termino: String) = if (termino.isBlank()) {
+            items
+        } else {
+            items.filter {
+                it.articulo.nombre.contains(termino, ignoreCase = true) ||
+                    it.articulo.sku.contains(termino, ignoreCase = true) ||
+                    (it.articulo.codigoBarras?.contains(termino, ignoreCase = true) == true)
             }
+        }
+        every { repo.observarInventario(any(), any(), any(), any()) } answers {
+            val filtrados = porTermino(secondArg())
             flowOf(PaginaInventario(items = filtrados, pagina = 1, tamanioPagina = 100, total = filtrados.size))
+        }
+        // La ruta de exportacion (M-9): el mock mantiene el orden de entrada;
+        // el ORDER BY i.cantidadNum real es una propiedad del SQL, fuera del
+        // alcance de este test de capa Kotlin.
+        every { repo.observarInventarioParaExport(any(), any(), any(), any()) } answers {
+            val filtrados = porTermino(secondArg())
+            flowOf(PaginaInventario(items = filtrados, pagina = 1, tamanioPagina = 100, total = filtrados.size))
+        }
+        // consultar_stock (M-9): suma agregada en la fuente de datos, con el
+        // mismo LIKE por termino y filtro exacto por categoria que el SQL.
+        coEvery { repo.sumarStock(any(), any(), any()) } answers {
+            val categoria = thirdArg<String?>()
+            porTermino(secondArg())
+                .filter { categoria == null || it.articulo.categoria.equals(categoria, ignoreCase = true) }
+                .fold(BigDecimal.ZERO) { acc, item -> acc + item.cantidad }
         }
         return repo
     }
@@ -734,6 +750,24 @@ class EjecutorAccionesIaIntegrationTest {
 
         assertTrue(resultado is ResultadoAccionIa.Ejecutada)
         assertTrue((resultado as ResultadoAccionIa.Ejecutada).mensaje.contains("13"))
+    }
+
+    // M-9 (PLAN.md Parte 28): consultar_stock resuelve el total con la suma
+    // agregada de InventarioRepository.sumarStock, sin recorrer las paginas
+    // del catalogo - el uso de memoria no crece con el tamano del inventario.
+    @Test
+    fun `consultar_stock usa la suma agregada y no enumera el catalogo`(@TempDir tempDir: File) = runTest {
+        val repo = mockk<InventarioRepository>()
+        coEvery { repo.sumarStock("suc-1", "", null) } returns BigDecimal("42")
+        val ejecutor = ejecutor(inventarioRepository = repo, appLogger = AppLogger(tempDir))
+        val accion = AccionIaDto(modulo = "inventario", tipo = "consultar_stock", parametros = buildJsonObject { })
+
+        val resultado = ejecutor.ejecutar(accion, setOf("inventario"), "suc-1", "german")
+
+        assertTrue(resultado is ResultadoAccionIa.Ejecutada)
+        assertTrue((resultado as ResultadoAccionIa.Ejecutada).mensaje.contains("42"))
+        verify(exactly = 0) { repo.observarInventario(any(), any(), any(), any()) }
+        verify(exactly = 0) { repo.observarInventarioParaExport(any(), any(), any(), any()) }
     }
 
     @Test
