@@ -1,7 +1,12 @@
 package com.pdv.pos.data.remote
 
 import com.pdv.pos.config.ConfiguracionPreferences
+import com.pdv.pos.config.DeviceConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -13,17 +18,33 @@ import javax.inject.Singleton
 // de Configuracion tenga efecto sin reiniciar la app ni reconstruir
 // Retrofit. Si no hay IP o el puerto no es numerico, deja pasar la request
 // tal cual (usa el host del baseUrl: localhost:8000 para adb reverse /
-// 10.0.2.2 en emulador). runBlocking es aceptable: corre en el hilo de
-// dispatch de OkHttp y DataStore cachea en memoria tras la primera lectura.
+// 10.0.2.2 en emulador).
+//
+// El valor se cachea en un campo volatil: se siembra una sola vez de forma
+// bloqueante al construir el interceptor (singleton) y despues lo mantiene
+// al dia un colector, en vez de reejecutar el pipeline del Flow con
+// runBlocking en el hilo de dispatch de OkHttp por cada request
+// (PLAN.md Parte 29, B-5).
 @Singleton
 class DynamicHostInterceptor @Inject constructor(
-    private val preferences: ConfiguracionPreferences,
+    preferences: ConfiguracionPreferences,
 ) : Interceptor {
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    @Volatile
+    private var config: DeviceConfig = runBlocking { preferences.deviceConfig.first() }
+
+    init {
+        scope.launch {
+            preferences.deviceConfig.collect { config = it }
+        }
+    }
+
     override fun intercept(chain: Interceptor.Chain): Response {
-        val config = runBlocking { preferences.deviceConfig.first() }
-        val host = config.ip.trim()
-        val puerto = config.puerto.trim().toIntOrNull()
+        val actual = config
+        val host = actual.ip.trim()
+        val puerto = actual.puerto.trim().toIntOrNull()
         val request = chain.request()
         if (host.isEmpty() || puerto == null) {
             return chain.proceed(request)
