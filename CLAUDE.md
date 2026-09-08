@@ -168,6 +168,10 @@ dispositivo no está disponible.
 
 ### Stack técnico
 - Python 3.11+, FastAPI, Pydantic v2 para esquemas/validación
+- Gestor de dependencias: `uv` (`backend/pyproject.toml` + `uv.lock`, lock
+  transitivo con hashes). No hay `requirements.txt` como fuente — el archivo
+  que existe es un export generado (`uv export`) solo para compatibilidad
+  externa; ni el `Dockerfile` ni el CI lo consumen.
 - Servidor: Uvicorn (dev) / Gunicorn+Uvicorn workers (prod)
 - ORM: SQLAlchemy 2.0 (async — `DeclarativeBase` + `Mapped`/`mapped_column`)
   + Alembic para migraciones. Motor: PostgreSQL vía `asyncpg`.
@@ -211,19 +215,25 @@ hornea el fuente (`COPY app ./app`) y `docker-compose.yml` no monta un
 volumen ni usa `--reload`, así que el contenedor en ejecución NO refleja
 cambios en `backend/app/` hasta reconstruir la imagen. Los scripts
 `start-*` ya hacen `docker compose up -d --build`; correrlos de nuevo
-basta. `pytest` corre contra el código del host, no contra el contenedor:
-verde en `pytest` no implica que el contenedor esté actualizado. Al
-verificar en dispositivo contra el backend dockerizado, reconstruir
+basta. `uv run pytest` corre contra el código del host, no contra el
+contenedor: verde en pytest no implica que el contenedor esté actualizado.
+Al verificar en dispositivo contra el backend dockerizado, reconstruir
 primero.
 
 **Alternativa manual (sin Docker, útil para iterar rápido en debug):**
+Gestor de dependencias: `uv` (`backend/pyproject.toml` + `uv.lock`). `uv`
+crea y administra `.venv`; no hace falta `python -m venv` ni activar el venv
+a mano.
 ```bash
 cd backend
-python -m venv .venv && .venv\Scripts\activate     # Windows
-pip install -r requirements.txt
-uvicorn app.main:app --reload                       # levantar en local
-pytest                                                # correr tests
+uv sync                                    # crea .venv e instala desde uv.lock (incluye grupo dev)
+uv run uvicorn app.main:app --reload        # levantar en local
+uv run pytest                               # correr tests
+uv run alembic upgrade head                 # aplicar migraciones
 ```
+`backend/requirements.txt` es un export generado (`uv export`) que se
+mantiene solo por compatibilidad con herramientas que no entienden `uv`;
+no se edita a mano y no lo consumen ni el `Dockerfile` ni el CI.
 
 ## 5. Contrato de API (`docs/api-contract.md`)
 

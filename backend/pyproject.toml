@@ -1,0 +1,33 @@
+[project]
+name = "pdv-backend"
+version = "0.1.0"
+description = "PDV backend API (FastAPI, offline-first sync, optional AI assistant)"
+requires-python = ">=3.11"
+
+# Direct runtime dependencies. Pinned to exact versions carried over from the
+# reproducible set frozen in PLAN.md Parte 29 (B-1). The full transitive tree,
+# with hashes, lives in uv.lock. Bump a version here, then run `uv lock`.
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.4",
+    "sqlalchemy==2.0.52",
+    "asyncpg==0.31.0",
+    "alembic==1.19.1",
+    "bcrypt==5.0.0",
+    "pyjwt==2.13.0",
+]
+
+[dependency-groups]
+# Test-only tooling. Installed by `uv sync`; excluded in Docker via
+# `uv sync --no-dev`.
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "httpx==0.28.1",
+]
+
+[tool.uv]
+# The backend is a deployable app, not an importable package: there is no
+# build backend and nothing installs `app/` as a distribution. `uv sync` only
+# resolves and installs the dependencies above.
+package = false

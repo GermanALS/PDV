@@ -38,14 +38,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.11"
+          version: "0.10.12"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
 
-      - run: pip install -r requirements.txt
+      - name: Fail if uv.lock is out of date with pyproject.toml
+        run: uv lock --check
 
-      - run: alembic upgrade head
+      - run: uv sync --frozen
 
-      - run: alembic check
+      - run: uv run alembic upgrade head
 
-      - run: pytest
+      - run: uv run alembic check
+
+      - run: uv run pytest

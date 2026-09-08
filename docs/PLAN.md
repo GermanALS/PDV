@@ -125,41 +125,92 @@ Docker, en CI y en el venv de desarrollo del host.
 ### Checklist
 
 **1. Manifiesto y lock** (POS-136)
-- [ ] `backend/pyproject.toml` con las 10 dependencias directas (grupo
+- [x] `backend/pyproject.toml` con las 10 dependencias directas (grupo
   `dev` para `pytest`/`pytest-asyncio`/`httpx`); `uv.lock` generado con
   `uv lock`. Criterio: `uv sync --frozen` en un entorno limpio instala el
   mismo set que hoy (comparar contra el `pip freeze` fijado en la Parte 29).
-- [ ] `backend/requirements.txt` eliminado. Criterio: no quedan referencias a
+  Verificado (2026-09-07): `pyproject.toml` con 7 directas runtime pineadas
+  `==` + grupo `dev` (3), `[tool.uv] package = false`, `requires-python =
+  ">=3.11"`; `.python-version` -> `3.11` (uv bajó CPython 3.11.15 gestionado).
+  `uv.lock` = 38 paquetes, 759 hashes; `uvloop` queda con marcador
+  `sys_platform != 'win32'` (se instala en la imagen Linux). `uv sync
+  --frozen` en venv limpio 3.11.15 OK, `uv pip check` limpio, `uv run pytest`
+  156 passed. Único cambio de set vs Parte 29: `anyio` 4.14.2 -> 4.15.1
+  (bump menor compatible, aceptado explícitamente; ahora fijado por hash);
+  `colorama`/`uvloop` difieren solo por marcador de plataforma.
+- [x] `backend/requirements.txt` eliminado. Criterio: no quedan referencias a
   `requirements.txt` en `backend/`, `Dockerfile`, `scripts/` ni workflows.
+  Verificado (2026-09-07): el `requirements.txt` hand-maintained se reemplazó
+  por un export generado (`uv export --no-hashes --no-emit-project`, decisión
+  D2 = mantener para compat externa); su cabecera documenta el comando de
+  regeneración. `git grep "requirements.txt"` en `Dockerfile`/`compose`/
+  `scripts/`/`.github/` -> sin coincidencias; nada del build lo consume.
 
 **2. Docker y scripts** (POS-137)
-- [ ] `backend/Dockerfile` usa `uv` (`COPY` de `uv` desde su imagen oficial o
+- [x] `backend/Dockerfile` usa `uv` (`COPY` de `uv` desde su imagen oficial o
   `pip install uv`, luego `uv sync --frozen --no-dev`). Criterio: `docker
   compose build backend` en verde; `pip check` / `uv pip check` limpio;
-  imagen sigue corriendo como usuario no-root (B-4).
-- [ ] `scripts/start-*`/`stop-*` y la sección "alternativa manual" de
+  imagen sigue corriendo como usuario no-root (B-4). Verificado (2026-09-07):
+  `COPY --from=ghcr.io/astral-sh/uv:0.10.12 /uv /uvx /bin/` (decisión D1) +
+  `uv sync --frozen --no-dev --no-install-project` con cache mount; venv en
+  `PATH` para que `uvicorn` (CMD) y `alembic` (comando del servicio
+  `migrate`) resuelvan sin `uv run`. `docker compose build backend` verde;
+  `docker run --entrypoint whoami` -> `app`; `uv pip check --no-cache` en la
+  imagen -> "All installed packages are compatible" (27 paquetes, `--no-dev`
+  descarta pytest/httpx/etc., `uvloop` presente); `docker compose up -d` ->
+  `migrate` corrió todas las migraciones Alembic como no-root, `backend`
+  healthy, `/api/v1/health` -> `{"status":"ok","version":"0.1.0"}`.
+- [x] `scripts/start-*`/`stop-*` y la sección "alternativa manual" de
   `CLAUDE.md` §4 actualizadas a `uv run` / `uv sync`. Criterio: los scripts
-  levantan el stack sin `pip` ni `venv` manual.
+  levantan el stack sin `pip` ni `venv` manual. Verificado (2026-09-07): los
+  `scripts/start-*`/`stop-*` solo hacen `docker compose up/down` — nunca
+  tocaron `pip`/`venv`, criterio ya satisfecho, sin cambios. La sección
+  "Alternativa manual" de `CLAUDE.md` §4 reescrita a `uv sync` / `uv run
+  uvicorn` / `uv run pytest` / `uv run alembic`, con nota de que
+  `requirements.txt` es un export generado solo-compat.
 
 **3. CI** (POS-138)
-- [ ] Workflow de CI del backend (Parte 26) usa `uv sync --frozen` +
+- [x] Workflow de CI del backend (Parte 26) usa `uv sync --frozen` +
   `uv run pytest` + `uv run alembic ...`. Criterio: el workflow corre en
   verde en un PR de prueba y falla si `uv.lock` está desactualizado
-  (`uv lock --check`).
+  (`uv lock --check`). Verificado (2026-09-07): `.github/workflows/
+  backend-ci.yml` usa `astral-sh/setup-uv@v6` (pin `0.10.12`, cache,
+  decisión D3 — dependencia de terceros nueva, señalada por §9), luego
+  `uv lock --check`, `uv sync --frozen`, `uv run alembic upgrade head`,
+  `uv run alembic check`, `uv run pytest`; `actions/setup-python` eliminado
+  (uv baja 3.11 según `.python-version`). Simulación local de cada step OK.
+  `uv lock --check` probado: exit 1 con `pyproject.toml` alterado sin
+  re-lock ("The lockfile at `uv.lock` needs to be updated"), exit 0 tras
+  revertir. El "verde en un PR de prueba" lo dispara el PR que mergee esta
+  Parte (el filtro `paths` cubre `backend/**` y el propio workflow).
 
 **4. Documentación** (POS-139)
-- [ ] `CLAUDE.md` §4 (stack, comandos) refleja `uv` como gestor; nota de que
+- [x] `CLAUDE.md` §4 (stack, comandos) refleja `uv` como gestor; nota de que
   `requirements.txt` ya no existe. Criterio: ninguna referencia obsoleta a
-  `pip install -r requirements.txt` en la doc.
+  `pip install -r requirements.txt` en la doc. Verificado (2026-09-07):
+  `CLAUDE.md` §4 "Stack técnico" tiene línea nueva de `uv` como gestor y
+  aclara que `requirements.txt` es un export generado solo-compat (D2 lo
+  mantuvo, no se eliminó del todo); "Rebuild obligatorio" y "Alternativa
+  manual" a `uv run`. `git grep "pip install -r"` solo aparece en el texto
+  de criterio de los propios checklists de Parte 29/30 en este archivo, no
+  en doc operativa.
 
 ### Decisiones abiertas
 
-- [ ] ¿`uv` se instala en la imagen Docker vía `COPY --from=ghcr.io/astral-sh/uv`
+- [x] ¿`uv` se instala en la imagen Docker vía `COPY --from=ghcr.io/astral-sh/uv`
   (pin de versión, sin red en build) o `pip install uv==X`? Propuesta:
-  `COPY --from`, es el patrón recomendado por Astral.
-- [ ] ¿Se mantiene un `requirements.txt` exportado (`uv export`) como
+  `COPY --from`, es el patrón recomendado por Astral. **Decidido**
+  (2026-09-07): `COPY --from=ghcr.io/astral-sh/uv:0.10.12`. (D1)
+- [x] ¿Se mantiene un `requirements.txt` exportado (`uv export`) como
   compatibilidad para herramientas que no entienden `uv`, o se corta del
   todo? Propuesta: cortar del todo; nada en el proyecto lo necesita.
+  **Decidido** (2026-09-07): se mantiene el export generado (`uv export
+  --no-hashes`) por compatibilidad externa; no lo consume ni el `Dockerfile`
+  ni el CI. El ítem "requirements.txt eliminado" del checklist se cerró con
+  esa aclaración (se reemplaza el hand-maintained por el generado). (D2)
+- [x] CI: ¿`uv` vía action `astral-sh/setup-uv` o installer standalone?
+  **Decidido** (2026-09-07): `astral-sh/setup-uv@v6` (pin `0.10.12`);
+  dependencia de terceros nueva, señalada por §9. (D3)
 
 ---
 
