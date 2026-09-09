@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.domain.model.BackendMode
+import com.pdv.pos.domain.model.EsquemaConexion
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.ia.LlmProvider
 
@@ -70,8 +71,10 @@ fun ConfiguracionScreen(
             // remoto de sucursales que elegir.
             if (uiState.modo != BackendMode.LOCAL) {
                 ConexionSection(
+                    esquema = uiState.esquema,
                     ip = uiState.ip,
                     puerto = uiState.puerto,
+                    onEsquemaSelected = viewModel::onEsquemaSelected,
                     onIpChange = viewModel::onIpChange,
                     onPuertoChange = viewModel::onPuertoChange,
                     onGuardarConexion = viewModel::onGuardarConexion,
@@ -121,16 +124,30 @@ fun ConfiguracionScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConexionSection(
+    esquema: EsquemaConexion,
     ip: String,
     puerto: String,
+    onEsquemaSelected: (EsquemaConexion) -> Unit,
     onIpChange: (String) -> Unit,
     onPuertoChange: (String) -> Unit,
     onGuardarConexion: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Conexión al backend", style = MaterialTheme.typography.titleMedium)
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            EsquemaConexion.entries.forEachIndexed { index, opcion ->
+                SegmentedButton(
+                    selected = esquema == opcion,
+                    onClick = { onEsquemaSelected(opcion) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = EsquemaConexion.entries.size),
+                ) {
+                    Text(opcion.name)
+                }
+            }
+        }
         OutlinedTextField(
             value = ip,
             onValueChange = onIpChange,
@@ -204,7 +221,7 @@ private fun ModoSection(modo: BackendMode, onModoSelected: (BackendMode) -> Unit
     }
 }
 
-private fun BackendMode.etiqueta(): String = when (this) {
+internal fun BackendMode.etiqueta(): String = when (this) {
     BackendMode.LOCAL -> "Local"
     BackendMode.REMOTO -> "Remoto"
     BackendMode.LOCAL_CON_SINCRONIZACION -> "Local con sincronización"

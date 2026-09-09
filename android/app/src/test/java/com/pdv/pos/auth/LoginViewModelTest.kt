@@ -12,11 +12,17 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import retrofit2.HttpException
+import retrofit2.Response
 import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -92,14 +98,74 @@ class LoginViewModelTest {
     }
 
     @Test
-    fun `login exposes a connection error without crashing when the backend is unreachable`() = runTest(dispatcher) {
+    fun `login exposes a connectivity error flagged as such when the backend is unreachable`() = runTest(dispatcher) {
         val authRepository = mockk<AuthRepository>()
         coEvery { authRepository.login(any(), any()) } throws IOException("sin conexion")
         val viewModel = LoginViewModel(authRepository, SessionManager())
 
         viewModel.login()
 
-        assertEquals("No se pudo conectar al backend: sin conexion", viewModel.uiState.value.errorMessage)
+        assertEquals(
+            "No se pudo conectar con el servidor. Revisa la red o la configuración de conexión.",
+            viewModel.uiState.value.errorMessage,
+        )
+        assertEquals(true, viewModel.uiState.value.connectivityError)
+    }
+
+    @Test
+    fun `login with invalid credentials does not flag a connectivity error`() = runTest(dispatcher) {
+        val authRepository = mockk<AuthRepository>()
+        coEvery { authRepository.login(any(), any()) } returns LoginResultado.CredencialesInvalidas
+        val viewModel = LoginViewModel(authRepository, SessionManager())
+
+        viewModel.login()
+
+        assertEquals("Usuario o contraseña incorrectos", viewModel.uiState.value.errorMessage)
+        assertFalse(viewModel.uiState.value.connectivityError)
+    }
+
+    @Test
+    fun `login flags a connectivity error when the server responds with an HTTP error`() = runTest(dispatcher) {
+        val authRepository = mockk<AuthRepository>()
+        val httpError = HttpException(
+            Response.error<Any>(503, "unavailable".toResponseBody("text/plain".toMediaTypeOrNull())),
+        )
+        coEvery { authRepository.login(any(), any()) } throws httpError
+        val viewModel = LoginViewModel(authRepository, SessionManager())
+
+        viewModel.login()
+
+        assertEquals(
+            "El servidor respondió con un error (503). Revisa la configuración de conexión.",
+            viewModel.uiState.value.errorMessage,
+        )
+        assertTrue(viewModel.uiState.value.connectivityError)
+    }
+
+    @Test
+    fun `closing the connection panel clears a connectivity error`() = runTest(dispatcher) {
+        val authRepository = mockk<AuthRepository>()
+        coEvery { authRepository.login(any(), any()) } throws IOException("sin conexion")
+        val viewModel = LoginViewModel(authRepository, SessionManager())
+        viewModel.login()
+        assertTrue(viewModel.uiState.value.connectivityError)
+
+        viewModel.onConexionConfigurada()
+
+        assertNull(viewModel.uiState.value.errorMessage)
+        assertFalse(viewModel.uiState.value.connectivityError)
+    }
+
+    @Test
+    fun `closing the connection panel keeps a credentials error untouched`() = runTest(dispatcher) {
+        val authRepository = mockk<AuthRepository>()
+        coEvery { authRepository.login(any(), any()) } returns LoginResultado.CredencialesInvalidas
+        val viewModel = LoginViewModel(authRepository, SessionManager())
+        viewModel.login()
+
+        viewModel.onConexionConfigurada()
+
+        assertEquals("Usuario o contraseña incorrectos", viewModel.uiState.value.errorMessage)
     }
 
     @Test

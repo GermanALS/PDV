@@ -13,12 +13,12 @@ import okhttp3.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// Reescribe host/puerto de cada request con la IP/Puerto guardados en
-// ConfiguracionPreferences, para que cambiar la conexion desde la pantalla
-// de Configuracion tenga efecto sin reiniciar la app ni reconstruir
-// Retrofit. Si no hay IP o el puerto no es numerico, deja pasar la request
-// tal cual (usa el host del baseUrl: localhost:8000 para adb reverse /
-// 10.0.2.2 en emulador).
+// Reescribe esquema/host/puerto de cada request con los valores guardados en
+// ConfiguracionPreferences, para que cambiar la conexion desde el panel del
+// login o la pantalla de Configuracion tenga efecto sin reiniciar la app ni
+// reconstruir Retrofit. Si no hay IP o el puerto no es numerico, deja pasar
+// la request tal cual (usa el esquema/host del baseUrl: http://localhost:8000
+// para adb reverse / 10.0.2.2 en emulador).
 //
 // El valor se cachea en un campo volatil: se siembra una sola vez de forma
 // bloqueante al construir el interceptor (singleton) y despues lo mantiene
@@ -50,6 +50,7 @@ class DynamicHostInterceptor @Inject constructor(
             return chain.proceed(request)
         }
         val nuevaUrl = request.url.newBuilder()
+            .scheme(actual.esquema.scheme())
             .host(host)
             .port(puerto)
             .build()

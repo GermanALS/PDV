@@ -34,7 +34,7 @@ PDV/
 ├── scripts/     -> Scripts multiplataforma de arranque/detención del backend
 └── docs/
     ├── api-contract.md       -> Contrato de endpoints (fuente de verdad compartida)
-    ├── PLAN.md               -> Diseño en desarrollo (solo Partes activas: 29-30 + Backlog)
+    ├── PLAN.md               -> Diseño en desarrollo (solo Partes activas: 29-32 + Backlog)
     ├── PLAN-historico.md     -> Bitácora de las Partes 1-28, ya cerradas y mergeadas
     ├── schema-pos.json       -> Esquema de datos compartido (3er artefacto de la compuerta schema-parity, sec. 9)
     ├── review_code.md        -> Revisión de código del 2026-08-30 (fuente de las Partes 21-30)
@@ -145,14 +145,31 @@ cd android
 ./gradlew installDebug          # instala el APK en el dispositivo/emulador conectado
 ```
 
-**Instalación + tunneling USB para modo REMOTO (Windows)**: el modo REMOTO
-en el dispositivo físico necesita `adb reverse tcp:8000 tcp:8000` además de
-`installDebug` — sin eso, `localhost:8000` en el dispositivo no llega al
-backend de la PC. Este túnel no persiste entre reconexiones de cable,
-reinicios del dispositivo/PC, ni `adb kill-server`, así que hay que
-rehacerlo cada sesión de prueba. Esto no es parte del código de ningún
-módulo — es tooling de depuración para que probar en el Xiaomi sea más
-rápido y no dependa de recordar el comando `adb reverse` a mano:
+**Modo REMOTO en el dispositivo físico — Wi-Fi en la misma subred (camino
+principal)**: con el teléfono y la PC en la misma red Wi-Fi, en la app
+Configuración (o el panel de conexión del login) → modo REMOTO, esquema
+`http`, IP = la IP LAN de la PC (`ipconfig` → "Dirección IPv4" del adaptador
+activo, ej. `192.168.0.132`), puerto `8000`. Sin cable USB ni `adb reverse`.
+Requisitos:
+- El build de **debug** habilita HTTP en claro hacia cualquier host
+  (`app/src/debug/res/xml/network_security_config.xml`, `base-config`). El de
+  release no; el endurecimiento de cleartext vive en la Parte 32.
+- Regla de firewall de Windows para conexiones entrantes TCP 8000 (Docker
+  publica `0.0.0.0:8000`, pero el Firewall de Windows bloquea el acceso desde
+  otros equipos por defecto). Una sola vez, en PowerShell como admin:
+  `New-NetFirewallRule -DisplayName "PDV backend 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow`.
+- La IP LAN la asigna el router por DHCP y puede cambiar entre reinicios;
+  reservarla en el router (DHCP estático) o fijar IP estática en la PC para
+  no reconfigurar la app cada vez.
+- Si el router tiene aislamiento de clientes Wi-Fi ("AP/client isolation") y
+  el teléfono no alcanza a la PC, desactivarlo.
+
+**Alternativa — tunneling USB (`adb reverse`)**: si no hay Wi-Fi compartida o
+el router aísla clientes, el modo REMOTO también funciona por USB con
+`localhost:8000` en la app y `adb reverse tcp:8000 tcp:8000` en la PC además
+de `installDebug`. El túnel no persiste entre reconexiones de cable,
+reinicios del dispositivo/PC ni `adb kill-server`, hay que rehacerlo cada
+sesión de prueba:
 ```powershell
 scripts\install-apk-tuneling.ps1   # installDebug + adb reverse tcp:8000 tcp:8000
 scripts\stop-apk-services.ps1      # quita el túnel al terminar la sesión de prueba

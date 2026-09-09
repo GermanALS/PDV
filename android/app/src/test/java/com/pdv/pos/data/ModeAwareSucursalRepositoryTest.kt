@@ -16,9 +16,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import retrofit2.HttpException
+import retrofit2.Response
 import java.io.File
 
 class ModeAwareSucursalRepositoryTest {
@@ -122,5 +126,41 @@ class ModeAwareSucursalRepositoryTest {
         )
 
         assertEquals("Sucursal Remota", repository.observeSucursales().first().single().nombre)
+    }
+
+    @Test
+    fun `LOCAL_CON_SINCRONIZACION falls back to the local catalog when the backend read fails`(
+        @TempDir tempDir: File,
+    ) = runTest {
+        val localDao = FakeSucursalDao(
+            listOf(
+                SucursalEntity(
+                    localId = "local-1",
+                    remoteId = null,
+                    nombre = "Sucursal Local",
+                    direccion = null,
+                    activa = true,
+                    updatedAt = 0,
+                    isSynced = false,
+                    deletedAt = null,
+                )
+            )
+        )
+        val api = mockk<SucursalApiService>()
+        // 403 sin JWT: el dispositivo inicio sesion con LocalAuthRepository
+        // (accessToken null) y desde la Parte 21 /sucursales exige Bearer.
+        coEvery { api.getSucursales() } throws HttpException(
+            Response.error<Any>(403, "forbidden".toResponseBody("text/plain".toMediaTypeOrNull())),
+        )
+
+        val preferences = preferences(tempDir)
+        preferences.setBackendMode(BackendMode.LOCAL_CON_SINCRONIZACION)
+        val repository = ModeAwareSucursalRepository(
+            local = LocalSucursalRepository(localDao),
+            remote = RemoteSucursalRepository(api),
+            preferences = preferences,
+        )
+
+        assertEquals("Sucursal Local", repository.observeSucursales().first().single().nombre)
     }
 }

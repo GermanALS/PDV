@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Solo build de debug (src/debug/). Permite HTTP en claro hacia cualquier
+  host para poder apuntar el modo REMOTO a la IP LAN de la PC de desarrollo
+  (DHCP variable, no se puede listar como rango en <domain>) sobre Wi-Fi, sin
+  el tunel `adb reverse` por USB. El endurecimiento de cleartext para release
+  vive en la Parte 32: el build de release no incluye este archivo y Android
+  9+ bloquea el trafico en claro por defecto.
+-->
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">localhost</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

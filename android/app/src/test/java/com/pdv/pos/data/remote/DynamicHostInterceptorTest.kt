@@ -2,6 +2,7 @@ package com.pdv.pos.data.remote
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.pdv.pos.config.ConfiguracionPreferences
+import com.pdv.pos.domain.model.EsquemaConexion
 import io.mockk.CapturingSlot
 import io.mockk.every
 import io.mockk.mockk
@@ -44,14 +45,32 @@ class DynamicHostInterceptorTest {
     @Test
     fun `rewrites host and port to the saved connection values`(@TempDir tempDir: File) {
         val preferences = preferences(tempDir)
-        runBlocking { preferences.setConexion(ip = "192.168.1.42", puerto = "9100") }
+        runBlocking {
+            preferences.setConexion(esquema = EsquemaConexion.HTTP, ip = "192.168.1.42", puerto = "9100")
+        }
         val enviado = slot<Request>()
 
         DynamicHostInterceptor(preferences).intercept(chainCapturing(enviado))
 
+        assertEquals("http", enviado.captured.url.scheme)
         assertEquals("192.168.1.42", enviado.captured.url.host)
         assertEquals(9100, enviado.captured.url.port)
         assertEquals("/api/v1/health", enviado.captured.url.encodedPath)
+    }
+
+    @Test
+    fun `rewrites the scheme to https when the saved connection uses it`(@TempDir tempDir: File) {
+        val preferences = preferences(tempDir)
+        runBlocking {
+            preferences.setConexion(esquema = EsquemaConexion.HTTPS, ip = "backend.example.com", puerto = "443")
+        }
+        val enviado = slot<Request>()
+
+        DynamicHostInterceptor(preferences).intercept(chainCapturing(enviado))
+
+        assertEquals("https", enviado.captured.url.scheme)
+        assertEquals("backend.example.com", enviado.captured.url.host)
+        assertEquals(443, enviado.captured.url.port)
     }
 
     @Test
@@ -70,7 +89,9 @@ class DynamicHostInterceptorTest {
         val preferences = preferences(tempDir)
         val interceptor = DynamicHostInterceptor(preferences)
 
-        runBlocking { preferences.setConexion(ip = "10.0.0.5", puerto = "7000") }
+        runBlocking {
+            preferences.setConexion(esquema = EsquemaConexion.HTTP, ip = "10.0.0.5", puerto = "7000")
+        }
 
         // El colector interno corre en Dispatchers.Default; espera a que observe el cambio.
         val actualizado = runBlocking {
