@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.domain.model.BackendMode
+import com.pdv.pos.domain.model.EsquemaConexion
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.domain.repository.AuthRepository
 import com.pdv.pos.domain.repository.LoginResultado
@@ -71,7 +72,7 @@ class ConfiguracionViewModel @Inject constructor(
         // cada vez que cambia la sucursal o el modo (hallazgo de code-reviewer).
         viewModelScope.launch {
             val inicial = preferences.deviceConfig.first()
-            _uiState.update { it.copy(ip = inicial.ip, puerto = inicial.puerto) }
+            _uiState.update { it.copy(esquema = inicial.esquema, ip = inicial.ip, puerto = inicial.puerto) }
         }
         viewModelScope.launch {
             combine(preferences.deviceConfig, sucursalRepository.observeSucursales()) { config, sucursales ->
@@ -145,6 +146,10 @@ class ConfiguracionViewModel @Inject constructor(
         return permitido
     }
 
+    fun onEsquemaSelected(esquema: EsquemaConexion) {
+        _uiState.update { it.copy(esquema = esquema) }
+    }
+
     fun onIpChange(value: String) {
         _uiState.update { it.copy(ip = value) }
     }
@@ -156,7 +161,7 @@ class ConfiguracionViewModel @Inject constructor(
     fun onGuardarConexion() {
         val estado = _uiState.value
         viewModelScope.launch {
-            preferences.setConexion(estado.ip, estado.puerto)
+            preferences.setConexion(estado.esquema, estado.ip, estado.puerto)
         }
     }
 

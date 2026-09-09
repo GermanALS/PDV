@@ -2,6 +2,7 @@ package com.pdv.pos.config
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.pdv.pos.domain.model.BackendMode
+import com.pdv.pos.domain.model.EsquemaConexion
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -23,6 +24,7 @@ class ConfiguracionPreferencesTest {
         val config = preferences(tempDir).deviceConfig.first()
 
         assertEquals(BackendMode.LOCAL, config.backendMode)
+        assertEquals(EsquemaConexion.HTTP, config.esquema)
         assertEquals("", config.ip)
         assertEquals("", config.puerto)
     }
@@ -40,9 +42,10 @@ class ConfiguracionPreferencesTest {
     fun `writes and rereads the connection params`(@TempDir tempDir: File) = runTest {
         val preferences = preferences(tempDir)
 
-        preferences.setConexion(ip = "192.168.1.10", puerto = "8000")
+        preferences.setConexion(esquema = EsquemaConexion.HTTPS, ip = "192.168.1.10", puerto = "8000")
 
         val config = preferences.deviceConfig.first()
+        assertEquals(EsquemaConexion.HTTPS, config.esquema)
         assertEquals("192.168.1.10", config.ip)
         assertEquals("8000", config.puerto)
     }

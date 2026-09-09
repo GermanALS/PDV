@@ -88,6 +88,19 @@ class AuthInterceptorTest {
     }
 
     @Test
+    fun `a 401 to a tokenless request does not clear a local session`() {
+        // Modo LOCAL / LOCAL_CON_SINCRONIZACION: sesion viva pero sin JWT
+        // (login local). El backend con enforcement (PLAN.md Parte 21)
+        // responde 401 a la request sin header; no debe expulsar al usuario.
+        val sessionManager = sessionManagerCon(Session("admin", "u1", "r1", accessToken = null))
+        val enviado = slot<Request>()
+
+        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 401))
+
+        assertNotNull(sessionManager.session.value)
+    }
+
+    @Test
     fun `keeps the session on a successful response`() {
         val sessionManager = sessionManagerCon(
             Session("admin", "u1", "r1", accessToken = "jwt-123"),

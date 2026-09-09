@@ -10,7 +10,7 @@ Parte se estabiliza, su resumen final se migra a `CLAUDE.md`.
 detalle (checklists cerrados, decisiones resueltas, criterios de verificación)
 se archivó en `docs/PLAN-historico.md` para mantener este archivo enfocado
 (hallazgo B-9 de `docs/review_code.md`). Aquí quedan únicamente las Partes en
-curso o pendientes (29-30), el Backlog de trabajo futuro y el historial de
+curso o pendientes (29-32), el Backlog de trabajo futuro y el historial de
 decisiones estructurales.
 
 Las Partes 21-30 incorporan los hallazgos de `docs/review_code.md` (revisión
@@ -211,6 +211,300 @@ Docker, en CI y en el venv de desarrollo del host.
 - [x] CI: ¿`uv` vía action `astral-sh/setup-uv` o installer standalone?
   **Decidido** (2026-09-07): `astral-sh/setup-uv@v6` (pin `0.10.12`);
   dependencia de terceros nueva, señalada por §9. (D3)
+
+---
+
+## Parte 31: Conexión remota desde el dispositivo (Wi-Fi LAN + acceso a la config desde el login)  <!-- POS-140 -->
+
+*(Sale de un hueco operativo detectado el 2026-09-08: si el dispositivo
+quedó en modo REMOTO y el backend deja de ser alcanzable —teléfono fuera de
+la red de la PC, backend apagado, URL remota mal escrita—, el usuario no
+puede autenticarse, y como la configuración de conexión vive dentro del
+módulo Configuración que está detrás del login, tampoco puede volver a modo
+LOCAL ni corregir la URL. Queda encerrado fuera de la app. Además, hoy el
+dispositivo físico solo llega al backend por `adb reverse` sobre USB
+(`localhost:8000`); para probar sobre Wi-Fi en la misma subred falta
+habilitar cleartext HTTP hacia la IP de la LAN en el build de debug. Con
+`adb reverse` el encierro es raro; sobre Wi-Fi —IP DHCP variable, el
+teléfono sale de la red— es rutinario, por eso las dos piezas van juntas.)*
+
+Claves de Jira: épica `POS-140`; historias `POS-141`..`POS-145` (asignadas
+por `/jira-sync` el 2026-09-09).
+
+Objetivo: (a) exponer la configuración de conexión (BackendMode + parámetros
+de la conexión remota) desde la propia pantalla de login, disponible sin
+sesión y sin depender de que el backend responda; y (b) que el dispositivo
+alcance el backend por Wi-Fi en la misma subred (IP de la LAN + puerto), sin
+el túnel USB. Sin cambios de esquema (los parámetros de conexión ya son
+preferencia de dispositivo en DataStore, `CLAUDE.md` §3) ni de contrato de
+API (reusa `GET /api/v1/health`). El cambio de red es solo en el build de
+debug (`src/debug/`); el endurecimiento de cleartext para release vive en la
+Parte 32.
+
+### Checklist
+
+**1. Acceso y panel de conexión en el login** (POS-141)
+- [x] La pantalla de login expone un acceso a la configuración de conexión
+  (ej. icono en la barra superior o enlace bajo el formulario) que abre un
+  panel disponible sin estar autenticado. Criterio: con la app recién
+  instalada y sin sesión, el panel se abre desde el login. Hecho
+  (2026-09-09): `LoginScreen` con enlace "Configurar conexión" bajo el
+  formulario → `PanelConexionBottomSheet` (composable dedicado en
+  `com.pdv.pos.auth`, hoja modal porque el login se renderiza fuera del
+  NavHost). Verificado en dispositivo (Grupo 3, paso d).
+- [x] El panel permite cambiar BackendMode LOCAL/REMOTO y editar
+  esquema/host/puerto de la conexión remota, leyendo y persistiendo en el
+  mismo DataStore que usa el módulo Configuración (sin almacenamiento
+  duplicado). Criterio: un cambio hecho desde el login se ve luego en la
+  pantalla Configuración y viceversa. Hecho (2026-09-09):
+  `PanelConexionViewModel` usa el mismo `ConfiguracionPreferences`; nuevo
+  campo `esquema` (`EsquemaConexion` http/https) en `DeviceConfig` +
+  `ConfiguracionPreferences` + selector en ambas pantallas;
+  `DynamicHostInterceptor` reescribe también el scheme. Verificado en
+  dispositivo (Grupo 3, pasos d/e).
+- [x] Botón "Probar conexión" que llama a `GET /api/v1/health` contra la URL
+  configurada y muestra el resultado (ok / error con detalle) sin cerrar el
+  panel. Criterio: URL inválida muestra error y deja el panel abierto; URL
+  válida muestra ok. Hecho (2026-09-09): `BackendHealthChecker` (OkHttp
+  propio, sin `DynamicHostInterceptor` ni `AuthInterceptor`, contra la URL
+  tecleada). Verificado en dispositivo (Grupo 3, paso e).
+
+**2. Fallo de login en modo remoto** (POS-142)
+- [x] Cuando el login en modo REMOTO falla por conectividad (timeout / host
+  inalcanzable, distinto de credenciales inválidas), el mensaje lo indica
+  explícitamente y ofrece una acción directa para abrir el panel de
+  conexión. Criterio: con el backend remoto apagado, intentar login muestra
+  un error de conectividad (no uno genérico de credenciales) con botón a
+  "Configurar conexión". Hecho (2026-09-09): `LoginViewModel` separa
+  `IOException`/`HttpException` (flag `connectivityError`) de
+  `CredencialesInvalidas`; con `connectivityError` el enlace "Configurar
+  conexión" pasa a `Button` prominente. Verificado en dispositivo (Grupo 3).
+- [x] Abrir el panel y cambiar de modo desde el login no requiere sesión ni
+  que el backend responda. Criterio: en modo REMOTO con backend caído, desde
+  el login se puede pasar a LOCAL y autenticarse contra los datos locales.
+  Hecho (2026-09-09): `PanelConexionViewModel` no recibe `SessionManager`;
+  el modo se persiste al instante en DataStore y `ModeAwareAuthRepository`
+  relee el modo por llamada. Verificado en dispositivo (Grupo 3, paso d).
+
+**3. Verificación del acceso desde el login** (POS-143)
+- [x] `LoginViewModel` (o el ViewModel del panel) testeado: fallo por
+  conectividad vs credenciales, y que exponer/guardar la config no depende
+  de sesión. `jvm-tests`: `./gradlew testDebugUnitTest` en verde (mostrar
+  salida completa). Verificado (2026-09-09): `BUILD SUCCESSFUL`, suite
+  completa 359 tests / 0 fallos / 0 errores / 76 clases. `LoginViewModelTest`
+  10/10 (conectividad IOException vs credenciales vs Http;
+  `onConexionConfigurada` limpia solo el error de conectividad);
+  `PanelConexionViewModelTest` 6/6 (siembra desde DataStore, `onGuardar`
+  persiste sin `SessionManager` -no lo recibe-, modo persiste al instante,
+  anti-clobber de host, "Probar conexión" con checker mockeado);
+  `BackendHealthCheckerTest` 5/5 (200/500/host inalcanzable + validación
+  puerto/host contra MockWebServer); `DynamicHostInterceptorTest` 4/4
+  (+scheme https); `ConfiguracionPreferencesTest` 4/4 (round-trip esquema).
+- [x] Verificación en el dispositivo Xiaomi M2102J20SG: (a) fijar modo
+  REMOTO con la URL de la PC, (b) apagar el backend, (c) reiniciar la app,
+  (d) desde el login abrir el panel, cambiar a LOCAL y loguearse, (e)
+  reconfigurar una URL remota nueva y "Probar conexión" en ok. `needs-device`.
+  Verificado (2026-09-09) con `localhost:8000` sobre el túnel `adb reverse`
+  (USB): pasos (a)-(e) OK — el login muestra error de conectividad explícito
+  con el backend caído, el panel permite pasar a LOCAL y autenticarse sin
+  sesión ni backend, y "Probar conexión" contra `http://localhost:8000` da
+  ok sin cerrar el panel. Con la IP LAN de la PC (`192.168.0.132:8000`) la
+  prueba falla: es el hueco que cierra el Grupo 4 (cleartext HTTP hacia el
+  rango LAN solo está habilitado para `localhost` en el
+  `network_security_config` de debug).
+
+**4. Conectividad por Wi-Fi en la misma subred** (POS-144)
+- [x] `app/src/debug/res/xml/network_security_config.xml` permite cleartext
+  para el rango LAN privado (o `base-config` en el build de debug), no solo
+  `localhost`. Criterio: un debug build hace `GET http://<IP-LAN>:8000/api/v1/health`
+  en ok desde el dispositivo por Wi-Fi, sin `adb reverse`. Hecho
+  (2026-09-09): `<base-config cleartextTrafficPermitted="true" />` (sin lista
+  de `<domain>` porque la config de Android no admite rangos/CIDR y la IP LAN
+  es DHCP variable); solo build de debug (`src/main` no define
+  `networkSecurityConfig` ni `usesCleartextTraffic`, release bloquea
+  cleartext por defecto). Verificado en dispositivo por Wi-Fi con
+  `192.168.0.132:8000` (venta en REMOTO sin `adb reverse`).
+- [x] `CLAUDE.md` §3: Wi-Fi (IP de la PC + puerto en Configuración, regla de
+  firewall inbound TCP 8000) documentado como camino principal para el
+  dispositivo físico; `adb reverse` por USB queda como alternativa. Nota
+  sobre IP DHCP variable (reserva DHCP o IP estática) y sobre aislamiento de
+  clientes del router. Hecho (2026-09-09): §3 reestructurada — subsección
+  "Wi-Fi en la misma subred (camino principal)" con la regla
+  `New-NetFirewallRule ... TCP 8000`, nota de DHCP y de AP/client isolation;
+  el bloque de `adb reverse` pasa a "Alternativa".
+- [x] Verificación en el Xiaomi M2102J20SG: mismo Wi-Fi que la PC,
+  Configuración -> REMOTO + IP + `8000`, y una venta + un sync end-to-end
+  contra el backend dockerizado sin túnel USB. `needs-device`. Verificado
+  (2026-09-09): mismo Wi-Fi, REMOTO + `192.168.0.132` + `8000`, una venta
+  completa contra el backend dockerizado sin `adb reverse` (en REMOTO la
+  venta es el round-trip end-to-end). Regla de firewall inbound TCP 8000
+  aplicada en la PC.
+
+**5. Fix de crash + logout en `LOCAL_CON_SINCRONIZACION`** (POS-145)
+(agregado 2026-09-09 por decisión del usuario: arreglar dentro de esta Parte
+en vez de diferir a Backlog). Al probar Wi-Fi con el backend alcanzable, una venta o
+entrar a Configuración en modo `LOCAL_CON_SINCRONIZACION` primero cerraba la
+app (crash) y, tras el primer fix, mandaba al usuario a la pantalla de login.
+Causa raíz: `ModeAwareSucursalRepository` es el único `ModeAware*` que enruta
+ese modo al backend (`observeSucursales()` → `GET /api/v1/sucursales`), pero
+un dispositivo que inició sesión con `LocalAuthRepository` no tiene JWT; desde
+la Parte 21 ese endpoint responde 401. Dos efectos: (a) la `HttpException`
+subía sin manejar por `RemoteSucursalRepository` (flow sin `catch`) hasta
+colectores sin `.catch` (`VentaViewModel.generarTicketSeguro` — solo
+capturaba `IOException` —, `ConfiguracionViewModel`, `EstadoPuntoVenta`) →
+crash; (b) `AuthInterceptor` cerraba sesión ante cualquier 401 fuera de
+`/auth/login`, incluso los de una request que nunca llevó token. Latente
+desde la Parte 21; la Parte 31 lo destapó al hacer el backend alcanzable por
+Wi-Fi.
+- [x] `ModeAwareSucursalRepository`: en `LOCAL_CON_SINCRONIZACION` la lectura
+  remota del catálogo es best-effort — `remote.observeSucursales().catch { emitAll(local.observeSucursales()) }`.
+  No propaga, no muestra lista vacía: degrada al catálogo local, que es la
+  semántica offline-first del modo. REMOTO sin cambios.
+- [x] `AuthInterceptor`: solo cierra sesión ante un 401 si la request **sí
+  llevaba** token (`token != null`). Un 401 a una request sin token es
+  esperado en LOCAL / LOCAL_CON_SINCRONIZACION y lo maneja el repositorio que
+  llamó, no expulsa al usuario. `jvm-tests` Verificado (2026-09-09):
+  `testDebugUnitTest` en verde, suite 361/0/0; `AuthInterceptorTest` 8/8 con
+  prueba nueva `a 401 to a tokenless request does not clear a local session`;
+  `ModeAwareSucursalRepositoryTest` 3/3 con `falls back to the local catalog
+  when the backend read fails` (403 sin JWT). El push de sync diferido de
+  este modo sigue sin implementar (WorkManager + orquestador) — Parte propia.
+- [x] Reverificación en el Xiaomi: venta y entrada a Configuración en
+  `LOCAL_CON_SINCRONIZACION` con el backend alcanzable por Wi-Fi ya no
+  cierran la app ni mandan al login. `needs-device`. Verificado
+  (2026-09-09): en `LOCAL_CON_SINCRONIZACION` por Wi-Fi, una venta se
+  completa (baja inventario) y entrar a Configuración no crashea ni expulsa
+  al login.
+
+### Decisiones abiertas
+
+- [x] ¿El panel de conexión del login reutiliza el composable de la pantalla
+  Configuración tal cual, o es una versión reducida dedicada (solo modo +
+  URL + probar)? Propuesta: versión reducida, para no arrastrar el resto de
+  Configuración (sucursal seleccionada, etc.) a un contexto pre-login.
+  **Decidido** (2026-09-09): versión reducida dedicada (composable nuevo y
+  acotado: modo + esquema/host/puerto + "Probar conexión"), compartiendo
+  `ConfiguracionPreferences`/DataStore para que los cambios sigan
+  sincronizados con la pantalla Configuración.
+- [x] ¿Se agrega un fallback automático a LOCAL tras N fallos de conexión
+  remota en el login, o queda siempre como acción manual? Propuesta: manual;
+  un fallback automático puede enmascarar problemas de red reales y cambiar
+  de modo sin que el usuario lo note. **Decidido** (2026-09-09): siempre
+  manual.
+- [x] El grupo 1 del checklist dice "editar esquema/host/puerto"; hoy la
+  conexión remota es `http` fijo (`BASE_URL` en `NetworkModule`,
+  `DynamicHostInterceptor` solo reescribe host/puerto). **Decidido**
+  (2026-09-09): se agrega en esta Parte un campo `esquema` (http/https) a
+  `DeviceConfig`/`ConfiguracionPreferences` y `DynamicHostInterceptor` pasa
+  a reescribir también el scheme, dejando el panel del login y Configuración
+  listos para un backend HTTPS. El endurecimiento de cleartext para release
+  sigue en la Parte 32.
+
+---
+
+## Parte 32: Primer release productivo (APK firmado + backend desplegado)
+
+*(Sale del análisis "qué falta para el primer release productivo" del
+2026-09-08. Absorbe el hallazgo B-7 —R8/shrinking, diferido en la Parte 29
+"hasta que haya distribución real"— y cierra el `[TODO]` de destino de
+despliegue de `CLAUDE.md` §7. Hoy `./gradlew assembleRelease` produce un APK
+sin firmar y sin ofuscar, y el modo REMOTO de la app depende de
+`adb reverse` contra `localhost:8000`.)*
+
+Claves de Jira: **sin asignar todavía**. Las asigna `/jira-sync` cuando se
+sincronice esta Parte; no se pre-escriben en este archivo (evita el problema
+de claves fantasma que tuvo la Parte 30).
+
+Objetivo: un APK (o AAB) de release firmado, ofuscado y verificado en
+dispositivo, apuntando a un backend FastAPI desplegado y accesible por HTTPS
+desde fuera de la LAN.
+
+### Checklist
+
+**1. Firma de release**
+- [ ] `signingConfigs.release` en `android/app/build.gradle.kts` que lee de un
+  `keystore.properties` gitignoreado (o variables de entorno) y se aplica al
+  `buildType release`. Criterio: `./gradlew assembleRelease` produce un APK y
+  `apksigner verify --print-certs` lo reporta firmado con el certificado de
+  release, distinto del de debug.
+- [ ] Keystore de release generado con `keytool`, respaldado fuera del repo;
+  `keystore.properties` y el `.jks`/`.keystore` en `.gitignore`. Criterio:
+  `git status` sobre un árbol limpio no muestra el keystore ni credenciales;
+  `assembleDebug` compila sin el archivo y `assembleRelease` falla con un
+  mensaje claro si falta.
+- [ ] `CLAUDE.md` §7 documenta dónde vive el keystore, cómo se pasan las
+  contraseñas al build, y el procedimiento de rotación — sin incluir el
+  keystore ni los secretos en el repo.
+
+**2. Despliegue del backend productivo**
+- [ ] Backend desplegado en el destino elegido (ver Decisiones abiertas) con
+  `docker-compose.prod.yml` real: `JWT_SECRET_KEY` fuerte, credenciales de
+  Postgres propias, sin publicar `5432` al exterior. Criterio:
+  `GET https://<dominio>/api/v1/health` responde `{"status":"ok"}` sobre TLS
+  válido desde una red distinta a la LAN de desarrollo.
+- [ ] Migraciones Alembic aplicadas en el entorno productivo. Criterio:
+  `alembic current` en prod devuelve el mismo head que el repo.
+- [ ] `CLAUDE.md` §7: destino de despliegue definido (ya no `[TODO]`), pasos
+  de arranque/actualización y rotación de `JWT_SECRET_KEY`.
+
+**3. URL base productiva en la app**
+- [ ] El módulo Configuración permite fijar y persistir la URL base del
+  backend remoto (`https`, host, puerto), o se hornea un valor productivo por
+  defecto. Criterio: en el Xiaomi, modo REMOTO contra `https://<dominio>`
+  completa login + una operación de sync sin `adb reverse`. `needs-device`.
+- [ ] Cleartext HTTP deshabilitado en release (network security config /
+  `usesCleartextTraffic=false`), con allowlist explícito solo si se decide
+  mantener pruebas locales. Criterio: una petición `http://` a un host
+  productivo falla; `https://` funciona.
+
+**4. Endurecimiento del build de release (hallazgo B-7)**
+- [ ] `isMinifyEnabled = true` e `isShrinkResources = true` en el `buildType
+  release`. Criterio: `./gradlew assembleRelease` en verde; el APK de release
+  pesa menos que el equivalente sin shrink.
+- [ ] Reglas keep en `android/app/proguard-rules.pro` para Room, Hilt,
+  kotlinx-serialization, Retrofit y ML Kit barcode. Criterio: con el APK de
+  release firmado instalado en el Xiaomi, los 6 módulos abren y una venta +
+  un sync end-to-end completan sin `ClassNotFoundException` ni errores de
+  (de)serialización.
+- [ ] Verificación en el dispositivo físico Xiaomi M2102J20SG con el APK de
+  release (firmado y ofuscado), no solo debug. `needs-device`.
+
+**5. Preparación del release**
+- [ ] `versionCode` / `versionName` subidos desde `1` / `"0.1"` al primer
+  valor de release según el esquema de `CLAUDE.md` §7 (ej. `1.0.0` ->
+  `versionCode 10000`), en el commit que prepara el release.
+- [ ] Regla de `outputFileName` para el variant `release` siguiendo la
+  convención `{app}-{proposito}-{tipo-build}-v{version}` (hoy solo existe
+  para `debug`). Criterio: `assembleRelease` emite un archivo con ese nombre.
+- [ ] Suite unitaria en verde sobre el variant de release:
+  `./gradlew testReleaseUnitTest` (mostrar salida completa). `jvm-tests`.
+
+**6. Distribución**
+- [ ] Artefacto generado según el canal elegido (ver Decisiones abiertas):
+  APK firmado para sideload, o AAB (`./gradlew bundleRelease`) para Play
+  Console. Criterio: el artefacto instala/valida en un dispositivo limpio
+  distinto del de desarrollo.
+- [ ] Si el canal es Play Console: cuenta de desarrollador, ficha (icono,
+  capturas, descripción), política de privacidad publicada (URL), formulario
+  Data Safety, cuestionario de content rating y justificación del permiso
+  `CAMERA`. Criterio: la app pasa la revisión de un track interno de Play.
+- [ ] Flujo de permiso `CAMERA` en runtime (escaneo de código de barras)
+  probado en el dispositivo con el build de release: concesión y denegación.
+  `needs-device`.
+
+### Decisiones abiertas
+
+- [ ] **Canal de distribución**: Play Console (AAB; requiere cuenta, fichas,
+  Data Safety y revisiones, pero gestiona updates y firma) vs sideload de APK
+  firmado (sin store, distribución manual). Afecta los grupos 1, 5 y 6.
+- [ ] **Destino de despliegue del backend** (`CLAUDE.md` §7 lo tiene como
+  `[TODO]` desde el inicio): Render / Fly.io / VPS propio / AWS. A sopesar:
+  costo, TLS y dominio incluidos, correr el `docker-compose` tal cual,
+  backups de Postgres.
+- [ ] **Play App Signing** (solo si el canal es Play): ¿se delega la clave de
+  firma de la app a Google, o se mantiene la clave localmente?
+- [ ] **URL base**: ¿siempre configurable por el usuario en Configuración, o
+  valor productivo por defecto con override oculto para soporte?
 
 ---
 

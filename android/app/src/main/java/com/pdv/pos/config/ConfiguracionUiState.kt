@@ -2,10 +2,12 @@ package com.pdv.pos.config
 
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.domain.model.BackendMode
+import com.pdv.pos.domain.model.EsquemaConexion
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.ia.LlmProvider
 
 data class ConfiguracionUiState(
+    val esquema: EsquemaConexion = EsquemaConexion.HTTP,
     val ip: String = "",
     val puerto: String = "",
     val sucursales: List<Sucursal> = emptyList(),
