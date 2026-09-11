@@ -40,4 +40,22 @@ class EventoAditivoCombinerTest {
 
         assertEquals(BigDecimal("-1"), result)
     }
+
+    @Test
+    fun `combinarConDeteccion flags a negative result`() {
+        val result = EventoAditivoCombiner.combinarConDeteccion(
+            base = BigDecimal("1"),
+            deltaLocal = BigDecimal("-1"),
+            deltaRemoto = BigDecimal("-1"),
+        )
+
+        assertEquals(BigDecimal("-1"), result.valor)
+        assertEquals(true, result.quedoNegativo)
+    }
+
+    @Test
+    fun `combinarConDeteccion does not flag a zero or positive result`() {
+        assertEquals(false, EventoAditivoCombiner.combinarConDeteccion(BigDecimal("2"), BigDecimal("-1"), BigDecimal("-1")).quedoNegativo)
+        assertEquals(false, EventoAditivoCombiner.combinarConDeteccion(BigDecimal("5"), BigDecimal("-1"), BigDecimal("0")).quedoNegativo)
+    }
 }

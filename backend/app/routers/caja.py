@@ -1,13 +1,14 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.caja import CorteCaja, RetiroEfectivo
+from app.models.sucursal import Sucursal
 from app.models.venta import Venta
 from app.schemas.caja import (
     CorteCajaCreateSchema,
@@ -66,6 +67,11 @@ def _retiro_to_response(retiro: RetiroEfectivo) -> RetiroEfectivoResponseSchema:
 async def create_corte_caja(
     payload: CorteCajaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
 ) -> CorteCajaResponseSchema:
+    # Valida sucursal_id antes de escribir (PLAN.md Parte 32): ver
+    # create_venta.
+    if await db.get(Sucursal, payload.sucursal_id) is None:
+        raise HTTPException(status_code=404, detail=f"sucursal no encontrada: {payload.sucursal_id}")
+
     corte = CorteCaja(
         local_id=payload.local_id,
         sucursal_id=payload.sucursal_id,
@@ -111,6 +117,7 @@ async def list_cortes_caja(
     page_size: int = Query(default=20, ge=1, le=100),
     desde: datetime | None = None,
     hasta: datetime | None = None,
+    updated_since: datetime | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> CorteCajaListResponseSchema:
     filtros = [CorteCaja.sucursal_id == sucursal_id, CorteCaja.deleted_at.is_(None)]
@@ -118,6 +125,10 @@ async def list_cortes_caja(
         filtros.append(CorteCaja.fecha_fin >= desde)
     if hasta is not None:
         filtros.append(CorteCaja.fecha_fin <= hasta)
+    # Pull diferido (PLAN.md Parte 32, Grupo 3): filtra por updated_at, no
+    # por fecha_fin - independiente de desde/hasta.
+    if updated_since is not None:
+        filtros.append(CorteCaja.updated_at >= updated_since)
     total = await db.scalar(select(func.count()).select_from(CorteCaja).where(*filtros))
     resultado = await db.execute(
         select(CorteCaja)
@@ -180,6 +191,11 @@ async def get_totales_corte(
 async def create_retiro_efectivo(
     payload: RetiroEfectivoCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
 ) -> RetiroEfectivoResponseSchema:
+    # Valida sucursal_id antes de escribir (PLAN.md Parte 32): ver
+    # create_venta.
+    if await db.get(Sucursal, payload.sucursal_id) is None:
+        raise HTTPException(status_code=404, detail=f"sucursal no encontrada: {payload.sucursal_id}")
+
     retiro = RetiroEfectivo(
         local_id=payload.local_id,
         sucursal_id=payload.sucursal_id,
@@ -215,6 +231,7 @@ async def list_retiros_efectivo(
     page_size: int = Query(default=20, ge=1, le=100),
     desde: datetime | None = None,
     hasta: datetime | None = None,
+    updated_since: datetime | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> RetiroEfectivoListResponseSchema:
     filtros = [RetiroEfectivo.sucursal_id == sucursal_id, RetiroEfectivo.deleted_at.is_(None)]
@@ -222,6 +239,9 @@ async def list_retiros_efectivo(
         filtros.append(RetiroEfectivo.fecha >= desde)
     if hasta is not None:
         filtros.append(RetiroEfectivo.fecha <= hasta)
+    # Pull diferido (PLAN.md Parte 32, Grupo 3), ver list_cortes_caja.
+    if updated_since is not None:
+        filtros.append(RetiroEfectivo.updated_at >= updated_since)
     total = await db.scalar(select(func.count()).select_from(RetiroEfectivo).where(*filtros))
     resultado = await db.execute(
         select(RetiroEfectivo)

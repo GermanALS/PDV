@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -18,6 +19,9 @@ class InventarioItemResponseSchema(BaseModel):
     costo: Decimal | None
     cantidad: Decimal
     ubicacion: str | None
+    # updated_at de la fila `inventario` (cambia con cada movimiento de
+    # stock): cursor y base del merge del pull diferido (PLAN.md Parte 32).
+    updated_at: datetime
 
 
 class InventarioListResponseSchema(BaseModel):

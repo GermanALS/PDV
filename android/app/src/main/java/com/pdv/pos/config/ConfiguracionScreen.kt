@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -15,6 +16,7 @@ import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -22,8 +24,10 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +42,9 @@ import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.EsquemaConexion
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.ia.LlmProvider
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +55,19 @@ fun ConfiguracionScreen(
     viewModel: ConfiguracionViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Refresca el conteo de pendientes al volver a la pantalla: los DAO
+    // exponen suspend fun (no Flow), asi que no es reactivo por si solo
+    // (PLAN.md Parte 32, Grupo 5).
+    LaunchedEffect(Unit) { viewModel.onRefrescarEstadoSync() }
+
+    uiState.dialogoCambioModo?.let { dialogo ->
+        CambioModoDialog(
+            dialogo = dialogo,
+            onConfirmar = viewModel::onConfirmarCambioModo,
+            onCancelar = viewModel::onCancelarCambioModo,
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -66,6 +86,19 @@ fun ConfiguracionScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             ModoSection(modo = uiState.modo, onModoSelected = viewModel::onModoSelected)
+            // El motor de sync diferido (PLAN.md Parte 32) solo aplica en
+            // LOCAL_CON_SINCRONIZACION; en LOCAL/REMOTO no hay nada que
+            // mostrar (REMOTO no acumula pendientes: escribe directo al
+            // backend, sin Room).
+            if (uiState.modo == BackendMode.LOCAL_CON_SINCRONIZACION) {
+                SincronizacionSection(
+                    ultimoExitoMillis = uiState.syncUltimoExitoMillis,
+                    ultimoError = uiState.syncUltimoError,
+                    pendientesTotal = uiState.syncPendientesTotal,
+                    sincronizando = uiState.syncSincronizando,
+                    onSincronizarAhora = viewModel::onSincronizarAhora,
+                )
+            }
             // Conexion y Sucursal solo aplican cuando la app habla con un
             // backend: en LOCAL puro no hay a donde conectarse ni catalogo
             // remoto de sucursales que elegir.
@@ -225,6 +258,62 @@ internal fun BackendMode.etiqueta(): String = when (this) {
     BackendMode.LOCAL -> "Local"
     BackendMode.REMOTO -> "Remoto"
     BackendMode.LOCAL_CON_SINCRONIZACION -> "Local con sincronización"
+}
+
+private val FORMATO_FECHA_SYNC = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
+
+// Estado del motor de sync diferido (PLAN.md Parte 32, Grupo 5): ultima
+// sincronizacion correcta, pendientes sin subir, ultimo error, y el disparo
+// manual "Sincronizar ahora" (D2) para no depender solo del periodico.
+@Composable
+private fun SincronizacionSection(
+    ultimoExitoMillis: Long?,
+    ultimoError: String?,
+    pendientesTotal: Int,
+    sincronizando: Boolean,
+    onSincronizarAhora: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Sincronización", style = MaterialTheme.typography.titleMedium)
+        Text(
+            if (ultimoExitoMillis != null) {
+                "Última sincronización: ${FORMATO_FECHA_SYNC.format(Date(ultimoExitoMillis))}"
+            } else {
+                "Todavía no sincronizó en este dispositivo"
+            },
+        )
+        Text(if (pendientesTotal > 0) "Pendientes por subir: $pendientesTotal" else "Sin pendientes")
+        if (ultimoError != null) {
+            Text("Último error: $ultimoError", color = MaterialTheme.colorScheme.error)
+        }
+        // Deshabilitado + texto distinto mientras corre (PLAN.md Parte 32,
+        // hallazgo de verificacion en dispositivo: antes no daba ninguna
+        // senal de progreso ni de fin, y el usuario lo tocaba varias veces).
+        OutlinedButton(onClick = onSincronizarAhora, enabled = !sincronizando, modifier = Modifier.fillMaxWidth()) {
+            Text(if (sincronizando) "Sincronizando…" else "Sincronizar ahora")
+        }
+    }
+}
+
+@Composable
+private fun CambioModoDialog(
+    dialogo: DialogoCambioModo,
+    onConfirmar: () -> Unit,
+    onCancelar: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        title = { Text("Cambiar a ${dialogo.modoDestino.etiqueta()}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Hay ${dialogo.resumen.total} cambio(s) sin subir al servidor:")
+                dialogo.resumen.porEntidad.forEach { (nombre, cantidad) -> Text("• $cantidad $nombre") }
+                Text("Se subirán apenas vuelvas a este modo con conexión; no se pierden.")
+            }
+        },
+        confirmButton = { TextButton(onClick = onConfirmar) { Text("Cambiar de todos modos") } },
+        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

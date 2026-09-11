@@ -2,6 +2,7 @@ package com.pdv.pos.config
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.EsquemaConexion
@@ -14,6 +15,10 @@ import com.pdv.pos.ia.LlmClient
 import com.pdv.pos.ia.LlmProvider
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
+import com.pdv.pos.sync.ResumenPendientes
+import com.pdv.pos.sync.SyncPendientesResumen
+import com.pdv.pos.sync.SyncScheduler
+import com.pdv.pos.sync.SyncStateStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +45,9 @@ class ConfiguracionViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val rolRepository: RolRepository,
     private val appLogger: AppLogger,
+    private val syncStateStore: SyncStateStore,
+    private val syncPendientesResumen: SyncPendientesResumen,
+    private val syncScheduler: SyncScheduler,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConfiguracionUiState())
@@ -122,6 +130,43 @@ class ConfiguracionViewModel @Inject constructor(
                 }
             }
         }
+        // Seccion "Sincronizacion" (PLAN.md Parte 32, Grupo 5): ultima
+        // sincronizacion correcta / ultimo error son reactivos (DataStore);
+        // el conteo de pendientes es una foto (los DAO exponen suspend
+        // fun, no Flow) que se recalcula al entrar y tras "Sincronizar
+        // ahora" (onRefrescarEstadoSync, ver LaunchedEffect de la pantalla).
+        viewModelScope.launch {
+            syncStateStore.state.collect { estado ->
+                _uiState.update {
+                    it.copy(syncUltimoExitoMillis = estado.lastSuccessAtMillis, syncUltimoError = estado.lastError)
+                }
+            }
+        }
+        onRefrescarEstadoSync()
+        // Progreso de "Sincronizar ahora" (PLAN.md Parte 32, Grupo 5,
+        // hallazgo de verificacion en dispositivo: el boton no daba ninguna
+        // senal de que hizo algo). Al terminar (exito o error) se refresca
+        // el resto de la seccion.
+        viewModelScope.launch {
+            syncScheduler.observarTrabajoInmediato().collect { estado ->
+                _uiState.update {
+                    it.copy(syncSincronizando = estado == WorkInfo.State.ENQUEUED || estado == WorkInfo.State.RUNNING)
+                }
+                if (estado == WorkInfo.State.SUCCEEDED || estado == WorkInfo.State.FAILED) {
+                    onRefrescarEstadoSync()
+                }
+            }
+        }
+    }
+
+    fun onRefrescarEstadoSync() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(syncPendientesTotal = syncPendientesResumen.calcular().total) }
+        }
+    }
+
+    fun onSincronizarAhora() {
+        syncScheduler.sincronizarAhora()
     }
 
     // Compuerta de acceso al panel de conflictos, mismo criterio que el
@@ -171,10 +216,32 @@ class ConfiguracionViewModel @Inject constructor(
         }
     }
 
+    // Resumen de pendientes antes del cambio de modo (PLAN.md Parte 32, D3.2):
+    // reemplaza el wiring de los 4 casos de MigrationPlanner, que la
+    // idempotencia de la Parte 23 volvio innecesarios. Sin pendientes, el
+    // cambio se aplica directo; con pendientes, se confirma primero (los
+    // datos no se pierden en ningun caso - solo tardan un push mas en subir).
     fun onModoSelected(modo: BackendMode) {
         viewModelScope.launch {
-            preferences.setBackendMode(modo)
+            val resumen = syncPendientesResumen.calcular()
+            if (resumen.hayPendientes) {
+                _uiState.update { it.copy(dialogoCambioModo = DialogoCambioModo(modo, resumen)) }
+            } else {
+                preferences.setBackendMode(modo)
+            }
         }
+    }
+
+    fun onConfirmarCambioModo() {
+        val destino = _uiState.value.dialogoCambioModo?.modoDestino ?: return
+        viewModelScope.launch {
+            preferences.setBackendMode(destino)
+            _uiState.update { it.copy(dialogoCambioModo = null) }
+        }
+    }
+
+    fun onCancelarCambioModo() {
+        _uiState.update { it.copy(dialogoCambioModo = null) }
     }
 
     fun onIaActivoChange(activo: Boolean) {
@@ -258,3 +325,7 @@ class ConfiguracionViewModel @Inject constructor(
         }
     }
 }
+
+// Confirmacion del cambio de modo cuando hay pendientes sin subir (PLAN.md
+// Parte 32, D3.2).
+data class DialogoCambioModo(val modoDestino: BackendMode, val resumen: ResumenPendientes)

@@ -24,4 +24,9 @@ data class ConfiguracionUiState(
     val promptIaPasswordInput: String = "",
     val promptIaError: String? = null,
     val promptIaGuardando: Boolean = false,
+    val syncUltimoExitoMillis: Long? = null,
+    val syncUltimoError: String? = null,
+    val syncPendientesTotal: Int = 0,
+    val syncSincronizando: Boolean = false,
+    val dialogoCambioModo: DialogoCambioModo? = null,
 )

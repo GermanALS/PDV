@@ -373,3 +373,120 @@ async def test_create_retiro_efectivo_reintento_con_mismo_local_id_es_idempotent
         )
     ).scalars().all()
     assert len(retiros) == 1
+
+
+async def test_list_cortes_caja_filtra_por_updated_since(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    creado = await client_autenticado.post(
+        "/api/v1/cortes-caja",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "tipo": "parcial",
+            "fecha_inicio": "2026-01-01T08:00:00Z",
+            "fecha_fin": "2026-01-01T14:00:00Z",
+            "total_ventas": "10.00",
+            "total_efectivo": "10.00",
+            "total_tarjeta": "0",
+            "total_retiros": "0",
+            "monto_esperado": "10.00",
+        },
+    )
+    corte_id = creado.json()["id"]
+
+    futuro = await client_autenticado.get(
+        "/api/v1/cortes-caja", params={"sucursal_id": sucursal_id, "updated_since": "2099-01-01T00:00:00Z", "page_size": 100}
+    )
+    assert futuro.status_code == 200
+    assert all(item["id"] != corte_id for item in futuro.json()["items"])
+
+    pasado = await client_autenticado.get(
+        "/api/v1/cortes-caja", params={"sucursal_id": sucursal_id, "updated_since": "2000-01-01T00:00:00Z", "page_size": 100}
+    )
+    assert any(item["id"] == corte_id for item in pasado.json()["items"])
+
+
+async def test_list_cortes_caja_updated_since_malformado_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.get(
+        "/api/v1/cortes-caja", params={"sucursal_id": sucursal_id, "updated_since": "ayer"}
+    )
+
+    assert response.status_code == 422
+
+
+async def test_list_retiros_efectivo_filtra_por_updated_since(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    creado = await client_autenticado.post(
+        "/api/v1/retiros-efectivo",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "monto": "9.00",
+            "motivo": "updated_since",
+            "fecha": "2026-01-01T11:00:00Z",
+        },
+    )
+    retiro_id = creado.json()["id"]
+
+    futuro = await client_autenticado.get(
+        "/api/v1/retiros-efectivo",
+        params={"sucursal_id": sucursal_id, "updated_since": "2099-01-01T00:00:00Z", "page_size": 100},
+    )
+    assert futuro.status_code == 200
+    assert all(item["id"] != retiro_id for item in futuro.json()["items"])
+
+    pasado = await client_autenticado.get(
+        "/api/v1/retiros-efectivo",
+        params={"sucursal_id": sucursal_id, "updated_since": "2000-01-01T00:00:00Z", "page_size": 100},
+    )
+    assert any(item["id"] == retiro_id for item in pasado.json()["items"])
+
+
+async def test_list_retiros_efectivo_updated_since_malformado_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.get(
+        "/api/v1/retiros-efectivo", params={"sucursal_id": sucursal_id, "updated_since": "xyz"}
+    )
+
+    assert response.status_code == 422
+
+
+async def test_create_corte_caja_sucursal_id_inexistente_returns_404(client_autenticado):
+    response = await client_autenticado.post(
+        "/api/v1/cortes-caja",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": str(uuid.uuid4()),
+            "usuario_id": "admin",
+            "tipo": "parcial",
+            "fecha_inicio": "2026-08-21T08:00:00Z",
+            "fecha_fin": "2026-08-21T14:00:00Z",
+            "total_ventas": "0",
+            "total_efectivo": "0",
+            "total_tarjeta": "0",
+            "total_retiros": "0",
+            "monto_esperado": "0",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+async def test_create_retiro_efectivo_sucursal_id_inexistente_returns_404(client_autenticado):
+    response = await client_autenticado.post(
+        "/api/v1/retiros-efectivo",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": str(uuid.uuid4()),
+            "usuario_id": "admin",
+            "monto": "10.00",
+            "fecha": "2026-08-21T11:00:00Z",
+        },
+    )
+
+    assert response.status_code == 404

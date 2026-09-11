@@ -17,7 +17,7 @@ compuerta al final de cada sub-paso, las decisiones abiertas se preguntan,
 y las etiquetas `needs-device` / `jvm-tests` / `needs-approval` /
 `schema-parity` determinan cómo se cierra cada ítem.
 
-Si la Parte es la 6, 7, 13, 15, 21, 23 o 25 (ver `CLAUDE.md` sección 11), además:
+Si la Parte es la 6, 7, 13, 15, 21, 23, 25 o 32 (ver `CLAUDE.md` sección 11), además:
 
 - Antes de implementar, delega al subagente `code-architect` la evaluación
   de las `### Decisiones abiertas` de esa Parte: debe proponer 2 o 3

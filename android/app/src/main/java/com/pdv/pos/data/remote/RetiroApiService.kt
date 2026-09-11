@@ -19,5 +19,6 @@ interface RetiroApiService {
         @Query("page_size") pageSize: Int,
         @Query("desde") desde: String? = null,
         @Query("hasta") hasta: String? = null,
+        @Query("updated_since") updatedSince: String? = null,
     ): RetiroEfectivoListResponseDto
 }

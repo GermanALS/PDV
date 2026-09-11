@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.articulo import Articulo
 from app.models.devolucion import Devolucion, DevolucionDetalle
+from app.models.sucursal import Sucursal
 from app.models.venta import Venta
 from app.schemas.devolucion import DevolucionCreateSchema, DevolucionDetalleResponseSchema, DevolucionResponseSchema
 
@@ -42,8 +46,13 @@ def _to_response(devolucion: Devolucion) -> DevolucionResponseSchema:
 # vendible (docs/api-contract.md seccion 9).
 @router.post("/devoluciones", response_model=DevolucionResponseSchema, status_code=201)
 async def create_devolucion(
-    payload: DevolucionCreateSchema, db: AsyncSession = Depends(get_db)
+    payload: DevolucionCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
 ) -> DevolucionResponseSchema:
+    # Valida sucursal_id antes de escribir (PLAN.md Parte 32): ver
+    # create_venta.
+    if await db.get(Sucursal, payload.sucursal_id) is None:
+        raise HTTPException(status_code=404, detail=f"sucursal no encontrada: {payload.sucursal_id}")
+
     if payload.venta_id is not None and await db.get(Venta, payload.venta_id) is None:
         raise HTTPException(status_code=404, detail=f"venta no encontrada: {payload.venta_id}")
 
@@ -71,6 +80,24 @@ async def create_devolucion(
         ],
     )
     db.add(devolucion)
+    # Idempotente por local_id (PLAN.md Parte 32, gap 1): UNIQUE(local_id) en
+    # devoluciones (migracion 0013). Un reintento del motor de sync choca
+    # aqui - se resuelve devolviendo la devolucion ya persistida con 200 en
+    # vez de duplicar, mismo patron que POST /ventas (Parte 23).
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        existente = (
+            await db.execute(
+                select(Devolucion)
+                .options(selectinload(Devolucion.lineas))
+                .where(Devolucion.local_id == payload.local_id)
+            )
+        ).scalar_one()
+        response.status_code = 200
+        return _to_response(existente)
+
     await db.commit()
     await db.refresh(devolucion, attribute_names=["lineas"])
     return _to_response(devolucion)

@@ -12,7 +12,11 @@ class Devolucion(Base):
     __tablename__ = "devoluciones"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    local_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # UNIQUE (permite multiples NULL): clave de idempotencia de POST
+    # /devoluciones (PLAN.md Parte 32, gap 1 - la Parte 23 lo agrego a
+    # ventas/movimientos/cortes_caja/retiros_efectivo pero no aqui) -
+    # migracion 0013.
+    local_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, unique=True)
     sucursal_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sucursales.id"))
     usuario_id: Mapped[str] = mapped_column(String(120))
     venta_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ventas.id"), nullable=True)

@@ -3,6 +3,7 @@ package com.pdv.pos.config
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.work.WorkInfo
 import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.data.remote.ApiResult
@@ -19,10 +20,16 @@ import com.pdv.pos.logging.LogType
 import com.pdv.pos.ia.LlmClient
 import com.pdv.pos.ia.LlmProvider
 import com.pdv.pos.ia.PROMPT_SISTEMA_DEFAULT
+import com.pdv.pos.sync.ResumenPendientes
+import com.pdv.pos.sync.SyncPendientesResumen
+import com.pdv.pos.sync.SyncScheduler
+import com.pdv.pos.sync.SyncState
+import com.pdv.pos.sync.SyncStateStore
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -89,6 +96,9 @@ class ConfiguracionViewModelTest {
         sessionManager: SessionManager = mockk(relaxed = true),
         llmClient: LlmClient = mockk(relaxed = true),
         authRepository: AuthRepository = mockk(relaxed = true),
+        syncStateStore: SyncStateStore = mockk(relaxed = true),
+        syncPendientesResumen: SyncPendientesResumen = mockk(relaxed = true),
+        syncScheduler: SyncScheduler = mockk(relaxed = true),
     ): ConfiguracionViewModel {
         val dataStore = dataStore(tempDir)
         return ConfiguracionViewModel(
@@ -101,6 +111,9 @@ class ConfiguracionViewModelTest {
             authRepository,
             mockk(relaxed = true),
             mockk(relaxed = true),
+            syncStateStore,
+            syncPendientesResumen,
+            syncScheduler,
         )
     }
 
@@ -124,6 +137,9 @@ class ConfiguracionViewModelTest {
             mockk(relaxed = true),
             rolRepository,
             appLogger,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
     }
 
@@ -169,6 +185,9 @@ class ConfiguracionViewModelTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
         assertEquals(BackendMode.LOCAL, viewModel.uiState.value.modo)
 
@@ -205,6 +224,9 @@ class ConfiguracionViewModelTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
         assertEquals("s1", preferences.deviceConfig.first().sucursalIdSeleccionada)
@@ -226,6 +248,9 @@ class ConfiguracionViewModelTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
         assertEquals("sucursal-local-vieja", preferences.deviceConfig.first().sucursalIdSeleccionada)
@@ -242,6 +267,9 @@ class ConfiguracionViewModelTest {
             iaPreferences,
             mockk(relaxed = true),
             PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
@@ -267,6 +295,9 @@ class ConfiguracionViewModelTest {
             iaPreferences,
             mockk(relaxed = true),
             PromptIaPreferences(dataStore),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
@@ -382,6 +413,9 @@ class ConfiguracionViewModelTest {
             authRepository,
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
         viewModel.onPromptIaChange("Prompt nuevo")
@@ -410,6 +444,9 @@ class ConfiguracionViewModelTest {
             authRepository,
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
         viewModel.onPromptIaChange("Prompt nuevo")
@@ -418,5 +455,104 @@ class ConfiguracionViewModelTest {
 
         assertEquals(PROMPT_SISTEMA_DEFAULT, promptIaPreferences.prompt.first())
         assertEquals("Contraseña incorrecta, cambio no guardado.", viewModel.uiState.value.promptIaError)
+    }
+
+    @Test
+    fun `selecting a mode with nothing pending applies it immediately, no dialog`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val resumen = mockk<SyncPendientesResumen>()
+        coEvery { resumen.calcular() } returns ResumenPendientes(emptyList())
+        val viewModel = viewModel(tempDir, syncPendientesResumen = resumen)
+
+        viewModel.onModoSelected(BackendMode.REMOTO)
+
+        assertEquals(BackendMode.REMOTO, viewModel.uiState.value.modo)
+        assertEquals(null, viewModel.uiState.value.dialogoCambioModo)
+    }
+
+    @Test
+    fun `selecting a mode with pending rows opens the confirmation dialog instead of applying it`(@TempDir tempDir: File) =
+        runTest(dispatcher) {
+            val resumen = mockk<SyncPendientesResumen>()
+            coEvery { resumen.calcular() } returns ResumenPendientes(listOf("ventas" to 2))
+            val viewModel = viewModel(tempDir, syncPendientesResumen = resumen)
+
+            viewModel.onModoSelected(BackendMode.REMOTO)
+
+            assertEquals(BackendMode.LOCAL, viewModel.uiState.value.modo)
+            assertEquals(BackendMode.REMOTO, viewModel.uiState.value.dialogoCambioModo?.modoDestino)
+        }
+
+    @Test
+    fun `confirming the mode change applies it and closes the dialog`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val resumen = mockk<SyncPendientesResumen>()
+        coEvery { resumen.calcular() } returns ResumenPendientes(listOf("ventas" to 2))
+        val viewModel = viewModel(tempDir, syncPendientesResumen = resumen)
+        viewModel.onModoSelected(BackendMode.REMOTO)
+
+        viewModel.onConfirmarCambioModo()
+
+        assertEquals(BackendMode.REMOTO, viewModel.uiState.value.modo)
+        assertEquals(null, viewModel.uiState.value.dialogoCambioModo)
+    }
+
+    @Test
+    fun `cancelling the mode change closes the dialog without changing the mode`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val resumen = mockk<SyncPendientesResumen>()
+        coEvery { resumen.calcular() } returns ResumenPendientes(listOf("ventas" to 2))
+        val viewModel = viewModel(tempDir, syncPendientesResumen = resumen)
+        viewModel.onModoSelected(BackendMode.REMOTO)
+
+        viewModel.onCancelarCambioModo()
+
+        assertEquals(BackendMode.LOCAL, viewModel.uiState.value.modo)
+        assertEquals(null, viewModel.uiState.value.dialogoCambioModo)
+    }
+
+    @Test
+    fun `sync section reflects SyncStateStore and the pending total`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val syncStateStore = mockk<SyncStateStore>()
+        every { syncStateStore.state } returns
+            flowOf(SyncState(lastSuccessAtMillis = 1_700_000_000_000L, lastError = "timeout"))
+        val resumen = mockk<SyncPendientesResumen>()
+        coEvery { resumen.calcular() } returns ResumenPendientes(listOf("ventas" to 2, "entradas" to 1))
+
+        val viewModel = viewModel(tempDir, syncStateStore = syncStateStore, syncPendientesResumen = resumen)
+
+        assertEquals(1_700_000_000_000L, viewModel.uiState.value.syncUltimoExitoMillis)
+        assertEquals("timeout", viewModel.uiState.value.syncUltimoError)
+        assertEquals(3, viewModel.uiState.value.syncPendientesTotal)
+    }
+
+    @Test
+    fun `sincronizar ahora delegates to the SyncScheduler`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val syncScheduler = mockk<SyncScheduler>(relaxed = true)
+        val viewModel = viewModel(tempDir, syncScheduler = syncScheduler)
+
+        viewModel.onSincronizarAhora()
+
+        verify(exactly = 1) { syncScheduler.sincronizarAhora() }
+    }
+
+    @Test
+    fun `sync section shows progress while the manual sync runs and refreshes pendientes on completion`(
+        @TempDir tempDir: File,
+    ) = runTest(dispatcher) {
+        val trabajoInmediato = MutableStateFlow<WorkInfo.State?>(null)
+        val syncScheduler = mockk<SyncScheduler>(relaxed = true)
+        every { syncScheduler.observarTrabajoInmediato() } returns trabajoInmediato
+        val resumen = mockk<SyncPendientesResumen>()
+        coEvery { resumen.calcular() } returns ResumenPendientes(emptyList())
+        val viewModel = viewModel(tempDir, syncScheduler = syncScheduler, syncPendientesResumen = resumen)
+
+        trabajoInmediato.value = WorkInfo.State.RUNNING
+        assertEquals(true, viewModel.uiState.value.syncSincronizando)
+
+        trabajoInmediato.value = WorkInfo.State.SUCCEEDED
+
+        assertEquals(false, viewModel.uiState.value.syncSincronizando)
+        // Una vez en init() y otra al terminar el work (PLAN.md Parte 32,
+        // hallazgo de verificacion en dispositivo: el boton no refrescaba
+        // los pendientes al terminar).
+        coVerify(exactly = 2) { resumen.calcular() }
     }
 }

@@ -26,6 +26,30 @@ interface EntradaDao {
     @Insert
     suspend fun insertMovimiento(entity: MovimientoEntity)
 
+    // Push diferido (PLAN.md Parte 32, Grupo 2): no hay entidad "entrada", la
+    // unidad a subir es el movimiento tipo "entrada" (+ el articulo si fue
+    // creado en la misma entrada). El local_id que el backend usa como clave
+    // de idempotencia es el referenciaId del movimiento (el id de dominio de
+    // la entrada), no el localId del movimiento.
+    @Query("SELECT * FROM movimientos WHERE tipo = 'entrada' AND isSynced = 0 AND deletedAt IS NULL")
+    suspend fun getMovimientosEntradaPendientes(): List<MovimientoEntity>
+
+    @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'entrada' AND isSynced = 0 AND deletedAt IS NULL")
+    suspend fun contarEntradasPendientes(): Int
+
+    @Query("SELECT * FROM articulos WHERE localId = :localId LIMIT 1")
+    suspend fun getArticulo(localId: String): ArticuloEntity?
+
+    @Query("UPDATE movimientos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarMovimientoSincronizado(localId: String, remoteId: String)
+
+    @Query("UPDATE articulos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarArticuloSincronizado(localId: String, remoteId: String)
+
+    // Descarta una entrada irrecuperable (ver VentaDao.marcarVentaDescartada).
+    @Query("UPDATE movimientos SET isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarMovimientoDescartado(localId: String)
+
     // Articulo (si es nuevo) + upsert de inventario, aplicando el delta con
     // signo via EventoAditivoCombiner en vez de un UPDATE cantidad = X
     // directo (PLAN.md Parte 6, "Decisiones abiertas") + movimiento tipo
