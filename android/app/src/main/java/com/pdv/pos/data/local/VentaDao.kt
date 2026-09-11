@@ -23,6 +23,39 @@ interface VentaDao {
     @Query("SELECT * FROM inventario WHERE sucursalId = :sucursalId AND articuloId = :articuloId LIMIT 1")
     suspend fun getInventario(sucursalId: String, articuloId: String): InventarioEntity?
 
+    // Push diferido (PLAN.md Parte 32, Grupo 2): resuelve el articulo_id
+    // remoto de cada linea antes de mandar la venta (ver SyncMappers).
+    @Query("SELECT * FROM articulos WHERE localId = :articuloId LIMIT 1")
+    suspend fun getArticulo(articuloId: String): ArticuloEntity?
+
+    // Push diferido (PLAN.md Parte 32, Grupo 2): ventas creadas offline.
+    @Query("SELECT * FROM ventas WHERE isSynced = 0 AND deletedAt IS NULL")
+    suspend fun getVentasPendientes(): List<VentaEntity>
+
+    @Query("SELECT COUNT(*) FROM ventas WHERE isSynced = 0 AND deletedAt IS NULL")
+    suspend fun contarVentasPendientes(): Int
+
+    @Query("SELECT * FROM venta_detalle WHERE ventaId = :ventaLocalId AND deletedAt IS NULL")
+    suspend fun getDetallesDeVenta(ventaLocalId: String): List<VentaDetalleEntity>
+
+    @Query("UPDATE ventas SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarVentaSincronizada(localId: String, remoteId: String)
+
+    // Descarta una venta que el backend rechazo con un error no recuperable
+    // (4xx que no es 401, ej. sucursal_id de un backend distinto al actual -
+    // PLAN.md Parte 32, hallazgo de verificacion en dispositivo: sin esto,
+    // una fila irrecuperable se reintentaba en cada ciclo para siempre,
+    // generando miles de requests identicos). remoteId queda null: nunca
+    // llego al backend, a diferencia de marcarVentaSincronizada.
+    @Query("UPDATE ventas SET isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarVentaDescartada(localId: String)
+
+    @Query("UPDATE venta_detalle SET isSynced = 1 WHERE ventaId = :ventaLocalId")
+    suspend fun marcarDetallesVentaSincronizados(ventaLocalId: String)
+
+    @Query("UPDATE movimientos SET isSynced = 1 WHERE referenciaTipo = 'venta' AND referenciaId = :ventaLocalId")
+    suspend fun marcarMovimientosVentaSincronizados(ventaLocalId: String)
+
     // Usado por LocalCajaRepository (PLAN.md Parte 10) para agregar totales
     // de un periodo; VentaDao es dueno de la tabla `ventas`.
     @Query(

@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
-import com.pdv.pos.domain.model.Articulo
 import com.pdv.pos.domain.model.Devolucion
 import com.pdv.pos.domain.model.DevolucionLinea
 import com.pdv.pos.domain.repository.DevolucionRepository
+import com.pdv.pos.domain.repository.InventarioRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,40 +20,10 @@ import java.math.BigDecimal
 import java.util.UUID
 import javax.inject.Inject
 
-// Catalogo estatico de ejemplo del sub-paso 1 (UI) de la Parte 11 - mismo
-// criterio que CATALOGO_EJEMPLO en VentaViewModel (PLAN.md Parte 7): se
-// reemplaza por busqueda real de articulos en un sub-paso posterior si el
-// checklist de una Parte futura lo pide, no antes.
-private val CATALOGO_EJEMPLO = listOf(
-    Articulo(
-        id = "11111111-1111-4111-8111-111111111111",
-        codigoBarras = "7501234567890",
-        sku = "REF-001",
-        nombre = "Refresco de cola 600ml",
-        unidadMedida = "pieza",
-        precioVenta = BigDecimal("18.50"),
-    ),
-    Articulo(
-        id = "22222222-2222-4222-8222-222222222222",
-        codigoBarras = "7501234567906",
-        sku = "PAN-002",
-        nombre = "Pan de caja integral",
-        unidadMedida = "pieza",
-        precioVenta = BigDecimal("42.00"),
-    ),
-    Articulo(
-        id = "33333333-3333-4333-8333-333333333333",
-        codigoBarras = "7501234567913",
-        sku = "LEC-003",
-        nombre = "Leche entera 1L",
-        unidadMedida = "pieza",
-        precioVenta = BigDecimal("27.90"),
-    ),
-)
-
 @HiltViewModel
 class DevolucionViewModel @Inject constructor(
     private val devolucionRepository: DevolucionRepository,
+    private val inventarioRepository: InventarioRepository,
     private val preferences: ConfiguracionPreferences,
     private val sessionManager: SessionManager,
 ) : ViewModel() {
@@ -65,21 +35,36 @@ class DevolucionViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(busqueda = valor)
     }
 
+    // Busqueda real contra InventarioRepository (hallazgo de pruebas en el
+    // Xiaomi, Parte 32): antes buscaba en CATALOGO_EJEMPLO, un catalogo
+    // estatico de 3 articulos que nunca se reemplazo pese a que Venta y
+    // Entrada ya habian recibido este mismo fix en la Parte 16.
     fun buscar() {
         val termino = _uiState.value.busqueda.trim()
-        val encontrado = if (termino.isEmpty()) {
-            null
-        } else {
-            CATALOGO_EJEMPLO.firstOrNull {
-                it.codigoBarras == termino ||
-                    it.sku.equals(termino, ignoreCase = true) ||
-                    it.nombre.contains(termino, ignoreCase = true)
-            }
+        if (termino.isEmpty()) {
+            _uiState.value = _uiState.value.copy(articuloEncontrado = null, errorBusqueda = null)
+            return
         }
-        _uiState.value = _uiState.value.copy(
-            articuloEncontrado = encontrado,
-            errorBusqueda = if (encontrado == null && termino.isNotEmpty()) "Artículo no encontrado" else null,
-        )
+        viewModelScope.launch {
+            val sucursalId = preferences.deviceConfig.first().sucursalIdSeleccionada
+            if (sucursalId == null) {
+                _uiState.value = _uiState.value.copy(
+                    articuloEncontrado = null,
+                    errorBusqueda = "Selecciona una sucursal en Configuración",
+                )
+                return@launch
+            }
+            val encontrado = inventarioRepository
+                .observarInventario(sucursalId, busqueda = termino, pagina = 1, tamanioPagina = 1)
+                .first()
+                .items
+                .firstOrNull()
+                ?.articulo
+            _uiState.value = _uiState.value.copy(
+                articuloEncontrado = encontrado,
+                errorBusqueda = if (encontrado == null) "Artículo no encontrado" else null,
+            )
+        }
     }
 
     fun onEscanearClick() {

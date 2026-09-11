@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.articulo import Articulo
 from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
+from app.models.sucursal import Sucursal
 from app.schemas.entrada import (
     ArticuloResponseSchema,
     EntradaCreateSchema,
@@ -96,6 +97,14 @@ async def _entrada_existente_response(
 async def create_entrada(
     payload: EntradaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
 ) -> EntradaResponseSchema:
+    # Valida sucursal_id antes de abrir la transaccion de escritura, mismo
+    # criterio que la validacion de articulo_id de mas abajo (y de POST
+    # /ventas): un sucursal_id inexistente (dispositivo con historial de un
+    # backend distinto, PLAN.md Parte 32) debe dar 404, no un
+    # ForeignKeyViolationError sin capturar al hacer flush/commit -> 500.
+    if await db.get(Sucursal, payload.sucursal_id) is None:
+        raise HTTPException(status_code=404, detail=f"sucursal no encontrada: {payload.sucursal_id}")
+
     articulo: Articulo | None = None
     # Idempotente por local_id (PLAN.md Parte 23): UNIQUE(local_id) en
     # movimientos. Todo el flujo de escritura (alta de articulo, upsert de

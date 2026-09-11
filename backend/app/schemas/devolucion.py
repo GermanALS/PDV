@@ -23,7 +23,9 @@ class DevolucionDetalleResponseSchema(BaseModel):
 
 
 class DevolucionCreateSchema(BaseModel):
-    local_id: uuid.UUID | None = None
+    # Obligatorio: clave de idempotencia de POST /devoluciones (PLAN.md Parte
+    # 32, gap 1), mismo criterio que VentaCreateSchema.local_id (Parte 23).
+    local_id: uuid.UUID
     sucursal_id: uuid.UUID
     usuario_id: str = Field(min_length=1, max_length=120)
     venta_id: uuid.UUID | None = None

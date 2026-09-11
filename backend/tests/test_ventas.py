@@ -397,3 +397,32 @@ async def test_create_venta_concurrente_no_pierde_decremento(engine):
             )
             await session_cleanup.execute(Articulo.__table__.delete().where(Articulo.id == articulo_id))
             await session_cleanup.commit()
+
+
+async def test_create_venta_sucursal_id_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="VTA-404", cantidad="5")
+
+    response = await client_autenticado.post(
+        "/api/v1/ventas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": str(uuid.uuid4()),
+            "usuario_id": "admin",
+            "folio": "F-404",
+            "fecha": "2026-08-19T12:00:00Z",
+            "subtotal": "50.00",
+            "total": "50.00",
+            "metodo_pago": "efectivo",
+            "lineas": [
+                {
+                    "articulo_id": articulo_id,
+                    "cantidad": "1",
+                    "precio_unitario": "50.00",
+                    "subtotal": "50.00",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 404

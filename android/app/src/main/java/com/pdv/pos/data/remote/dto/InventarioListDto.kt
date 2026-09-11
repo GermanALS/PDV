@@ -16,6 +16,7 @@ data class InventarioItemDto(
     val costo: String? = null,
     val cantidad: String,
     val ubicacion: String? = null,
+    @SerialName("updated_at") val updatedAt: String,
 )
 
 @Serializable

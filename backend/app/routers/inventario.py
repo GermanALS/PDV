@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.articulo import Articulo
 from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
+from app.models.sucursal import Sucursal
 from app.schemas.entrada import ArticuloResponseSchema, InventarioResponseSchema, MovimientoResponseSchema
 from app.schemas.inventario import (
     AjusteInventarioResponseSchema,
@@ -78,6 +79,7 @@ def _movimiento_to_response(movimiento: Movimiento) -> MovimientoResponseSchema:
 async def list_inventario(
     sucursal_id: uuid.UUID,
     q: str | None = None,
+    updated_since: datetime | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -88,6 +90,10 @@ async def list_inventario(
         filtros.append(
             (Articulo.nombre.ilike(termino)) | (Articulo.sku.ilike(termino)) | (Articulo.codigo_barras.ilike(termino))
         )
+    # Pull diferido (PLAN.md Parte 32, Grupo 3): filtra por updated_at de la
+    # fila `inventario`, no del articulo.
+    if updated_since is not None:
+        filtros.append(Inventario.updated_at >= updated_since)
 
     total = await db.scalar(
         select(func.count()).select_from(Inventario).join(Articulo, Articulo.id == Inventario.articulo_id).where(*filtros)
@@ -113,6 +119,7 @@ async def list_inventario(
             costo=articulo.costo,
             cantidad=inventario.cantidad,
             ubicacion=inventario.ubicacion,
+            updated_at=inventario.updated_at,
         )
         for inventario, articulo in resultado.all()
     ]
@@ -139,6 +146,10 @@ async def ajustar_articulo(
     articulo = await db.get(Articulo, articulo_id)
     if articulo is None:
         raise HTTPException(status_code=404, detail="articulo no encontrado")
+    # Valida sucursal_id antes de escribir (PLAN.md Parte 32): ver
+    # create_venta en ventas.py.
+    if await db.get(Sucursal, payload.sucursal_id) is None:
+        raise HTTPException(status_code=404, detail=f"sucursal no encontrada: {payload.sucursal_id}")
 
     ahora = datetime.now(timezone.utc)
     articulo.nombre = payload.nombre

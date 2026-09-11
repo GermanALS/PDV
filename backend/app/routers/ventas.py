@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.articulo import Articulo
 from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
+from app.models.sucursal import Sucursal
 from app.models.venta import Venta, VentaDetalle
 from app.schemas.venta import VentaCreateSchema, VentaDetalleResponseSchema, VentaResponseSchema
 
@@ -51,6 +52,12 @@ def _to_response(venta: Venta) -> VentaResponseSchema:
 async def create_venta(
     payload: VentaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
 ) -> VentaResponseSchema:
+    # Valida sucursal_id antes de escribir (PLAN.md Parte 32): un
+    # sucursal_id inexistente daba un ForeignKeyViolationError sin capturar
+    # al hacer flush/commit -> 500, en vez de un 404 limpio.
+    if await db.get(Sucursal, payload.sucursal_id) is None:
+        raise HTTPException(status_code=404, detail=f"sucursal no encontrada: {payload.sucursal_id}")
+
     # Una sola query IN (PLAN.md Parte 25, hallazgo M-2) en vez de un
     # db.get() por linea.
     articulo_ids = {linea.articulo_id for linea in payload.lineas}

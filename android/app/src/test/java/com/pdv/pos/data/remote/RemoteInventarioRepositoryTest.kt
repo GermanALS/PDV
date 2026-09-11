@@ -56,6 +56,7 @@ class RemoteInventarioRepositoryTest {
                         precioVenta = "18.50",
                         cantidad = "24.000",
                         ubicacion = "Estante A1",
+                        updatedAt = "2026-08-20T14:00:00Z",
                     ),
                 ),
                 page = 1,

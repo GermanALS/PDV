@@ -263,3 +263,24 @@ async def test_create_entrada_articulo_existente_reintento_con_mismo_local_id_es
         )
     ).scalars().all()
     assert len(movimientos) == 1
+
+
+async def test_create_entrada_sucursal_id_inexistente_returns_404(client_autenticado):
+    response = await client_autenticado.post(
+        "/api/v1/entradas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": str(uuid.uuid4()),
+            "usuario_id": "admin",
+            "fecha": "2026-08-19T12:00:00Z",
+            "cantidad": "5",
+            "articulo_nuevo": {
+                "sku": "SUC-404",
+                "nombre": "Articulo huerfano de sucursal",
+                "unidad_medida": "pieza",
+                "precio_venta": "10.00",
+            },
+        },
+    )
+
+    assert response.status_code == 404

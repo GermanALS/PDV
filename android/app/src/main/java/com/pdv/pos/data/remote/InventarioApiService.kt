@@ -17,6 +17,7 @@ interface InventarioApiService {
         @Query("q") q: String?,
         @Query("page") page: Int,
         @Query("page_size") pageSize: Int,
+        @Query("updated_since") updatedSince: String? = null,
     ): InventarioListResponseDto
 
     @PATCH("inventario/{articuloId}")

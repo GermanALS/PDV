@@ -104,11 +104,41 @@ interface InventarioDao {
     @Query("SELECT * FROM articulos WHERE localId = :articuloId LIMIT 1")
     suspend fun getArticulo(articuloId: String): ArticuloEntity?
 
+    // Pull diferido (PLAN.md Parte 32, Grupo 3): el GET /inventario devuelve
+    // el articulo_id del backend; se correlaciona con el articulo local por
+    // remoteId para ubicar/actualizar su fila de inventario.
+    @Query("SELECT * FROM articulos WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun getArticuloByRemoteId(remoteId: String): ArticuloEntity?
+
     @Update
     suspend fun updateArticulo(entity: ArticuloEntity)
 
     @Query("SELECT * FROM inventario WHERE sucursalId = :sucursalId AND articuloId = :articuloId LIMIT 1")
     suspend fun getInventario(sucursalId: String, articuloId: String): InventarioEntity?
+
+    // Push diferido (PLAN.md Parte 32, Grupo 2, sub-paso 7b): ajustes
+    // manuales creados offline. La unidad a subir es el movimiento tipo
+    // "ajuste"; se agrupan por (sucursalId, articuloId) y se envia un solo
+    // PATCH /inventario/{articulo} con la cantidad actual (el backend calcula
+    // su propio delta). Un articulo sin remoteId todavia (entrada aun sin
+    // sincronizar) se salta este ciclo.
+    @Query("SELECT * FROM movimientos WHERE tipo = 'ajuste' AND isSynced = 0 AND deletedAt IS NULL")
+    suspend fun getMovimientosAjustePendientes(): List<MovimientoEntity>
+
+    @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'ajuste' AND isSynced = 0 AND deletedAt IS NULL")
+    suspend fun contarAjustesPendientes(): Int
+
+    @Query("UPDATE movimientos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarMovimientoSincronizado(localId: String, remoteId: String)
+
+    @Query("UPDATE movimientos SET isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarMovimientoSincronizadoSinRemoto(localId: String)
+
+    @Query("UPDATE articulos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarArticuloSincronizado(localId: String, remoteId: String)
+
+    @Query("UPDATE inventario SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
+    suspend fun marcarInventarioSincronizado(localId: String, remoteId: String)
 
     @Insert
     suspend fun insertInventario(entity: InventarioEntity)

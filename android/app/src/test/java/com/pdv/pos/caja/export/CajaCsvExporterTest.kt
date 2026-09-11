@@ -5,6 +5,7 @@ import com.pdv.pos.domain.model.RetiroEfectivo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
+import java.time.ZoneOffset
 
 class CajaCsvExporterTest {
 
@@ -38,6 +39,7 @@ class CajaCsvExporterTest {
         val csv = CajaCsvExporter.generar(
             cortes = listOf(corte(), corte().copy(id = "corte-2", montoContado = null, diferencia = null)),
             retiros = listOf(retiro(), retiro().copy(id = "retiro-2", motivo = null)),
+            zonaHoraria = ZoneOffset.UTC,
         )
 
         val esperado = buildString {
@@ -60,7 +62,7 @@ class CajaCsvExporterTest {
 
     @Test
     fun `sin cortes ni retiros deja solo los encabezados de cada bloque`() {
-        val csv = CajaCsvExporter.generar(cortes = emptyList(), retiros = emptyList())
+        val csv = CajaCsvExporter.generar(cortes = emptyList(), retiros = emptyList(), zonaHoraria = ZoneOffset.UTC)
 
         val esperado = buildString {
             append("CORTES\r\n")
@@ -74,5 +76,24 @@ class CajaCsvExporterTest {
         }
 
         assertEquals(esperado, csv)
+    }
+
+    @Test
+    fun `las fechas se muestran en la zona horaria local, no en UTC crudo`() {
+        // Hallazgo de verificacion en dispositivo (PLAN.md Parte 32): un
+        // dispositivo en Mexico (UTC-6) leia "18:14" para una operacion
+        // hecha a las 12:14 reales - el export mostraba Instant.toString()
+        // (siempre UTC). fechaInicio/fechaFin/fecha corresponden al mismo
+        // instante que en corte()/retiro(), solo cambia la zona con la que
+        // se muestran.
+        val mexico = ZoneOffset.ofHours(-6)
+
+        val csv = CajaCsvExporter.generar(cortes = listOf(corte()), retiros = listOf(retiro()), zonaHoraria = mexico)
+
+        assertEquals(
+            "corte-1,parcial,2023-11-14T16:13:20-06:00,2023-11-14T17:13:20-06:00,1500.00,900.00,600.00,100.00,800.00,795.00,-5.00",
+            csv.lines()[2],
+        )
+        assertEquals("retiro-1,2023-11-14T16:33:20-06:00,100.00,\"Pago a proveedor, contado\"", csv.lines()[6])
     }
 }

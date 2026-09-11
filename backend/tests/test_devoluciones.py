@@ -1,5 +1,9 @@
 import uuid
 
+from sqlalchemy import select
+
+from app.models.devolucion import Devolucion
+
 
 async def _seeded_sucursal_id(client_autenticado) -> str:
     response = await client_autenticado.get("/api/v1/sucursales")
@@ -59,6 +63,7 @@ async def test_create_devolucion_happy_path(client_autenticado):
     response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "venta_id": venta_id,
@@ -95,6 +100,7 @@ async def test_create_devolucion_sin_venta_original_happy_path(client_autenticad
     response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "folio": "D-002",
@@ -121,6 +127,7 @@ async def test_create_devolucion_without_lineas_returns_422(client_autenticado):
     response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "folio": "D-003",
@@ -138,6 +145,7 @@ async def test_create_devolucion_articulo_id_inexistente_returns_404(client_aute
     response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "folio": "D-004",
@@ -161,6 +169,7 @@ async def test_create_devolucion_venta_id_inexistente_returns_404(client_autenti
     response = await client_autenticado.post(
         "/api/v1/devoluciones",
         json={
+            "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
             "usuario_id": "admin",
             "venta_id": str(uuid.uuid4()),
@@ -172,6 +181,70 @@ async def test_create_devolucion_venta_id_inexistente_returns_404(client_autenti
                     "cantidad": "1",
                 }
             ],
+        },
+    )
+
+    assert response.status_code == 404
+
+
+async def test_create_devolucion_sin_local_id_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-006", cantidad="5")
+
+    response = await client_autenticado.post(
+        "/api/v1/devoluciones",
+        json={
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "folio": "D-006",
+            "fecha": "2026-08-20T13:00:00Z",
+            "lineas": [{"articulo_id": articulo_id, "cantidad": "1"}],
+        },
+    )
+
+    assert response.status_code == 422
+
+
+async def test_create_devolucion_reintento_con_mismo_local_id_es_idempotente(client_autenticado, session):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-007", cantidad="10")
+    local_id = str(uuid.uuid4())
+    payload = {
+        "local_id": local_id,
+        "sucursal_id": sucursal_id,
+        "usuario_id": "admin",
+        "folio": "D-007",
+        "fecha": "2026-08-20T13:00:00Z",
+        "lineas": [{"articulo_id": articulo_id, "cantidad": "2", "condicion": "defectuoso"}],
+    }
+
+    primera = await client_autenticado.post("/api/v1/devoluciones", json=payload)
+    segunda = await client_autenticado.post("/api/v1/devoluciones", json=payload)
+
+    assert primera.status_code == 201
+    assert segunda.status_code == 200
+    assert segunda.json()["id"] == primera.json()["id"]
+    assert len(segunda.json()["lineas"]) == 1
+
+    devoluciones = (
+        await session.execute(select(Devolucion).where(Devolucion.local_id == uuid.UUID(local_id)))
+    ).scalars().all()
+    assert len(devoluciones) == 1
+
+
+async def test_create_devolucion_sucursal_id_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-404", cantidad="5")
+
+    response = await client_autenticado.post(
+        "/api/v1/devoluciones",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": str(uuid.uuid4()),
+            "usuario_id": "admin",
+            "folio": "D-404",
+            "fecha": "2026-08-20T13:00:00Z",
+            "lineas": [{"articulo_id": articulo_id, "cantidad": "1"}],
         },
     )
 

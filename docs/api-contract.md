@@ -497,6 +497,13 @@ artículo, el inventario y el movimiento juntos (sección 6).
 parcial, sin distinguir mayúsculas/minúsculas) — mismo criterio de
 búsqueda que `InventarioDao.observarPagina` del lado Android.
 
+`updated_since` (opcional, ISO-8601): sólo filas de `inventario` con
+`updated_at >= updated_since`. Lo usa el pull del motor de sync diferido
+(PLAN.md Parte 32, Grupo 3) para traer sólo lo cambiado desde el último
+ciclo; filtra por `inventario.updated_at`, no por `articulos.updated_at`.
+Si se omite, no filtra por fecha (comportamiento previo). Malformado →
+`422`.
+
 Response `200 OK`
 ```json
 {
@@ -512,7 +519,8 @@ Response `200 OK`
       "precio_venta": "18.50",
       "costo": "12.00 o null",
       "cantidad": "24.000",
-      "ubicacion": "string o null"
+      "ubicacion": "string o null",
+      "updated_at": "2026-08-20T14:00:00Z"
     }
   ],
   "page": 1,
@@ -520,6 +528,10 @@ Response `200 OK`
   "total": 12
 }
 ```
+
+`updated_at` es el de la fila `inventario` (cambia con cada movimiento de
+stock); el pull lo usa como cursor (`max(updated_at)` de la página) y para
+el merge last-write-wins de filas sin cambios locales.
 
 ### 7.2 Ajustar artículo (atributos de catálogo + cantidad en existencia)
 
@@ -800,6 +812,12 @@ fecha (comportamiento previo). Los usa `RemoteCajaRepository
 .obtenerCortesDelPeriodo` para la exportación de cortes/retiros por
 periodo; el historial reactivo de `CajaScreen` sigue llamando sin ellos.
 
+`updated_since` (opcional, ISO-8601): filas con `updated_at >=
+updated_since`. Lo usa el pull del motor de sync diferido (PLAN.md Parte
+32, Grupo 3); filtra por `updated_at` (columna de sync), independiente de
+`desde`/`hasta` (que filtran por `fecha_fin`, negocio) — pueden combinarse.
+Malformado → `422`.
+
 **GET** `/cortes-caja?sucursal_id=uuid&page=1&page_size=20`
 
 **GET** `/cortes-caja?sucursal_id=uuid&desde=2026-08-01T00:00:00Z&hasta=2026-08-31T23:59:59Z&page=1&page_size=50`
@@ -846,6 +864,11 @@ Parámetros opcionales `desde` / `hasta` (ISO-8601, PLAN.md Parte 18
 sub-parte I): filtran por `fecha` dentro del rango `[desde, hasta]` (ambos
 límites inclusivos). Si se omiten, devuelve la página sin filtro de fecha.
 Los usa `RemoteRetiroEfectivoRepository.obtenerRetirosDelPeriodo`.
+
+`updated_since` (opcional, ISO-8601): filas con `updated_at >=
+updated_since`, para el pull del motor de sync diferido (PLAN.md Parte 32,
+Grupo 3). Filtra por `updated_at`, independiente de `desde`/`hasta` (que
+filtran por `fecha`). Malformado → `422`.
 
 **GET** `/retiros-efectivo?sucursal_id=uuid&page=1&page_size=20`
 
@@ -903,7 +926,7 @@ para no perder precisión decimal.
 Request body
 ```json
 {
-  "local_id": "uuid o null",
+  "local_id": "uuid",
   "sucursal_id": "uuid",
   "usuario_id": "admin",
   "venta_id": "uuid o null",
@@ -957,11 +980,20 @@ Response `201 Created`
 ```
 
 Response `422 Unprocessable Entity` — `lineas` vacío, o falta
-`sucursal_id`/`usuario_id`/`folio`/`fecha`.
+`local_id`/`sucursal_id`/`usuario_id`/`folio`/`fecha`.
 
 Response `404 Not Found` — `venta_id` no corresponde a ninguna venta
 existente, o algún `articulo_id` de `lineas` no corresponde a ningún
 artículo existente.
+
+**Idempotente por `local_id`** (PLAN.md Parte 32, gap 1 — la Parte 23 lo
+resolvió para `ventas`/`entradas`/`cortes-caja`/`retiros-efectivo` pero no
+para `devoluciones`): `local_id` es obligatorio en el body y tiene
+constraint `UNIQUE` a nivel de tabla `devoluciones` (migración 0013).
+Reintentar el POST con el mismo `local_id` no crea una segunda devolución —
+devuelve `200 OK` con la devolución ya persistida (mismo shape que el
+`201`), igual criterio que `POST /ventas` (sección 5). El `id` lo sigue
+generando el servidor; `local_id` es solo la clave de idempotencia.
 
 ---
 
@@ -1269,7 +1301,7 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
 - **Modo LOCAL / LOCAL_CON_SINCRONIZACION**: no cambia. No hay backend que
   valide; el enforcement solo aplica a las llamadas HTTP que el cliente
   hace en modo REMOTO. Cuando se implemente el push diferido de
-  LOCAL_CON_SINCRONIZACION (PLAN.md Parte 23+), adjuntará el mismo header
+  LOCAL_CON_SINCRONIZACION (PLAN.md Parte 32), adjuntará el mismo header
   `Authorization: Bearer`.
 
 ## 13. Pendiente de definir

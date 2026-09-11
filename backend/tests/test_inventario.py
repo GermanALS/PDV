@@ -139,3 +139,52 @@ async def test_valores_endpoints_include_seeded_data(client_autenticado):
     assert "Categoria-Unica-Test" in categorias.json()["valores"]
     assert "pieza" in unidades.json()["valores"]
     assert ubicaciones.status_code == 200
+
+
+async def test_list_inventario_incluye_updated_at_y_filtra_por_updated_since(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-SINCE", cantidad="7")
+
+    completo = await client_autenticado.get(f"/api/v1/inventario?sucursal_id={sucursal_id}")
+    fila = next(item for item in completo.json()["items"] if item["articulo_id"] == articulo_id)
+    assert "updated_at" in fila
+
+    futuro = await client_autenticado.get(
+        "/api/v1/inventario", params={"sucursal_id": sucursal_id, "updated_since": "2099-01-01T00:00:00Z"}
+    )
+    assert futuro.status_code == 200
+    assert all(item["articulo_id"] != articulo_id for item in futuro.json()["items"])
+
+    pasado = await client_autenticado.get(
+        "/api/v1/inventario", params={"sucursal_id": sucursal_id, "updated_since": "2000-01-01T00:00:00Z"}
+    )
+    assert any(item["articulo_id"] == articulo_id for item in pasado.json()["items"])
+
+
+async def test_list_inventario_updated_since_malformado_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.get(
+        "/api/v1/inventario", params={"sucursal_id": sucursal_id, "updated_since": "no-es-fecha"}
+    )
+
+    assert response.status_code == 422
+
+
+async def test_ajustar_articulo_sucursal_id_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-405", cantidad="5")
+
+    response = await client_autenticado.patch(
+        f"/api/v1/inventario/{articulo_id}",
+        json={
+            "sucursal_id": str(uuid.uuid4()),
+            "usuario_id": "admin",
+            "nombre": "Articulo de prueba",
+            "unidad_medida": "pieza",
+            "precio_venta": "10.00",
+            "cantidad": "5",
+        },
+    )
+
+    assert response.status_code == 404
