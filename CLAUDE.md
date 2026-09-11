@@ -155,7 +155,7 @@ activo, ej. `192.168.0.132`), puerto `8000`. Sin cable USB ni `adb reverse`.
 Requisitos:
 - El build de **debug** habilita HTTP en claro hacia cualquier host
   (`app/src/debug/res/xml/network_security_config.xml`, `base-config`). El de
-  release no; el endurecimiento de cleartext vive en la Parte 33.
+  release no; el endurecimiento de cleartext vive en la Parte 34.
 - Regla de firewall de Windows para conexiones entrantes TCP 8000 (Docker
   publica `0.0.0.0:8000`, pero el Firewall de Windows bloquea el acceso desde
   otros equipos por defecto). Una sola vez, en PowerShell como admin:

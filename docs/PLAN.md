@@ -239,7 +239,7 @@ el túnel USB. Sin cambios de esquema (los parámetros de conexión ya son
 preferencia de dispositivo en DataStore, `CLAUDE.md` §3) ni de contrato de
 API (reusa `GET /api/v1/health`). El cambio de red es solo en el build de
 debug (`src/debug/`); el endurecimiento de cleartext para release vive en la
-Parte 33.
+Parte 34.
 
 ### Checklist
 
@@ -398,7 +398,7 @@ Wi-Fi.
   `DeviceConfig`/`ConfiguracionPreferences` y `DynamicHostInterceptor` pasa
   a reescribir también el scheme, dejando el panel del login y Configuración
   listos para un backend HTTPS. El endurecimiento de cleartext para release
-  sigue en la Parte 33.
+  sigue en la Parte 34.
 
 ---
 
@@ -818,7 +818,79 @@ y resueltas con el usuario en la misma sesión. `CLAUDE.md` §11.)*
 
 ---
 
-## Parte 33: Primer release productivo (APK firmado + backend desplegado)
+## Parte 33: Actualización del manual técnico (`docs/manual-tecnico.md`)
+
+*(Sale de un hallazgo del cierre de la Parte 32, 2026-09-11: `docs/manual-tecnico.md`
+existe desde el 2026-09-09 pero quedó desactualizado desde su creación — cita
+una numeración de Partes vieja ("Parte 32 (primer release productivo)
+pendiente", cuando esa Parte pasó a ser la 33 y ahora la 34) y no refleja el
+motor de sincronización diferida real que entrega la Parte 32 actual.
+Apareció como archivo sin trackear durante el cierre de esa Parte y se
+excluyó del commit por estar stale — CLAUDE.md §1 exige que la documentación
+sea fuente de verdad vigente, no un snapshot congelado.)*
+
+Claves de Jira: sin asignar todavía. Las asigna `/jira-sync` cuando se
+sincronice esta Parte; no se pre-escriben en este archivo (evita el problema
+de claves fantasma que tuvo la Parte 30).
+
+Objetivo: dejar `docs/manual-tecnico.md` alineado con el estado real del
+proyecto — arquitectura, módulos y numeración de Partes — incorporando los
+cambios de las Partes recientes (hasta la 32 inclusive) y una sección que
+refleje el plan activo (`docs/PLAN.md`) y su checklist, para que el equipo
+de *application management* tenga una referencia técnica utilizable sin
+reconstruir el estado desde el historial de commits.
+
+### Checklist
+
+**1. Referencias y numeración**
+- [ ] Corregir toda cita a una Parte con un alcance o número distinto al que
+  tiene hoy en `docs/PLAN.md` (empezando por la fecha/estado del encabezado
+  del manual y la mención a "Parte 32 (primer release productivo)").
+  Criterio: `grep -n "Parte [0-9]"` en `docs/manual-tecnico.md` sin
+  discrepancias contra los encabezados reales de `docs/PLAN.md` y
+  `docs/PLAN-historico.md`.
+
+**2. Incorporar el motor de sincronización diferida (Parte 32)**
+- [ ] La sección de arquitectura del manual describe el motor de sync real
+  (push por entidad vía WorkManager con idempotencia por `local_id`, pull
+  con `?updated_since=`, `SessionStore` cifrado para el worker desatendido)
+  en vez de las primitivas puras sin orquestación que describía antes.
+  Criterio: coherente con `CLAUDE.md` §3 y con el resumen de
+  `docs/PLAN.md` Parte 32.
+- [ ] Si el manual trae diagramas de arquitectura o de flujo (ver su propio
+  índice), actualizarlos para reflejar push/pull; si el rediseño es
+  significativo, presentar el diagrama propuesto antes de reemplazar el
+  existente. `needs-approval`.
+
+**3. Sección de plan y checklist activo**
+- [ ] El manual incluye una sección "Estado del plan" que resume qué Partes
+  de `docs/PLAN.md` siguen pendientes (hoy, Parte 33 y Parte 34) y el
+  alcance de su checklist, enlazando a `docs/PLAN.md` en vez de duplicar su
+  contenido completo. Criterio: sección presente y verificable contra el
+  `docs/PLAN.md` vigente al momento del cierre de esta Parte.
+
+**4. Revisión general de vigencia**
+- [ ] Revisar el resto de las secciones del manual (requerimientos e
+  instalación, configuración, stack) contra el estado real del repo y
+  corregir cualquier otra referencia obsoleta encontrada (ej. comandos o
+  archivos que ya no existen, como el `requirements.txt` reemplazado en la
+  Parte 30). Criterio: sin referencias a comandos/archivos inexistentes en
+  el repo actual.
+
+### Decisiones abiertas
+
+- [ ] ¿El manual se actualiza de forma puntual en esta Parte, o se agrega un
+  paso de mantenimiento recurrente (ej. al comando `/parte` o a la
+  convención de cierre de Parte en `CLAUDE.md` §9) para que no vuelva a
+  quedar stale? Afecta si esta Parte deja un proceso nuevo instalado o solo
+  corrige el estado actual.
+- [ ] ¿Los diagramas UML/ER del manual (si existen y quedaron desalineados)
+  se rehacen en esta Parte, o se marca el hallazgo y se difiere su rediseño
+  a una Parte propia? Afecta el alcance del grupo 2.
+
+---
+
+## Parte 34: Primer release productivo (APK firmado + backend desplegado)
 
 *(Sale del análisis "qué falta para el primer release productivo" del
 2026-09-08. Absorbe el hallazgo B-7 —R8/shrinking, diferido en la Parte 29
@@ -1017,3 +1089,10 @@ desde fuera de la LAN.
   (`ventas`/`entradas`/`cortes_caja`/`retiros_efectivo`/`devoluciones`/
   `inventario`). Se agregó a la lista de delegación a subagentes feature-dev
   de `CLAUDE.md` §11 y `.claude/commands/parte.md`.
+- **2026-09-11**: se insertó la Parte 33 (actualización de
+  `docs/manual-tecnico.md`) a partir de un hallazgo del cierre de la Parte 32:
+  el manual técnico, creado el 2026-09-09, quedó desactualizado desde su
+  creación (numeración de Partes vieja, sin el motor de sync real) y apareció
+  como archivo sin trackear durante ese cierre, excluido del commit por
+  estar stale. La Parte 33 anterior (primer release productivo) pasó a Parte
+  34, al final del listado.
