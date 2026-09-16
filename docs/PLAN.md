@@ -818,7 +818,7 @@ y resueltas con el usuario en la misma sesión. `CLAUDE.md` §11.)*
 
 ---
 
-## Parte 33: Actualización del manual técnico (`docs/manual-tecnico.md`)
+## Parte 33: Actualización del manual técnico (`docs/manual-tecnico.md`)  <!-- POS-152 -->
 
 *(Sale de un hallazgo del cierre de la Parte 32, 2026-09-11: `docs/manual-tecnico.md`
 existe desde el 2026-09-09 pero quedó desactualizado desde su creación — cita
@@ -829,9 +829,8 @@ Apareció como archivo sin trackear durante el cierre de esa Parte y se
 excluyó del commit por estar stale — CLAUDE.md §1 exige que la documentación
 sea fuente de verdad vigente, no un snapshot congelado.)*
 
-Claves de Jira: sin asignar todavía. Las asigna `/jira-sync` cuando se
-sincronice esta Parte; no se pre-escriben en este archivo (evita el problema
-de claves fantasma que tuvo la Parte 30).
+Claves de Jira: épica `POS-152`; historias `POS-153`..`POS-156` (asignadas por
+`/jira-sync` el 2026-09-16).
 
 Objetivo: dejar `docs/manual-tecnico.md` alineado con el estado real del
 proyecto — arquitectura, módulos y numeración de Partes — incorporando los
@@ -842,51 +841,72 @@ reconstruir el estado desde el historial de commits.
 
 ### Checklist
 
-**1. Referencias y numeración**
-- [ ] Corregir toda cita a una Parte con un alcance o número distinto al que
+**1. Referencias y numeración** (POS-153)
+- [x] Corregir toda cita a una Parte con un alcance o número distinto al que
   tiene hoy en `docs/PLAN.md` (empezando por la fecha/estado del encabezado
   del manual y la mención a "Parte 32 (primer release productivo)").
   Criterio: `grep -n "Parte [0-9]"` en `docs/manual-tecnico.md` sin
   discrepancias contra los encabezados reales de `docs/PLAN.md` y
-  `docs/PLAN-historico.md`.
+  `docs/PLAN-historico.md`. Hecho (2026-09-11): encabezado (fecha, Partes
+  1-32 mergeadas, Partes 33-34 pendientes), todas las menciones a la vieja
+  "Parte 32 (primer release)" pasadas a Parte 34, `review_code.md` corregido
+  a "Partes 21-30", conteos de tests/migraciones (§10.3, §10.4, §2.3)
+  actualizados y verificados (`uv run pytest` -> 170 passed).
 
-**2. Incorporar el motor de sincronización diferida (Parte 32)**
-- [ ] La sección de arquitectura del manual describe el motor de sync real
+**2. Incorporar el motor de sincronización diferida (Parte 32)** (POS-154)
+- [x] La sección de arquitectura del manual describe el motor de sync real
   (push por entidad vía WorkManager con idempotencia por `local_id`, pull
   con `?updated_since=`, `SessionStore` cifrado para el worker desatendido)
   en vez de las primitivas puras sin orquestación que describía antes.
   Criterio: coherente con `CLAUDE.md` §3 y con el resumen de
-  `docs/PLAN.md` Parte 32.
-- [ ] Si el manual trae diagramas de arquitectura o de flujo (ver su propio
+  `docs/PLAN.md` Parte 32. Hecho: §1.2 y §2.4 reescritas con la
+  orquestación real (SyncScheduler/SyncWorker/SyncOrchestrator, orden de
+  push, política de errores, SessionStore); tabla de módulos (§1.1) y
+  DataStore (§6.2) suman la sección "Sincronización" y `SyncStateStore`/
+  `SessionStore`; stack Android (§2.2) suma WorkManager/Hilt-Work.
+- [x] Si el manual trae diagramas de arquitectura o de flujo (ver su propio
   índice), actualizarlos para reflejar push/pull; si el rediseño es
   significativo, presentar el diagrama propuesto antes de reemplazar el
-  existente. `needs-approval`.
+  existente. `needs-approval`. Hecho: propuesta de los 3 diagramas
+  (§2.2 arquitectura Android, §4.1 componentes, §4.5 secuencia de conflicto)
+  presentada y aprobada por el usuario antes de reemplazar.
 
-**3. Sección de plan y checklist activo**
-- [ ] El manual incluye una sección "Estado del plan" que resume qué Partes
+**3. Sección de plan y checklist activo** (POS-155)
+- [x] El manual incluye una sección "Estado del plan" que resume qué Partes
   de `docs/PLAN.md` siguen pendientes (hoy, Parte 33 y Parte 34) y el
   alcance de su checklist, enlazando a `docs/PLAN.md` en vez de duplicar su
   contenido completo. Criterio: sección presente y verificable contra el
-  `docs/PLAN.md` vigente al momento del cierre de esta Parte.
+  `docs/PLAN.md` vigente al momento del cierre de esta Parte. Hecho:
+  `docs/manual-tecnico.md` §11.1 "Estado del plan", con el detalle de la
+  Parte 34 movido a §11.2 y el hueco de sync resuelto reconvertido en
+  follow-ups en §11.3.
 
-**4. Revisión general de vigencia**
-- [ ] Revisar el resto de las secciones del manual (requerimientos e
+**4. Revisión general de vigencia** (POS-156)
+- [x] Revisar el resto de las secciones del manual (requerimientos e
   instalación, configuración, stack) contra el estado real del repo y
   corregir cualquier otra referencia obsoleta encontrada (ej. comandos o
   archivos que ya no existen, como el `requirements.txt` reemplazado en la
   Parte 30). Criterio: sin referencias a comandos/archivos inexistentes en
-  el repo actual.
+  el repo actual. Hecho: versiones de `libs.versions.toml` y
+  `backend/pyproject.toml` verificadas contra las tablas de stack; routers
+  del backend, scripts, workflows de CI y archivos citados confirmados
+  existentes; `local_id UNIQUE` (§3.3) corregido para incluir
+  `cortes_caja`/`retiros_efectivo` (Parte 23) y `devoluciones` (Parte 32),
+  un gap de precisión anterior a esta Parte.
 
 ### Decisiones abiertas
 
-- [ ] ¿El manual se actualiza de forma puntual en esta Parte, o se agrega un
+- [x] ¿El manual se actualiza de forma puntual en esta Parte, o se agrega un
   paso de mantenimiento recurrente (ej. al comando `/parte` o a la
   convención de cierre de Parte en `CLAUDE.md` §9) para que no vuelva a
   quedar stale? Afecta si esta Parte deja un proceso nuevo instalado o solo
-  corrige el estado actual.
-- [ ] ¿Los diagramas UML/ER del manual (si existen y quedaron desalineados)
+  corrige el estado actual. Decidido (2026-09-11): solo corrección puntual;
+  no se agrega proceso recurrente a `CLAUDE.md`/`/parte` en esta Parte.
+- [x] ¿Los diagramas UML/ER del manual (si existen y quedaron desalineados)
   se rehacen en esta Parte, o se marca el hallazgo y se difiere su rediseño
-  a una Parte propia? Afecta el alcance del grupo 2.
+  a una Parte propia? Afecta el alcance del grupo 2. Decidido (2026-09-11):
+  se rehacen ahora — los 3 diagramas afectados (§2.2, §4.1, §4.5 del manual)
+  se actualizaron en el grupo 2, con aprobación previa del usuario.
 
 ---
 
