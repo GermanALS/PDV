@@ -1,3 +1,10 @@
+<!--
+manual-meta
+titulo: Manual técnico — PDV (Punto de Venta)
+lead: Descripción funcional, arquitectura, requerimientos de instalación, diagramas UML y de base de datos, y guías de diagnóstico, mantenimiento y evolución.
+actualizado: 2026-09-16
+chips: Partes 1-33 mergeadas | Parte 34 pendiente | Backend 170 tests | Android 437 tests | Alembic 0001-0013 | Room v8
+-->
 # Manual técnico — PDV (Punto de Venta)
 
 Documento de referencia para el equipo de *application management*: descripción
@@ -5,19 +12,21 @@ funcional, arquitectura, requerimientos de instalación, diagramas UML y de base
 de datos, y guías de diagnóstico, mantenimiento y evolución.
 
 - **Código de proyecto**: `POS` (Jira) / `PDV` (repo).
-- **Estado a la fecha de este manual (2026-09-11)**: Partes 1-32 de
+- **Estado a la fecha de este manual (2026-09-16)**: Partes 1-33 de
   `docs/PLAN.md` implementadas y mergeadas, incluyendo el motor de
-  sincronización diferida (Parte 32). Partes 33 (este manual) y 34 (primer
-  release productivo) pendientes. App corriendo en dispositivo físico contra
-  backend dockerizado en LAN.
+  sincronización diferida (Parte 32) y este propio manual (Parte 33). Parte 34
+  (primer release productivo) pendiente. App corriendo en dispositivo físico
+  contra backend dockerizado en LAN.
 - **Fuentes de verdad vivas** (este manual las resume, no las reemplaza):
   - `CLAUDE.md` — arquitectura estable, convenciones, comandos.
   - `docs/api-contract.md` — contrato de endpoints REST.
   - `docs/schema-pos.json` — esquema de datos compartido (Room + Alembic).
-  - `docs/PLAN.md` — trabajo en curso (Partes 33-34 + Backlog).
+  - `docs/PLAN.md` — trabajo en curso (Parte 34 + Backlog).
   - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-28.
   - `docs/review_code.md` — revisión de código del 2026-08-30 (origen de las
     Partes 21-30).
+  - `docs/ALCANCE-DOCS.md` — manifiesto de alcance de este manual y de sus
+    derivados HTML/PDF, mantenidos con `/docs-sync` ([§10.7](#107-comandos-slash-del-proyecto)).
 
 ---
 
@@ -1073,7 +1082,7 @@ para guiar el proceso.
 |---|---|
 | Backend vivo | `curl http://<host>:8000/api/v1/health` -> `{"status":"ok","version":"0.1.0"}`. |
 | Contenedores | `docker compose ps` (backend `healthy`, `migrate` `exited 0`). |
-| Migraciones aplicadas | `docker compose exec backend alembic current` (debe coincidir con el head del repo, hoy `0012`). |
+| Migraciones aplicadas | `docker compose exec backend alembic current` (debe coincidir con el head del repo, hoy `0013`). |
 | Prueba de conexión desde la app | Panel de conexión -> "Probar conexión" (`BackendHealthChecker`, OkHttp propio sin interceptores, contra la URL tecleada). |
 
 ### 9.2 Logs del backend
@@ -1136,11 +1145,14 @@ python -c "import sqlite3;c=sqlite3.connect('pdv.db');print(c.execute('select na
 PDV/
 ├── android/        App Android nativa (Kotlin)         -> build system Gradle
 ├── backend/        API FastAPI (Python)                -> build system uv + Docker
-├── scripts/        Arranque/detención del backend, tuneling APK
+├── scripts/        Arranque/detención del backend, tuneling APK;
+│                   scripts/docs/ (build_manual.py + manual-template.html)
 ├── docs/           PLAN.md, PLAN-historico.md, api-contract.md,
 │                   schema-pos.json, review_code.md, inventario-inicial.csv,
-│                   manual-tecnico.md (este archivo)
-├── .claude/commands/  Comandos slash del proyecto (/parte, /jira-sync)
+│                   ALCANCE-DOCS.md (alcance del manual), manual-tecnico.md
+│                   (este archivo) + derivados .html/.pdf
+├── .claude/commands/  Comandos slash del proyecto (/parte, /docs-sync, /jira-sync)
+├── .claude/agents/    Subagentes (doc-maintainer)
 ├── .github/workflows/ android-ci.yml, backend-ci.yml
 ├── docker-compose.yml + docker-compose.prod.yml.example
 └── CLAUDE.md       Contexto de proyecto (raíz del monorepo)
@@ -1223,9 +1235,22 @@ para `cantidadNum`; la Parte 32 no agregó columnas nuevas).
 
 - `/parte <n>` — carga la Parte `n` de `docs/PLAN.md` y las secciones que
   referencia; algunas Partes delegan en subagentes del plugin `feature-dev`.
+- `/docs-sync <Parte n> | check` — mantiene este manual (`docs/manual-tecnico.md`)
+  alineado con el código, recorriendo siempre el alcance completo de
+  `docs/ALCANCE-DOCS.md` (nunca parcial). Delega la revisión en el subagente
+  `doc-maintainer` (único que lee y edita el Markdown); tras la confirmación
+  explícita del usuario, genera los derivados `docs/manual-tecnico.html` y
+  `.pdf` con `uv run scripts/docs/build_manual.py` y registra el commit/Parte/
+  fecha en la línea `docs-sync:` de `docs/ALCANCE-DOCS.md`. `--check` (o
+  `build_manual.py --check`) verifica, sin generar nada, que el sha256 del
+  Markdown coincida con el embebido en el HTML y en los metadatos del PDF. Se
+  corre al cerrar una Parte, antes de `/jira-sync`.
 - `/jira-sync <sección>` — sincroniza una sección de `PLAN.md` hacia Jira
   (proyecto `POS`) como épica + historias, unidireccional, con confirmación
-  humana. `PLAN.md` es la única fuente de verdad del alcance.
+  humana. `PLAN.md` es la única fuente de verdad del alcance. Antes de
+  sincronizar, revisa la frescura del manual contra la línea `docs-sync:` de
+  `docs/ALCANCE-DOCS.md` y sugiere correr `/docs-sync` primero si hay deriva
+  (el usuario puede optar por continuar igual).
 
 ---
 
@@ -1233,15 +1258,21 @@ para `cantidadNum`; la Parte 32 no agregó columnas nuevas).
 
 ### 11.1 Estado del plan (`docs/PLAN.md`)
 
-Las únicas Partes activas hoy son la **33** y la **34** (todo lo anterior,
-1-32, está implementado y mergeado). El checklist completo de cada una —
-criterios de cierre, etiquetas de verificación y decisiones abiertas — vive en
-`docs/PLAN.md`; esta sección solo resume el alcance, no lo duplica.
+La única Parte activa hoy es la **34** (todo lo anterior, 1-33, está
+implementado y mergeado, incluida la actualización de este manual en la
+Parte 33). El checklist completo — criterios de cierre, etiquetas de
+verificación y decisiones abiertas — vive en `docs/PLAN.md`; esta sección
+solo resume el alcance, no lo duplica.
 
-- **Parte 33 — actualización del manual técnico** (este documento, en curso):
-  corregir la numeración de Partes, reflejar el motor de sincronización
-  diferida de la Parte 32, agregar esta sección de estado del plan, y revisar
-  el resto del manual contra el estado real del repo.
+- **Parte 33 — actualización del manual técnico** (cerrada, PR #42, merge
+  `1ccfc5e`): corrigió la numeración de Partes, incorporó el motor de
+  sincronización diferida de la Parte 32, agregó esta sección de estado del
+  plan y revisó el resto del manual contra el estado real del repo. Se
+  decidió (2026-09-11) que su mantenimiento fuera puntual, sin agregar un
+  proceso recurrente a `CLAUDE.md`/`/parte`; la infraestructura de
+  `/docs-sync` (comando + subagente `doc-maintainer` +
+  `scripts/docs/build_manual.py`, [§10.7](#107-comandos-slash-del-proyecto))
+  se agregó después, fuera de la numeración de Partes.
 - **Parte 34 — primer release productivo** (pendiente): firma de release,
   despliegue del backend productivo, URL base productiva en la app,
   endurecimiento del build de release (R8/shrinking), y preparación +
