@@ -15,31 +15,40 @@ mantén este archivo enfocado (evita que crezca de forma descontrolada).
   sincronizarse con un backend FastAPI remoto compartido entre sucursales;
   incluye un asistente de IA (DeepSeek) opcional para consultas y
   actualizaciones asistidas del punto de venta.
-- **Estado**: Partes 1-31 de `docs/PLAN.md` implementadas y mergeadas — app
-  offline-first corriendo en el Xiaomi (venta, entrada, inventario, caja,
-  devoluciones, usuarios/roles reales, panel de conflictos, chat IA + FAQ
-  curado, tickets PDF; auth JWT extremo a extremo, CI por módulo, backend en
-  `uv`, conexión remota por Wi-Fi LAN). Las primitivas del motor de sync
-  (`LastWriteWinsSyncEngine`, `EventoAditivoCombiner`, `MigrationPlanner`)
-  existen pero sin orquestación diferida: el modo `LOCAL_CON_SINCRONIZACION`
-  todavía no sube ni baja cambios — eso es la Parte 32. Partes 32-33
-  pendientes. El detalle por Parte vive en `docs/PLAN.md`.
+- **Estado**: Partes 1-33 implementadas y mergeadas (archivadas en
+  `docs/PLAN-historico.md`) — app offline-first corriendo en el Xiaomi
+  (venta, entrada, inventario, caja, devoluciones, usuarios/roles reales,
+  panel de conflictos, chat IA + FAQ curado, tickets PDF; auth JWT extremo a
+  extremo, CI por módulo, backend en `uv`, conexión remota por Wi-Fi LAN,
+  motor de sync diferido de `LOCAL_CON_SINCRONIZACION` con push por entidad
+  vía WorkManager y pull `updated_since`, manual técnico con `/docs-sync`).
+  Pendientes las Partes 34-39 de `docs/PLAN.md`: las 34-38 corrigen los
+  hallazgos de la revisión pre-release (`docs/review_code.md`, entre ellos
+  que el inventario no converge entre terminales) y la 39 es el primer
+  release productivo.
 
 ## 2. Estructura del repositorio
 
 ```
 PDV/
 ├── .claude/
-│   └── commands/    -> Comandos slash del proyecto (versionados en git)
+│   ├── commands/    -> Comandos slash del proyecto (versionados en git)
+│   ├── agents/      -> Subagentes del proyecto (doc-maintainer, usado por /docs-sync)
+│   ├── hooks/       -> Hooks (docs_guard.py: bloquea editar a mano el HTML/PDF del manual)
+│   └── skills/      -> Skills del proyecto (sync-api-contract, stabilize-plan-section)
 ├── android/     -> App Android nativa (Kotlin)
 ├── backend/     -> API FastAPI (Python)
 ├── scripts/     -> Scripts multiplataforma de arranque/detención del backend
+│   └── docs/    -> Build del manual técnico (build_manual.py + plantilla HTML/PDF)
 └── docs/
     ├── api-contract.md       -> Contrato de endpoints (fuente de verdad compartida)
-    ├── PLAN.md               -> Diseño en desarrollo (solo Partes activas: 29-33 + Backlog)
-    ├── PLAN-historico.md     -> Bitácora de las Partes 1-28, ya cerradas y mergeadas
+    ├── PLAN.md               -> Diseño en desarrollo (solo Partes activas: 34-39 + Backlog)
+    ├── PLAN-historico.md     -> Bitácora de las Partes 1-33, ya cerradas y mergeadas
     ├── schema-pos.json       -> Esquema de datos compartido (3er artefacto de la compuerta schema-parity, sec. 9)
-    ├── review_code.md        -> Revisión de código del 2026-08-30 (fuente de las Partes 21-30)
+    ├── review_code.md        -> Revisión pre-release del 2026-09-28/29 (fuente de las Partes 34-39)
+    ├── review_code_2026-09-28_1816.md -> Revisión del 2026-08-30 (fuente de las Partes 21-30)
+    ├── manual-tecnico.md     -> Manual técnico (fuente editable; HTML/PDF derivados con /docs-sync)
+    ├── ALCANCE-DOCS.md       -> Manifiesto de alcance del manual técnico (lo recorre /docs-sync)
     └── inventario-inicial.csv -> Catálogo de ejemplo para la importación CSV
 ```
 
@@ -71,8 +80,8 @@ no se edita.
 - Networking: Retrofit + kotlinx.serialization
 - Persistencia local: Room (SQLite) — fuente de datos del modo local/offline
 - CameraX + ML Kit barcode scanning — escaneo de código de barras en Venta/Entrada
-- WorkManager — disparará la sincronización diferida en background cuando haya conectividad (pendiente, `docs/PLAN.md` Parte 32; la dependencia aún no está en el build)
-- DataStore — guarda la preferencia de `BackendMode` (local/remoto); el estado de sync persistido llega con la Parte 32
+- WorkManager + `hilt-work` — `SyncWorker` periódico (~15 min) y "Sincronizar ahora" de la sincronización diferida en `LOCAL_CON_SINCRONIZACION` (Parte 32)
+- DataStore — preferencias de dispositivo (`BackendMode`, conexión, sucursal seleccionada, IA), estado y cursores del sync (`SyncStateStore`) y sesión persistida con el JWT cifrado (`SessionStore`)
 - Corrutinas para concurrencia estructurada (nunca `GlobalScope`)
 - Testing: JUnit5 + MockK (unitarios), Compose UI Test (instrumentados)
 
@@ -101,9 +110,10 @@ el usuario activa el modo remoto. Reglas:
 - **Regla estricta**: `data/local/` no debe importar ni depender de nada en
   `data/remote/`. El modo local debe compilar y funcionar de forma
   completamente aislada de la red.
-- El diseño detallado del motor de sincronización diferida (resolución de
-  conflictos, campos de tracking, fases de implementación) vive en
-  `docs/PLAN.md` Parte 32 mientras esté en desarrollo activo.
+- El diseño del motor de sincronización diferida (push por entidad, pull
+  `updated_since`, resolución de conflictos, decisiones D1-D5) está en la
+  Parte 32 de `docs/PLAN-historico.md`; la convergencia del inventario entre
+  terminales, todavía incompleta, es la Parte 34 de `docs/PLAN.md`.
 - **Excepción parcial al patrón repositorio/Room**: en el módulo de
   Configuración (`docs/PLAN.md`, módulo Configuración), `BackendMode`,
   parámetros de conexión, y cuál sucursal está seleccionada son preferencia
@@ -155,7 +165,7 @@ activo, ej. `192.168.0.132`), puerto `8000`. Sin cable USB ni `adb reverse`.
 Requisitos:
 - El build de **debug** habilita HTTP en claro hacia cualquier host
   (`app/src/debug/res/xml/network_security_config.xml`, `base-config`). El de
-  release no; el endurecimiento de cleartext vive en la Parte 34.
+  release no; el endurecimiento de cleartext vive en la Parte 39.
 - Regla de firewall de Windows para conexiones entrantes TCP 8000 (Docker
   publica `0.0.0.0:8000`, pero el Firewall de Windows bloquea el acceso desde
   otros equipos por defecto). Una sola vez, en PowerShell como admin:
@@ -199,13 +209,13 @@ dispositivo no está disponible.
 ### Convenciones
 - Endpoints agrupados por `APIRouter` en `app/routers/`.
 - Esquemas de entrada/salida en `app/schemas/` (Pydantic), nunca reutilizar modelos ORM directamente como response_model.
-- Manejo de errores centralizado con `HTTPException` + un exception handler global (pendiente, PLAN.md Parte 25).
+- Manejo de errores centralizado con `HTTPException` + un exception handler global (`app/main.py`, Parte 25) que devuelve `{"detail": "error interno del servidor"}` con `500`.
 - Todas las rutas versionadas bajo `/api/v1/...`.
 
 ### Logging
 - Módulo `logging` estándar de Python, nunca `print()`.
 - Nivel `INFO` por defecto; `ERROR` en excepciones no capturadas por el
-  exception handler global (pendiente, PLAN.md Parte 25).
+  exception handler global (`app/main.py`).
 - Salida a stdout/stderr (el contenedor Docker la captura); sin archivos
   propios ni rotación — es logging operativo del servidor, distinto del
   sistema de auditoría de la app Android (`docs/PLAN.md`, módulo Logs), que
@@ -298,9 +308,13 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
   - Hasta el primer release a Play Console siguen en `versionCode = 1` /
     `versionName = "0.1"`; el esquema aplica desde el primer build
     distribuido.
-- Aún no hay CI/CD configurado — es una tarea pendiente de priorizar
-  (sugerencia: GitHub Actions con un workflow por módulo). Trackeado en
-  PLAN.md Parte 26.
+- CI: un workflow de GitHub Actions por módulo (Parte 26, migrado a `uv` en
+  la Parte 30). `.github/workflows/backend-ci.yml`: `uv lock --check`,
+  `alembic upgrade head` + `alembic check` y `pytest` contra un Postgres de
+  servicio. `.github/workflows/android-ci.yml`: `./gradlew test lint
+  --max-workers=1` y verificación de que el JSON de esquema de Room
+  commiteado está al día. Compilar la variante de release en CI queda en la
+  Parte 39. Sin CD todavía.
 
 ## 8. Convenciones de nombres
 
@@ -404,11 +418,13 @@ Evita que un módulo con ~14 checkboxes dispare el límite de 12 stories por
 ### feature-dev
 
 Del plugin se usan únicamente sus subagentes, delegados desde el comando
-`/parte` en las Partes 6, 7, 13, 15, 21, 23, 25 y 32 de `docs/PLAN.md`: las que
-implican decisiones de arquitectura compartida por varios módulos (6/7/13/15 ya
-completadas; 21 = auth JWT backend + cliente Android, 23 = idempotencia de sync
-backend + contrato + motor de sync, 25 = enums de dominio compartidos entre
-Pydantic, constantes Kotlin y `schema-pos.json`, 32 = motor de sync diferido
-Android + contrato del pull + filtro `updated_since` en el backend). El comando
+`/parte` en las Partes 6, 7, 13, 15, 21, 23, 25, 32 y 34 de `docs/PLAN.md`: las
+que implican decisiones de arquitectura compartida por varios módulos
+(6/7/13/15/21/23/25/32 ya completadas; 21 = auth JWT backend + cliente
+Android, 23 = idempotencia de sync backend + contrato + motor de sync, 25 =
+enums de dominio compartidos entre Pydantic, constantes Kotlin y
+`schema-pos.json`, 32 = motor de sync diferido Android + contrato del pull +
+filtro `updated_since` en el backend, 34 = convergencia del inventario en el
+sync: contrato de ajuste por delta + backend + push/pull Android). El comando
 `/feature-dev` no se invoca; su flujo de 7 fases duplica las compuertas de
 aprobación que los checklists ya definen.

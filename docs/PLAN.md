@@ -6,15 +6,20 @@ decidida, convenciones, comandos), aquí se documentan features en fase de
 diseño, decisiones que aún pueden iterar, y el checklist de avance. Cuando una
 Parte se estabiliza, su resumen final se migra a `CLAUDE.md`.
 
-**Estado del documento**: las Partes 1-28 están implementadas y mergeadas; su
+**Estado del documento**: las Partes 1-33 están implementadas y mergeadas; su
 detalle (checklists cerrados, decisiones resueltas, criterios de verificación)
-se archivó en `docs/PLAN-historico.md` para mantener este archivo enfocado
-(hallazgo B-9 de `docs/review_code.md`). Aquí quedan únicamente las Partes en
-curso o pendientes (29-33), el Backlog de trabajo futuro y el historial de
-decisiones estructurales.
+se archivó en `docs/PLAN-historico.md` para mantener este archivo enfocado.
+Aquí quedan únicamente las Partes pendientes (34-39), el Backlog de trabajo
+futuro y el historial de decisiones estructurales.
 
-Las Partes 21-30 incorporan los hallazgos de `docs/review_code.md` (revisión
-de código del 2026-08-30). Cada Parte tiene su sección `### Checklist` con
+Origen de las Partes que salen de revisiones de código:
+- Partes 21-30: revisión del 2026-08-30, hoy archivada como
+  `docs/review_code_2026-09-28_1816.md`.
+- Partes 34-39: revisión pre-release del 2026-09-28/29, `docs/review_code.md`
+  (hallazgos A-n / M-n / B-n de ese documento; sus identificadores no
+  coinciden con los de la revisión anterior).
+
+Cada Parte tiene su sección `### Checklist` con
 ítems verificables y criterios de éxito concretos (comando, archivo, o
 comportamiento observable). Las Partes con decisiones sin cerrar llevan además
 una subsección `### Decisiones abiertas` con checkboxes: son preguntas que el
@@ -26,898 +31,323 @@ convención de ramas/commits): ver `CLAUDE.md` sección 10.
 
 ---
 
-## Parte 29: Deuda técnica menor (varios)  <!-- POS-131 -->
+## Parte 34: Convergencia del inventario en el sync
 
-*(Hallazgos tipo B de `docs/review_code.md`, salvo B-2 -Parte 26- y B-3
--Parte 22-. Cada grupo del checklist es independiente y se puede cerrar en
-cualquier orden.)*
+*(Sale de los hallazgos A-1, A-2 y M-3 de `docs/review_code.md` (revisión
+pre-release del 2026-09-28/29), los tres reproducidos. Con más de una
+terminal por sucursal el inventario diverge sin avisar: (a) el backend no
+actualiza `inventario.updated_at` en ventas/entradas, así que el pull
+`?updated_since=` nunca ve esos cambios; (b) en Android, `VentaDao`/
+`EntradaDao` dejan la fila de inventario con `isSynced = false` y nadie la
+limpia, así que el pull nunca la sobrescribe; (c) `InventarioAjustePusher`
+manda la cantidad absoluta y `PATCH /inventario` la impone, borrando ventas
+de otras terminales; (d) el cursor del pull salta filas confirmadas tarde y
+se comparte entre sucursales. En el Xiaomi ya había divergencias reales
+(12 vs 20, 42 vs 48). Toca contrato, backend y motor de sync: delegación
+`feature-dev` (`CLAUDE.md` §11).)*
 
-### Checklist
+Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
 
-**1. Config de build del backend** (POS-132)
-- [x] B-1: versiones fijas en `backend/requirements.txt` (`==` o lockfile con
-  `uv`/`pip-tools`). Criterio: `pip install -r requirements.txt` resuelve el
-  mismo set en dos entornos. Decidido: pin `==` de las 10 directas más 26
-  transitivas, congeladas del árbol resuelto del contenedor (la migración a
-  `uv` + lockfile se planificó aparte, Parte 30). Verificado: `docker compose
-  build backend` sin conflictos, `pip check` limpio, y `pip freeze` de la
-  imagen nueva coincide exacto con `requirements.txt` (salvo
-  `pip`/`setuptools`/`wheel`, tooling del base image).
-- [x] B-4: usuario no privilegiado en `backend/Dockerfile` (`adduser` + `USER`).
-  Criterio: `docker run ... whoami` no devuelve `root`. Verificado:
-  `RUN adduser --system --group --no-create-home app && chown -R app:app /app`
-  + `USER app`; `docker run --entrypoint whoami` -> `app`,
-  `docker compose exec backend whoami` -> `app`; `migrate` (`alembic upgrade
-  head`) y `backend` (`/api/v1/health` -> `ok`) corren como no-root.
-
-**2. Android menor** (POS-133)
-- [x] B-5: `DynamicHostInterceptor` cachea `deviceConfig` (ej. `StateFlow` en el
-  interceptor) en vez de `runBlocking { preferences.deviceConfig.first() }` por
-  request. Criterio: `./gradlew testDebugUnitTest` en verde; el `runBlocking`
-  repetido desaparece. `jvm-tests` Verificado: campo `@Volatile config`
-  sembrado una sola vez de forma bloqueante al construir el singleton y
-  mantenido al día por un colector en un scope propio; `intercept()` ya no
-  llama `runBlocking`. `testDebugUnitTest` en verde (`BUILD SUCCESSFUL`);
-  `DynamicHostInterceptorTest` 3/3, incluida una prueba nueva de que el cache
-  se refresca ante un cambio de conexión posterior a la construcción.
-- [x] B-6: `Converters.toModulosPermitidos` / `fromModulosPermitidos` con un
-  separador que no pueda aparecer en una clave de módulo (o JSON). Criterio:
-  prueba con una clave que contenga el separador antiguo. Verificado:
-  separador `""` (Unit Separator, carácter de control); `ConvertersTest`
-  4/4 en verde, incluida `a key containing the old comma separator is
-  preserved as one element`. Los roles de sistema se auto-corrigen al
-  siguiente `observeRoles()` (`LocalRolRepository` reescribe si difiere del
-  seed); un rol personalizado guardado con el formato viejo se re-guarda al
-  editarlo — sin migración de datos por ser etapa de desarrollo (CLAUDE.md §9).
-- [ ] B-7: `isMinifyEnabled = true` en el build de release + reglas Proguard para
-  Room/Hilt/kotlinx-serialization/Retrofit. Criterio: `./gradlew assembleRelease`
-  en verde y la app funciona (verificación en dispositivo). `needs-device`
-  DIFERIDO (decisión abierta B-7, 2026-09-07): se pospone hasta que haya
-  distribución real; activarlo obliga a mantener reglas Proguard de varias
-  librerías y re-verificar en dispositivo cada release, sin distribución
-  todavía. Mismo criterio con el que se difirió el destino de despliegue.
-- [x] B-8: esquema definido para `versionCode`/`versionName` por release (hoy
-  fijos en `1` / `"0.1"` tras 20 Partes). Criterio: documentado en `CLAUDE.md`
-  §7 o en el build. Verificado: `CLAUDE.md` §7 documenta `versionName` SemVer
-  `MAJOR.MINOR.PATCH` y `versionCode = MAJOR*10000 + MINOR*100 + PATCH`
-  (monotónico, sin colisiones entre APKs distribuidos); comentario en
-  `android/app/build.gradle.kts` que apunta al esquema.
-
-**3. Documentación** (POS-134)
-- [x] B-9: archivar las Partes ya migradas a `CLAUDE.md` en
-  `docs/PLAN-historico.md`, dejando en `docs/PLAN.md` solo lo activo; actualizar
-  el conteo "16 Partes" / "Partes 2-16" del encabezado de `PLAN.md` (líneas
-  10-18), que quedó desactualizado. Criterio: `PLAN.md` más corto y su encabezado
-  coherente con el número real de Partes. Verificado: `docs/PLAN-historico.md`
-  creado con las Partes 1-28 (~3940 líneas); `docs/PLAN.md` quedó en ~200
-  líneas (encabezado + Parte 29 + Parte 30 + Backlog + Historial de
-  decisiones). Encabezado reescrito ("las Partes 1-28 están implementadas y
-  mergeadas ... Aquí quedan únicamente las Partes en curso o pendientes
-  29-30"). `CLAUDE.md` §2 lista el archivo nuevo y aclara que es solo lectura.
-
-### Decisiones abiertas
-
-- [x] B-7 (R8/shrinking): ¿en el alcance ahora, o se difiere hasta que haya
-  distribución real? Activarlo obliga a mantener reglas Proguard de varias
-  librerías y a re-verificar en dispositivo cada release. **Decidido**
-  (2026-09-07): se difiere hasta que haya distribución real. El ítem B-7 del
-  checklist queda sin marcar con la nota de diferimiento.
-- [x] B-9: ¿el archivo histórico es `docs/PLAN-historico.md`, o se mueven las
-  Partes cerradas a `CLAUDE.md` como bitácora? Propuesta: `docs/PLAN-historico.md`
-  (CLAUDE.md debe quedar enfocado - CLAUDE.md §1). **Decidido** (2026-09-07):
-  `docs/PLAN-historico.md`.
-
----
-
-## Parte 30: Migración del backend a `uv` + lockfile  <!-- POS-135 -->
-
-*(Sale de la decisión abierta B-1 de la Parte 29, 2026-09-07: para cerrar B-1
-en "deuda menor" se fijó `requirements.txt` con `==` + freeze transitivo. La
-migración a `uv` es la opción de largo plazo — la que pide el `CLAUDE.md`
-global del usuario — pero es un cambio estructural que toca Dockerfile,
-scripts y CI, así que se planifica aparte.)*
-
-Objetivo: `uv` como gestor de dependencias del backend, con `pyproject.toml` +
-`uv.lock` (lock transitivo completo con hashes) reemplazando
-`backend/requirements.txt`. Instalación reproducible y verificada por hash en
-Docker, en CI y en el venv de desarrollo del host.
+Objetivo: que dos terminales de la misma sucursal en
+`LOCAL_CON_SINCRONIZACION` converjan al mismo stock tras un ciclo de sync,
+sin perder ventas, ajustes ni entradas de ninguna de las dos.
 
 ### Checklist
 
-**1. Manifiesto y lock** (POS-136)
-- [x] `backend/pyproject.toml` con las 10 dependencias directas (grupo
-  `dev` para `pytest`/`pytest-asyncio`/`httpx`); `uv.lock` generado con
-  `uv lock`. Criterio: `uv sync --frozen` en un entorno limpio instala el
-  mismo set que hoy (comparar contra el `pip freeze` fijado en la Parte 29).
-  Verificado (2026-09-07): `pyproject.toml` con 7 directas runtime pineadas
-  `==` + grupo `dev` (3), `[tool.uv] package = false`, `requires-python =
-  ">=3.11"`; `.python-version` -> `3.11` (uv bajó CPython 3.11.15 gestionado).
-  `uv.lock` = 38 paquetes, 759 hashes; `uvloop` queda con marcador
-  `sys_platform != 'win32'` (se instala en la imagen Linux). `uv sync
-  --frozen` en venv limpio 3.11.15 OK, `uv pip check` limpio, `uv run pytest`
-  156 passed. Único cambio de set vs Parte 29: `anyio` 4.14.2 -> 4.15.1
-  (bump menor compatible, aceptado explícitamente; ahora fijado por hash);
-  `colorama`/`uvloop` difieren solo por marcador de plataforma.
-- [x] `backend/requirements.txt` eliminado. Criterio: no quedan referencias a
-  `requirements.txt` en `backend/`, `Dockerfile`, `scripts/` ni workflows.
-  Verificado (2026-09-07): el `requirements.txt` hand-maintained se reemplazó
-  por un export generado (`uv export --no-hashes --no-emit-project`, decisión
-  D2 = mantener para compat externa); su cabecera documenta el comando de
-  regeneración. `git grep "requirements.txt"` en `Dockerfile`/`compose`/
-  `scripts/`/`.github/` -> sin coincidencias; nada del build lo consume.
+**1. Contrato del inventario incremental**
+- [ ] `docs/api-contract.md` §7: ajuste de stock por **delta** idempotente
+  por `local_id` (endpoint o campo según Decisiones abiertas), aplicado con
+  bloqueo de fila; §7.1 documenta que `updated_at` cambia con **todo**
+  movimiento de stock y que el cliente consulta con una ventana de solape.
+  Contrato primero (skill `sync-api-contract`). `needs-approval`.
 
-**2. Docker y scripts** (POS-137)
-- [x] `backend/Dockerfile` usa `uv` (`COPY` de `uv` desde su imagen oficial o
-  `pip install uv`, luego `uv sync --frozen --no-dev`). Criterio: `docker
-  compose build backend` en verde; `pip check` / `uv pip check` limpio;
-  imagen sigue corriendo como usuario no-root (B-4). Verificado (2026-09-07):
-  `COPY --from=ghcr.io/astral-sh/uv:0.10.12 /uv /uvx /bin/` (decisión D1) +
-  `uv sync --frozen --no-dev --no-install-project` con cache mount; venv en
-  `PATH` para que `uvicorn` (CMD) y `alembic` (comando del servicio
-  `migrate`) resuelvan sin `uv run`. `docker compose build backend` verde;
-  `docker run --entrypoint whoami` -> `app`; `uv pip check --no-cache` en la
-  imagen -> "All installed packages are compatible" (27 paquetes, `--no-dev`
-  descarta pytest/httpx/etc., `uvloop` presente); `docker compose up -d` ->
-  `migrate` corrió todas las migraciones Alembic como no-root, `backend`
-  healthy, `/api/v1/health` -> `{"status":"ok","version":"0.1.0"}`.
-- [x] `scripts/start-*`/`stop-*` y la sección "alternativa manual" de
-  `CLAUDE.md` §4 actualizadas a `uv run` / `uv sync`. Criterio: los scripts
-  levantan el stack sin `pip` ni `venv` manual. Verificado (2026-09-07): los
-  `scripts/start-*`/`stop-*` solo hacen `docker compose up/down` — nunca
-  tocaron `pip`/`venv`, criterio ya satisfecho, sin cambios. La sección
-  "Alternativa manual" de `CLAUDE.md` §4 reescrita a `uv sync` / `uv run
-  uvicorn` / `uv run pytest` / `uv run alembic`, con nota de que
-  `requirements.txt` es un export generado solo-compat.
+**2. Backend**
+- [ ] A-1(a): `Inventario.updated_at` se actualiza en cada cambio de
+  `cantidad` (`onupdate` o asignación en `ventas.py`/`entradas.py`).
+  Criterio: test nuevo — crear inventario, registrar una venta, y
+  `GET /inventario?updated_since=<antes de la venta>` devuelve la fila;
+  `uv run pytest` en verde.
+- [ ] A-2: ajuste por delta con `with_for_update()` e idempotente por
+  `local_id`. Criterio: test que reproduce el escenario de la revisión
+  (stock 10, venta de 3 de la terminal B, ajuste +5 de la terminal A) y
+  termina en 12; reintento con el mismo `local_id` no duplica.
+  `uv run alembic check` sin drift si cambia el esquema (`schema-parity`).
 
-**3. CI** (POS-138)
-- [x] Workflow de CI del backend (Parte 26) usa `uv sync --frozen` +
-  `uv run pytest` + `uv run alembic ...`. Criterio: el workflow corre en
-  verde en un PR de prueba y falla si `uv.lock` está desactualizado
-  (`uv lock --check`). Verificado (2026-09-07): `.github/workflows/
-  backend-ci.yml` usa `astral-sh/setup-uv@v6` (pin `0.10.12`, cache,
-  decisión D3 — dependencia de terceros nueva, señalada por §9), luego
-  `uv lock --check`, `uv sync --frozen`, `uv run alembic upgrade head`,
-  `uv run alembic check`, `uv run pytest`; `actions/setup-python` eliminado
-  (uv baja 3.11 según `.python-version`). Simulación local de cada step OK.
-  `uv lock --check` probado: exit 1 con `pyproject.toml` alterado sin
-  re-lock ("The lockfile at `uv.lock` needs to be updated"), exit 0 tras
-  revertir. El "verde en un PR de prueba" lo dispara el PR que mergee esta
-  Parte (el filtro `paths` cubre `backend/**` y el propio workflow).
+**3. Android: push y pull**
+- [ ] A-1(b): tras subir una venta/entrada, la fila de inventario afectada
+  deja de quedar "sucia" (marcada sincronizada o sobrescrita con la cantidad
+  del backend); la regla "gana lo local" del `InventarioPuller` aplica solo
+  si hay movimientos pendientes de ese `(sucursal, artículo)`. `jvm-tests`:
+  venta local sincronizada + cambio remoto → la fila local toma el valor
+  remoto.
+- [ ] A-2: `InventarioAjustePusher` envía la suma de los movimientos
+  `ajuste` pendientes como delta con su `local_id`. `jvm-tests`.
+- [ ] M-3: cursor de pull por `(entidad, sucursal)` y consulta con ventana
+  de solape. `jvm-tests`: cambio de sucursal no hereda el cursor; una fila
+  con `updated_at` anterior al cursor pero dentro de la ventana se baja.
 
-**4. Documentación** (POS-139)
-- [x] `CLAUDE.md` §4 (stack, comandos) refleja `uv` como gestor; nota de que
-  `requirements.txt` ya no existe. Criterio: ninguna referencia obsoleta a
-  `pip install -r requirements.txt` en la doc. Verificado (2026-09-07):
-  `CLAUDE.md` §4 "Stack técnico" tiene línea nueva de `uv` como gestor y
-  aclara que `requirements.txt` es un export generado solo-compat (D2 lo
-  mantuvo, no se eliminó del todo); "Rebuild obligatorio" y "Alternativa
-  manual" a `uv run`. `git grep "pip install -r"` solo aparece en el texto
-  de criterio de los propios checklists de Parte 29/30 en este archivo, no
-  en doc operativa.
+**4. Reconciliación y verificación**
+- [ ] Reconciliación única de dispositivos que ya divergen (política en
+  Decisiones abiertas), ejecutada al primer ciclo de sync tras actualizar.
+  `jvm-tests`.
+- [ ] Verificación en el Xiaomi M2102J20SG con una segunda "terminal"
+  simulada contra el backend (curl), repitiendo las pruebas de A-1/A-2 de
+  `review_code.md`: tras un ciclo, el stock del teléfono y el del backend
+  coinciden y no se registran conflictos espurios. `needs-device`.
 
 ### Decisiones abiertas
 
-- [x] ¿`uv` se instala en la imagen Docker vía `COPY --from=ghcr.io/astral-sh/uv`
-  (pin de versión, sin red en build) o `pip install uv==X`? Propuesta:
-  `COPY --from`, es el patrón recomendado por Astral. **Decidido**
-  (2026-09-07): `COPY --from=ghcr.io/astral-sh/uv:0.10.12`. (D1)
-- [x] ¿Se mantiene un `requirements.txt` exportado (`uv export`) como
-  compatibilidad para herramientas que no entienden `uv`, o se corta del
-  todo? Propuesta: cortar del todo; nada en el proyecto lo necesita.
-  **Decidido** (2026-09-07): se mantiene el export generado (`uv export
-  --no-hashes`) por compatibilidad externa; no lo consume ni el `Dockerfile`
-  ni el CI. El ítem "requirements.txt eliminado" del checklist se cerró con
-  esa aclaración (se reemplaza el hand-maintained por el generado). (D2)
-- [x] CI: ¿`uv` vía action `astral-sh/setup-uv` o installer standalone?
-  **Decidido** (2026-09-07): `astral-sh/setup-uv@v6` (pin `0.10.12`);
-  dependencia de terceros nueva, señalada por §9. (D3)
+- [ ] ¿Ajuste por delta como endpoint nuevo (`POST /ajustes-inventario`) o
+  como campos `delta` + `local_id` en el `PATCH /inventario/{id}` actual?
+  El PATCH absoluto puede quedarse para el modo REMOTO interactivo.
+- [ ] Política de reconciliación de dispositivos ya divergentes: ¿gana el
+  backend en las filas sin movimientos pendientes, o se registra cada
+  diferencia en `sync_conflicts` para que el admin decida?
+- [ ] Tamaño de la ventana de solape del cursor (propuesta: 2 minutos; el
+  merge ya es idempotente), o secuencia monotónica asignada por el servidor.
 
 ---
 
-## Parte 31: Conexión remota desde el dispositivo (Wi-Fi LAN + acceso a la config desde el login)  <!-- POS-140 -->
+## Parte 35: Sucursal estable y rechazos visibles del sync
 
-*(Sale de un hueco operativo detectado el 2026-09-08: si el dispositivo
-quedó en modo REMOTO y el backend deja de ser alcanzable —teléfono fuera de
-la red de la PC, backend apagado, URL remota mal escrita—, el usuario no
-puede autenticarse, y como la configuración de conexión vive dentro del
-módulo Configuración que está detrás del login, tampoco puede volver a modo
-LOCAL ni corregir la URL. Queda encerrado fuera de la app. Además, hoy el
-dispositivo físico solo llega al backend por `adb reverse` sobre USB
-(`localhost:8000`); para probar sobre Wi-Fi en la misma subred falta
-habilitar cleartext HTTP hacia la IP de la LAN en el build de debug. Con
-`adb reverse` el encierro es raro; sobre Wi-Fi —IP DHCP variable, el
-teléfono sale de la red— es rutinario, por eso las dos piezas van juntas.)*
+*(Sale de los hallazgos A-8, A-6 y M-5 (2º punto) de `docs/review_code.md`.
+A-8, reproducido dos veces en el Xiaomi: al pasar a
+`LOCAL_CON_SINCRONIZACION`, `ConfiguracionViewModel` persiste
+`sucursales.firstOrNull()` cuando la sucursal seleccionada no aparece en el
+catálogo emitido en ese momento; el catálogo alterna entre local y remoto
+(ids distintos para la misma sucursal) y la terminal termina operando en
+otra sucursal sin avisar. A-6: una fila rechazada con 4xx (ej. 403 por rol)
+se marca `isSynced = true` sin `remoteId` y solo deja una línea de log —
+ventas que nunca llegan al backend. M-5: un 401 del `SyncWorker` cierra la
+sesión interactiva del cajero.)*
 
-Claves de Jira: épica `POS-140`; historias `POS-141`..`POS-145` (asignadas
-por `/jira-sync` el 2026-09-09).
+Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
 
-Objetivo: (a) exponer la configuración de conexión (BackendMode + parámetros
-de la conexión remota) desde la propia pantalla de login, disponible sin
-sesión y sin depender de que el backend responda; y (b) que el dispositivo
-alcance el backend por Wi-Fi en la misma subred (IP de la LAN + puerto), sin
-el túnel USB. Sin cambios de esquema (los parámetros de conexión ya son
-preferencia de dispositivo en DataStore, `CLAUDE.md` §3) ni de contrato de
-API (reusa `GET /api/v1/health`). El cambio de red es solo en el build de
-debug (`src/debug/`); el endurecimiento de cleartext para release vive en la
-Parte 34.
+Objetivo: que la sucursal de trabajo solo cambie por decisión del usuario, y
+que toda fila que el backend rechace quede visible y recuperable.
 
 ### Checklist
 
-**1. Acceso y panel de conexión en el login** (POS-141)
-- [x] La pantalla de login expone un acceso a la configuración de conexión
-  (ej. icono en la barra superior o enlace bajo el formulario) que abre un
-  panel disponible sin estar autenticado. Criterio: con la app recién
-  instalada y sin sesión, el panel se abre desde el login. Hecho
-  (2026-09-09): `LoginScreen` con enlace "Configurar conexión" bajo el
-  formulario → `PanelConexionBottomSheet` (composable dedicado en
-  `com.pdv.pos.auth`, hoja modal porque el login se renderiza fuera del
-  NavHost). Verificado en dispositivo (Grupo 3, paso d).
-- [x] El panel permite cambiar BackendMode LOCAL/REMOTO y editar
-  esquema/host/puerto de la conexión remota, leyendo y persistiendo en el
-  mismo DataStore que usa el módulo Configuración (sin almacenamiento
-  duplicado). Criterio: un cambio hecho desde el login se ve luego en la
-  pantalla Configuración y viceversa. Hecho (2026-09-09):
-  `PanelConexionViewModel` usa el mismo `ConfiguracionPreferences`; nuevo
-  campo `esquema` (`EsquemaConexion` http/https) en `DeviceConfig` +
-  `ConfiguracionPreferences` + selector en ambas pantallas;
-  `DynamicHostInterceptor` reescribe también el scheme. Verificado en
-  dispositivo (Grupo 3, pasos d/e).
-- [x] Botón "Probar conexión" que llama a `GET /api/v1/health` contra la URL
-  configurada y muestra el resultado (ok / error con detalle) sin cerrar el
-  panel. Criterio: URL inválida muestra error y deja el panel abierto; URL
-  válida muestra ok. Hecho (2026-09-09): `BackendHealthChecker` (OkHttp
-  propio, sin `DynamicHostInterceptor` ni `AuthInterceptor`, contra la URL
-  tecleada). Verificado en dispositivo (Grupo 3, paso e).
+**1. Selección de sucursal estable (A-8)**
+- [ ] `ConfiguracionViewModel` no persiste un fallback automático: si la
+  sucursal guardada no está en el catálogo emitido, conserva la selección y
+  pide al usuario que elija (o bloquea las operaciones que la requieren).
+  Sucursal local y remota se relacionan por `remoteId`, no por id crudo.
+  `jvm-tests`: catálogo que emite primero la lista local y luego la remota
+  → la selección persistida no cambia.
+- [ ] Verificación en el Xiaomi: repetir la secuencia de A-8 de
+  `review_code.md` (LOCAL → `LOCAL_CON_SINCRONIZACION` sin JWT, re-login
+  con JWT, con una sucursal remota alfabéticamente anterior) y comprobar que
+  la sucursal no cambia. `needs-device`.
 
-**2. Fallo de login en modo remoto** (POS-142)
-- [x] Cuando el login en modo REMOTO falla por conectividad (timeout / host
-  inalcanzable, distinto de credenciales inválidas), el mensaje lo indica
-  explícitamente y ofrece una acción directa para abrir el panel de
-  conexión. Criterio: con el backend remoto apagado, intentar login muestra
-  un error de conectividad (no uno genérico de credenciales) con botón a
-  "Configurar conexión". Hecho (2026-09-09): `LoginViewModel` separa
-  `IOException`/`HttpException` (flag `connectivityError`) de
-  `CredencialesInvalidas`; con `connectivityError` el enlace "Configurar
-  conexión" pasa a `Button` prominente. Verificado en dispositivo (Grupo 3).
-- [x] Abrir el panel y cambiar de modo desde el login no requiere sesión ni
-  que el backend responda. Criterio: en modo REMOTO con backend caído, desde
-  el login se puede pasar a LOCAL y autenticarse contra los datos locales.
-  Hecho (2026-09-09): `PanelConexionViewModel` no recibe `SessionManager`;
-  el modo se persiste al instante en DataStore y `ModeAwareAuthRepository`
-  relee el modo por llamada. Verificado en dispositivo (Grupo 3, paso d).
+**2. Rechazos de sync visibles (A-6)**
+- [ ] Estado de rechazo propio (no `isSynced`) con el código HTTP, en la
+  forma que se decida; migración de Room + `docs/schema-pos.json` +
+  (si aplica) backend alineados. `schema-parity`.
+- [ ] Cada rechazo se registra en `sync_conflicts` (visible en el panel de
+  la Parte 19) y la sección Sincronización de Configuración muestra el
+  número de filas rechazadas. `jvm-tests`: 403 en una venta → estado
+  rechazado + conflicto registrado + contador > 0.
+- [ ] Verificación en el Xiaomi con el escenario preparado en la revisión
+  (usuario con rol local `caja` y rol backend sin `venta`): la venta
+  rechazada aparece en el panel y en el contador. `needs-device`.
 
-**3. Verificación del acceso desde el login** (POS-143)
-- [x] `LoginViewModel` (o el ViewModel del panel) testeado: fallo por
-  conectividad vs credenciales, y que exponer/guardar la config no depende
-  de sesión. `jvm-tests`: `./gradlew testDebugUnitTest` en verde (mostrar
-  salida completa). Verificado (2026-09-09): `BUILD SUCCESSFUL`, suite
-  completa 359 tests / 0 fallos / 0 errores / 76 clases. `LoginViewModelTest`
-  10/10 (conectividad IOException vs credenciales vs Http;
-  `onConexionConfigurada` limpia solo el error de conectividad);
-  `PanelConexionViewModelTest` 6/6 (siembra desde DataStore, `onGuardar`
-  persiste sin `SessionManager` -no lo recibe-, modo persiste al instante,
-  anti-clobber de host, "Probar conexión" con checker mockeado);
-  `BackendHealthCheckerTest` 5/5 (200/500/host inalcanzable + validación
-  puerto/host contra MockWebServer); `DynamicHostInterceptorTest` 4/4
-  (+scheme https); `ConfiguracionPreferencesTest` 4/4 (round-trip esquema).
-- [x] Verificación en el dispositivo Xiaomi M2102J20SG: (a) fijar modo
-  REMOTO con la URL de la PC, (b) apagar el backend, (c) reiniciar la app,
-  (d) desde el login abrir el panel, cambiar a LOCAL y loguearse, (e)
-  reconfigurar una URL remota nueva y "Probar conexión" en ok. `needs-device`.
-  Verificado (2026-09-09) con `localhost:8000` sobre el túnel `adb reverse`
-  (USB): pasos (a)-(e) OK — el login muestra error de conectividad explícito
-  con el backend caído, el panel permite pasar a LOCAL y autenticarse sin
-  sesión ni backend, y "Probar conexión" contra `http://localhost:8000` da
-  ok sin cerrar el panel. Con la IP LAN de la PC (`192.168.0.132:8000`) la
-  prueba falla: es el hueco que cierra el Grupo 4 (cleartext HTTP hacia el
-  rango LAN solo está habilitado para `localhost` en el
-  `network_security_config` de debug).
-
-**4. Conectividad por Wi-Fi en la misma subred** (POS-144)
-- [x] `app/src/debug/res/xml/network_security_config.xml` permite cleartext
-  para el rango LAN privado (o `base-config` en el build de debug), no solo
-  `localhost`. Criterio: un debug build hace `GET http://<IP-LAN>:8000/api/v1/health`
-  en ok desde el dispositivo por Wi-Fi, sin `adb reverse`. Hecho
-  (2026-09-09): `<base-config cleartextTrafficPermitted="true" />` (sin lista
-  de `<domain>` porque la config de Android no admite rangos/CIDR y la IP LAN
-  es DHCP variable); solo build de debug (`src/main` no define
-  `networkSecurityConfig` ni `usesCleartextTraffic`, release bloquea
-  cleartext por defecto). Verificado en dispositivo por Wi-Fi con
-  `192.168.0.132:8000` (venta en REMOTO sin `adb reverse`).
-- [x] `CLAUDE.md` §3: Wi-Fi (IP de la PC + puerto en Configuración, regla de
-  firewall inbound TCP 8000) documentado como camino principal para el
-  dispositivo físico; `adb reverse` por USB queda como alternativa. Nota
-  sobre IP DHCP variable (reserva DHCP o IP estática) y sobre aislamiento de
-  clientes del router. Hecho (2026-09-09): §3 reestructurada — subsección
-  "Wi-Fi en la misma subred (camino principal)" con la regla
-  `New-NetFirewallRule ... TCP 8000`, nota de DHCP y de AP/client isolation;
-  el bloque de `adb reverse` pasa a "Alternativa".
-- [x] Verificación en el Xiaomi M2102J20SG: mismo Wi-Fi que la PC,
-  Configuración -> REMOTO + IP + `8000`, y una venta + un sync end-to-end
-  contra el backend dockerizado sin túnel USB. `needs-device`. Verificado
-  (2026-09-09): mismo Wi-Fi, REMOTO + `192.168.0.132` + `8000`, una venta
-  completa contra el backend dockerizado sin `adb reverse` (en REMOTO la
-  venta es el round-trip end-to-end). Regla de firewall inbound TCP 8000
-  aplicada en la PC.
-
-**5. Fix de crash + logout en `LOCAL_CON_SINCRONIZACION`** (POS-145)
-(agregado 2026-09-09 por decisión del usuario: arreglar dentro de esta Parte
-en vez de diferir a Backlog). Al probar Wi-Fi con el backend alcanzable, una venta o
-entrar a Configuración en modo `LOCAL_CON_SINCRONIZACION` primero cerraba la
-app (crash) y, tras el primer fix, mandaba al usuario a la pantalla de login.
-Causa raíz: `ModeAwareSucursalRepository` es el único `ModeAware*` que enruta
-ese modo al backend (`observeSucursales()` → `GET /api/v1/sucursales`), pero
-un dispositivo que inició sesión con `LocalAuthRepository` no tiene JWT; desde
-la Parte 21 ese endpoint responde 401. Dos efectos: (a) la `HttpException`
-subía sin manejar por `RemoteSucursalRepository` (flow sin `catch`) hasta
-colectores sin `.catch` (`VentaViewModel.generarTicketSeguro` — solo
-capturaba `IOException` —, `ConfiguracionViewModel`, `EstadoPuntoVenta`) →
-crash; (b) `AuthInterceptor` cerraba sesión ante cualquier 401 fuera de
-`/auth/login`, incluso los de una request que nunca llevó token. Latente
-desde la Parte 21; la Parte 31 lo destapó al hacer el backend alcanzable por
-Wi-Fi.
-- [x] `ModeAwareSucursalRepository`: en `LOCAL_CON_SINCRONIZACION` la lectura
-  remota del catálogo es best-effort — `remote.observeSucursales().catch { emitAll(local.observeSucursales()) }`.
-  No propaga, no muestra lista vacía: degrada al catálogo local, que es la
-  semántica offline-first del modo. REMOTO sin cambios.
-- [x] `AuthInterceptor`: solo cierra sesión ante un 401 si la request **sí
-  llevaba** token (`token != null`). Un 401 a una request sin token es
-  esperado en LOCAL / LOCAL_CON_SINCRONIZACION y lo maneja el repositorio que
-  llamó, no expulsa al usuario. `jvm-tests` Verificado (2026-09-09):
-  `testDebugUnitTest` en verde, suite 361/0/0; `AuthInterceptorTest` 8/8 con
-  prueba nueva `a 401 to a tokenless request does not clear a local session`;
-  `ModeAwareSucursalRepositoryTest` 3/3 con `falls back to the local catalog
-  when the backend read fails` (403 sin JWT). El push de sync diferido de
-  este modo sigue sin implementar (WorkManager + orquestador) — Parte propia.
-- [x] Reverificación en el Xiaomi: venta y entrada a Configuración en
-  `LOCAL_CON_SINCRONIZACION` con el backend alcanzable por Wi-Fi ya no
-  cierran la app ni mandan al login. `needs-device`. Verificado
-  (2026-09-09): en `LOCAL_CON_SINCRONIZACION` por Wi-Fi, una venta se
-  completa (baja inventario) y entrar a Configuración no crashea ni expulsa
-  al login.
+**3. Sesión del worker (M-5, 2º punto)**
+- [ ] Un 401 recibido por el `SyncWorker` no cierra la sesión interactiva:
+  se registra como "sync requiere re-login" y se muestra en Configuración.
+  Con una sesión que nunca tuvo JWT, el mensaje lo dice así (hoy muestra
+  "sesion expirada"). `jvm-tests` sobre `AuthInterceptor`/orquestador.
 
 ### Decisiones abiertas
 
-- [x] ¿El panel de conexión del login reutiliza el composable de la pantalla
-  Configuración tal cual, o es una versión reducida dedicada (solo modo +
-  URL + probar)? Propuesta: versión reducida, para no arrastrar el resto de
-  Configuración (sucursal seleccionada, etc.) a un contexto pre-login.
-  **Decidido** (2026-09-09): versión reducida dedicada (composable nuevo y
-  acotado: modo + esquema/host/puerto + "Probar conexión"), compartiendo
-  `ConfiguracionPreferences`/DataStore para que los cambios sigan
-  sincronizados con la pantalla Configuración.
-- [x] ¿Se agrega un fallback automático a LOCAL tras N fallos de conexión
-  remota en el login, o queda siempre como acción manual? Propuesta: manual;
-  un fallback automático puede enmascarar problemas de red reales y cambiar
-  de modo sin que el usuario lo note. **Decidido** (2026-09-09): siempre
-  manual.
-- [x] El grupo 1 del checklist dice "editar esquema/host/puerto"; hoy la
-  conexión remota es `http` fijo (`BASE_URL` en `NetworkModule`,
-  `DynamicHostInterceptor` solo reescribe host/puerto). **Decidido**
-  (2026-09-09): se agrega en esta Parte un campo `esquema` (http/https) a
-  `DeviceConfig`/`ConfiguracionPreferences` y `DynamicHostInterceptor` pasa
-  a reescribir también el scheme, dejando el panel del login y Configuración
-  listos para un backend HTTPS. El endurecimiento de cleartext para release
-  sigue en la Parte 34.
+- [ ] Forma del estado de rechazo: ¿columna en cada entidad transaccional
+  o tabla aparte de rechazos?
+- [ ] Filas ya descartadas en dispositivos existentes (marcadas
+  `isSynced = true` sin `remoteId`): ¿se reintentan una vez tras la
+  migración, se reportan como rechazadas, o se dejan como están?
+- [ ] Sucursal no encontrada en el catálogo: ¿bloquear operaciones hasta
+  que el usuario elija, o solo avisar?
 
 ---
 
-## Parte 32: Motor de sincronización diferida (`LOCAL_CON_SINCRONIZACION`)  <!-- POS-146 -->
+## Parte 36: Endurecimiento de seguridad pre-release
 
-*(Sale del análisis "qué falta para terminar el modo local + la sync remota"
-del 2026-09-09. Hoy `LOCAL_CON_SINCRONIZACION` es, en la práctica, `LOCAL` +
-mostrar el catálogo remoto de sucursales: no sube nada de lo creado offline
-ni baja cambios de otras sucursales. Las piezas que existen son primitivas
-puras sin orquestación — `LastWriteWinsSyncEngine` y `EventoAditivoCombiner`
-solo los llaman los tests; `MigrationPlanner` / `PlanMigracion` (4 casos de
-migración al cambiar de modo) es lógica que nunca se invoca; `isSynced =
-false` se escribe en las 11 entidades pero ningún DAO lo lee. No hay
-dependencia WorkManager en el build (pese a que `CLAUDE.md` §3 la lista en el
-stack), ni orquestador de subida, ni pull. El backend ya está listo para
-recibir el push: POST idempotentes por `local_id` (Parte 23) y enforcement
-`Authorization: Bearer` (Parte 21); falta el lado cliente y el contrato del
-pull.)*
+*(Sale de los hallazgos A-3, A-4, A-5, M-4, M-6 y M-10 de
+`docs/review_code.md`, reproducidos contra el backend y en el Xiaomi:
+`admin/admin123` sin cambio forzado (visible en claro en el APK de release);
+JWT falsificable con el `JWT_SECRET_KEY` por defecto; crash en cada arranque
+tras restaurar un respaldo (`allowBackup` + clave de Keystore no
+respaldada); login sin límite de intentos y con enumeración por tiempo
+(115 ms vs 1056 ms); `/docs` públicos; `password_hash` inválido → 500; rol
+borrado que sigue otorgando permisos; API key de IA residual en texto plano
+en el dispositivo de pruebas.)*
 
-Claves de Jira: épica `POS-146`; historias `POS-147`..`POS-151` (asignadas por
-`/jira-sync` el 2026-09-11).
+Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
 
-Objetivo: que un dispositivo en `LOCAL_CON_SINCRONIZACION` suba en background
-lo creado offline —sin duplicar, reusando los POST idempotentes de la Parte
-23— y baje los cambios remotos de otras sucursales/dispositivos, con el
-catálogo local como fuente de verdad offline. **Alcance: entidades
-transaccionales** (`ventas`, `entradas`, `cortes_caja`, `retiros_efectivo`,
-`devoluciones`, `inventario`/`movimientos`). `usuarios`/`roles`/`sucursales`
-quedan fuera de esta Parte. Sin cambios de esquema salvo las columnas que
-necesiten los DAO de pendientes (`schema-parity` donde aplique).
+Objetivo: que un backend expuesto a internet y una app distribuida en Play
+Store no tengan credenciales ni secretos por defecto, no se caigan tras una
+restauración y resistan los ataques básicos de login.
 
 ### Checklist
 
-**1. Infraestructura de push (Android)** (POS-147)
-- [x] Dependencia `androidx.work` (WorkManager) + `androidx.hilt:hilt-work`
-  en `android/gradle/libs.versions.toml` y `android/app/build.gradle.kts`.
-  Librería nueva — señalar explícitamente (`CLAUDE.md` §9). Criterio:
-  `./gradlew assembleDebug` en verde con la dependencia integrada en el grafo
-  de Hilt. Hecho (2026-09-09): `androidxWork = 2.10.1` +
-  `androidxHilt = 1.2.0`; `work-runtime-ktx`/`hilt-work` +
-  `ksp(androidx-hilt-compiler)`; `PdvApplication : Configuration.Provider`
-  con `HiltWorkerFactory`; `WorkManagerInitializer` removido del manifest
-  (`tools:node="remove"`). `assembleDebug` en verde.
-- [x] `SyncStateStore` (DataStore compartido): `lastSuccessAtMillis`,
-  `lastError`, cursor `updated_since` por entidad del pull. `jvm-tests`
-  (round-trip). Hecho (2026-09-09): `SyncStateStore` sobre el mismo
-  `DataStore<Preferences>` que `IaPreferences`/`ConfiguracionPreferences`;
-  `registrarExito` limpia el `lastError`, `registrarError` no toca el último
-  éxito, cursores por entidad con clave dinámica. `SyncStateStoreTest` 4/4.
-- [x] `SyncScheduler` (encola el periódico + one-time; no-op salvo
-  `BackendMode == LOCAL_CON_SINCRONIZACION`) + `SyncWorker` (`CoroutineWorker`
-  + `@HiltWorker`, delega en `SyncOrchestrator`), con `Constraints` de
-  conectividad y backoff exponencial. Criterio: `jvm-tests` del gating del
-  scheduler; no se encola en `LOCAL` puro ni en `REMOTO`. Hecho (2026-09-09):
-  `SyncScheduler` (periódico 15 min con `KEEP` + `sincronizarAhora()`
-  one-time), `SyncWorker` delgado (guarda de modo + mapeo a `Result`),
-  `SyncOrchestrator` interfaz + `DefaultSyncOrchestrator` stub (el push/pull
-  real llega en Grupos 2-3), `di/SyncModule` (bind + `WorkManager`),
-  `PdvApplication` programa según el modo persistido al arrancar.
-  `SyncSchedulerTest` 5/5. Suite completa 370/0/0. (Las queries DAO de
-  pendientes + `marcarSincronizado` se construyen en el Grupo 2, junto a cada
-  pusher — su forma depende de la unidad de push por entidad; `needs-device`,
-  D5.)
+**1. Credenciales de arranque (A-3)**
+- [ ] El administrador bootstrap (backend y dispositivo) debe cambiar su
+  contraseña en el primer login, según la decisión abierta. Criterio:
+  login con `admin/admin123` no da acceso a ningún módulo hasta cambiarla;
+  `jvm-tests` + test de backend.
 
-**2. Orquestador de subida y merge** (POS-148)
-- [x] `SyncMappers.kt` (`internal`, `Entity` → `*CreateRequestDto` directo,
-  extrayendo las extensiones `private` de los `Remote*Repository`) + un
-  pusher por entidad en `sync/push/` que llama a los `*ApiService` (ya
-  devuelven el DTO con `id`) y devuelve el `remote_id` (D3.1). Incluye las
-  queries DAO de pendientes (`isSynced = 0 AND deletedAt IS NULL`) +
-  `marcarSincronizado(localId, remoteId)` que cada pusher necesita
-  (`needs-device`, D5; `schema-parity` si toca columnas). Hecho (2026-09-10):
-  `sync/SyncMappers.kt`; `sync/push/EntityPusher.kt` (interfaz + helper
-  `empujarFila` con la política de errores) + `Venta`/`Entrada`/`CorteCaja`/
-  `Retiro`/`Devolucion`/`InventarioAjuste` `Pusher`. Queries en
-  `VentaDao`/`EntradaDao`/`CajaDao`/`RetiroDao`/`DevolucionDao`/`InventarioDao`
-  (sin columnas nuevas → sin `schema-parity`). `EntradaPusher`: `articulo_nuevo`
-  vs `articulo_id` remoto según `ArticuloEntity.remoteId`. `InventarioAjustePusher`:
-  agrupa movimientos `ajuste` por `(sucursal, articulo)`, un `PATCH` con la
-  cantidad local actual; salta si el artículo no tiene `remoteId` aún.
-  `SyncMappersTest`, `VentaPusherTest`, `EntradaPusherTest`,
-  `SyncPushersHappyPathTest`, `InventarioAjustePusherTest`.
-- [x] `SyncOrchestrator.push()` recorre las entidades pendientes, empuja, y
-  al recibir el `id` llama `marcarSincronizado`. Reintento seguro por la
-  idempotencia `local_id` (Parte 23). Errores: `IOException` → reintentar el
-  ciclo; `403`/`404`/`422` → saltar esa fila, loguear, seguir; `401` → parar
-  y marcar la sesión expirada (gap 2). Hecho (2026-09-10):
-  `DefaultSyncOrchestrator` corre los 6 pushers en el orden de `SyncModule`
-  (entradas → ventas → ajustes → cortes → retiros → devoluciones, para que
-  los artículos creados offline existan antes de referenciarlos);
-  `IOException` → `Reintentar`, `401` → `Fallo("sesion expirada")`, `5xx` →
-  `Reintentar`; el skip por fila (`4xx` no-401) lo maneja `empujarFila` en
-  el pusher. `DefaultSyncOrchestratorTest` (orden + 3 mapeos de error).
-- [x] Idempotencia de `devoluciones` en el backend (gap 1: la Parte 23 no la
-  cubrió y el push la necesita): migración Alembic `UNIQUE(local_id)` +
-  captura de `IntegrityError` en el router + `local_id` obligatorio en el
-  schema + contrato §9. `schema-parity` (`docs/schema-pos.json` +
-  `DevolucionEntity` + migración). Hecho (2026-09-10): `Devolucion.local_id`
-  `unique=True`; migración `0013_unique_local_id_devoluciones` (cadena
-  `0012 -> 0013 (head)`); `create_devolucion` con `flush()` + `except
-  IntegrityError` → `200` con la fila existente (`selectinload`), patrón
-  exacto de `ventas.py`; `DevolucionCreateSchema.local_id: uuid.UUID`
-  obligatorio; `api-contract.md` §9.1 con la nota de idempotencia + `422`
-  por `local_id` faltante. `schema-pos.json` sin cambios (consistente con
-  Parte 23: `local_id` ya figura como `primary_key`; Room lo tiene como
-  `@PrimaryKey`). Verificado: `uv run alembic upgrade head` OK, `uv run
-  alembic check` → "No new upgrade operations detected" (schema-parity),
-  `uv run pytest` → **158 passed** (+2: `sin_local_id_returns_422`,
-  `reintento_con_mismo_local_id_es_idempotente`).
-- [x] `EventoAditivoCombiner`: rama "delta negativo → conflicto" diferida
-  desde la Parte 6 (`combinarConDeteccion` devuelve el valor + si quedó
-  negativo, sin dejar de ser puro). `EventoAditivoSyncEngine` escribe el
-  conflicto en `sync_conflicts` con `resueltoAutomaticamente = false` + log
-  `SYNC_CONFLICT` (D4: regla fija, sin UI de resolución). Borrado local vs
-  edición remota: last-write-wins por `updatedAt` sobre el tombstone. Hecho
-  (2026-09-10): `EventoAditivoCombiner.combinarConDeteccion` →
-  `CombinacionResultado(valor, quedoNegativo)`; `EventoAditivoSyncEngine.combinarYRegistrar`
-  aplica siempre el delta y solo registra el conflicto (no auto-resuelto) +
-  log cuando queda negativo. `EventoAditivoCombinerTest` +2,
-  `EventoAditivoSyncEngineTest`. (La rama "borrado vs edición" y la
-  integración al merge se cierran en el Grupo 3.)
-- [x] Resumen de pendientes antes del cambio de modo (D3.2). Hecho
-  (2026-09-10/11): `SyncPendientesResumen` (cuenta por entidad vía los
-  `EntityPusher`, `SyncPendientesResumenTest`); el reprogramado del
-  `SyncWorker` al cambiar de modo se movió a `PdvApplication` (colecta
-  `deviceConfig.backendMode` con `distinctUntilChanged`). El diálogo de
-  confirmación se integró en `ConfiguracionViewModel`/`ConfiguracionScreen`
-  junto con el Grupo 5 (evitó tocar el constructor de `ConfiguracionViewModel`
-  dos veces) y quedó verificado en el Xiaomi (ver Grupo 5, sub-pasos 15/17).
-- [x] `jvm-tests` del orquestador (con `*ApiService`/DAO fake): push happy
-  path, reintento sin duplicar, `403` salta una fila y sigue, conflicto
-  registrado en `sync_conflicts` + log `SYNC_CONFLICT`. Hecho (2026-09-10):
-  cubierto entre `DefaultSyncOrchestratorTest` (orden + mapeo de errores),
-  `VentaPusherTest` (403 salta y sigue, reintento por idempotencia,
-  IOException/401 cortan) y `EventoAditivoSyncEngineTest` (conflicto +
-  `SYNC_CONFLICT`). Suite Android **408 / 0 / 0**, `assembleDebug` verde.
+**2. Backend (A-4, M-4, M-6)**
+- [ ] A-4: el backend no arranca si falta `JWT_SECRET_KEY` (o si tiene el
+  valor de desarrollo fuera de dev). Criterio: test + arranque del
+  contenedor sin la variable falla con un mensaje claro.
+- [ ] M-4: límite de intentos de login, tiempo de respuesta constante para
+  usuario inexistente, `/docs`/`/openapi.json` deshabilitados en producción,
+  `password_hash` validado (prefijo `$2`) → `422`. Criterio: tests por
+  cada punto; repetir las mediciones de `review_code.md` (20 intentos,
+  tiempos, 500 por hash inválido) con resultado corregido.
+- [ ] M-6: `DELETE /roles/{id}` con usuarios asignados → `409`; un rol
+  borrado no otorga módulos; no se puede desactivar/borrar al último
+  usuario con módulo `usuarios` ni a uno mismo. Contrato §10/§11
+  actualizado primero. Tests happy path + error.
 
-**3. Pull de cambios remotos** (POS-149)
-- [x] `docs/api-contract.md`: definir el parámetro de delta
-  (`?updated_since=<iso8601>`, distinto de `desde`/`hasta` que filtran por
-  fecha de negocio) en `GET /inventario`, `GET /cortes-caja` y
-  `GET /retiros-efectivo` (D3.3: el pull se limita a las entidades que ya
-  tienen `GET`; `GET /ventas`/`GET /entradas` quedan para follow-up).
-  Contrato primero (skill `sync-api-contract`), luego backend, luego cliente
-  Kotlin (`CLAUDE.md` §9). `needs-approval`. Aprobado e implementado
-  (2026-09-10): §7.1 gana `updated_since` + el campo `updated_at` en cada
-  item (hoy no lo traía; es el cursor + base del merge); §8.4/§8.5 ganan
-  `updated_since` (por `updated_at`, coexiste con `desde`/`hasta`).
-- [x] Backend: filtro `updated_since` en `inventario` y `caja` (cortes +
-  retiros), con test happy path + 1 caso de error (`422` timestamp inválido)
-  por endpoint tocado (`CLAUDE.md` §6). Sin cambios de esquema esperados.
-  Hecho (2026-09-10): `list_inventario`/`list_cortes_caja`/`list_retiros_efectivo`
-  con `updated_since: datetime | None`; `InventarioItemResponseSchema` gana
-  `updated_at`. `uv run alembic check` sin drift (`updated_at` ya era
-  columna); `uv run pytest` → **164 passed** (+6: filtro + `422` por
-  endpoint).
-- [x] Android: descarga incremental y merge a Room a través del motor de
-  sync; divergencias a `sync_conflicts` (Room) + log `SYNC_CONFLICT`.
-  `jvm-tests`. Hecho (2026-09-10): `sync/pull/` — `EntityPuller` +
-  `InventarioPuller` / `CorteCajaPuller` / `RetiroPuller`; paginan con el
-  cursor `updated_since` de `SyncStateStore` y lo avanzan al `max(updated_at)`.
-  Inventario: fila ausente → insert `isSynced=true`; fila limpia →
-  overwrite; fila sucia que difiere → `EventoAditivoSyncEngine.registrarDivergenciaLocalGana`
-  (conflicto no auto-resuelto + `SYNC_CONFLICT`, gana lo local). Cortes/retiros:
-  insert-if-absent por `local_id`/`id`. `DefaultSyncOrchestrator` corre push
-  y luego pull, acotado a `sucursalIdSeleccionada` (sincroniza con las demás
-  terminales de la misma sucursal). `InventarioPullerTest`,
-  `SyncPullersHappyPathTest`, `DefaultSyncOrchestratorTest` (push→pull +
-  errores). Suite **417 / 0 / 0**. Follow-up anotado: un artículo remoto
-  desconocido localmente se omite (no propaga el catálogo); el merge por
-  deltas con baseline (`combinarYRegistrar`) se retoma cuando se trackee el
-  valor remoto de última sincronización.
-
-**4. Autenticación del push desatendido** (POS-150)
-- [x] El `SyncWorker` adjunta `Authorization: Bearer` (enforcement Parte 21)
-  en las llamadas de push/pull del modo `LOCAL_CON_SINCRONIZACION`. Se
-  verifica de forma indirecta pero concluyente en la verificación e2e del
-  Grupo 5 (2026-09-11): todos los `POST`/`GET` de push y pull pasan por el
-  mismo cliente Retrofit con `AuthInterceptor` (Parte 21), y el backend
-  exige `Authorization: Bearer` en toda ruta fuera de `/auth`/`/health`
-  (`401` sin él) — las docenas de `201`/`200` observados (ventas, entradas,
-  cortes, retiros, devoluciones, pull) no habrían sido posibles sin el
-  header adjunto. `SessionStore` (sub-paso siguiente) es lo que le da al
-  `SyncWorker` una sesión con token tras un reinicio del proceso.
-- [x] `SessionStore`: persiste la sesión (incluido el `accessToken`) cifrada
-  con `TokenCipher`/AndroidKeystore (patrón `IaPreferences`, Parte 14) y
-  siembra `SessionManager` al arrancar el proceso (D3: sin `refresh_token`;
-  re-login forzado al expirar/401). Criterio: reiniciar el proceso y que el
-  worker siga autenticando con el token persistido. Hecho (2026-09-10):
-  `SessionStore` interfaz + `DataStoreSessionStore` (username/usuarioId/rolId
-  en claro, `accessToken` cifrado Base64 vía `TokenCipher`) + `SessionStore.NoOp`;
-  `SecurityModule` lo bindea; `SessionManager.restaurarSesion()` +
-  persistencia best-effort en `iniciarSesion`/`logout` (firmas sync
-  intactas, scope interno); `PdvApplication` restaura al arrancar.
-  `SessionStoreTest` 5/5 + `SessionManagerTest` +3. El "reiniciar el
-  proceso" en dispositivo se cierra en el Grupo 5. `jvm-tests`.
-- [x] `ModeAwareAuthRepository`: en `LOCAL_CON_SINCRONIZACION` el login hace
-  `local.login` (para operar offline) y, best-effort si el backend es
-  alcanzable, `remote.login` para capturar el JWT que usará el worker. Hecho
-  (2026-09-10): `loginLocalConTokenRemoto` — login local; si es exitoso,
-  `runCatching { remote.login(...) }` y se adjunta el `accessToken` remoto si
-  llegó. Cualquier fallo remoto (red, credenciales inexistentes en el
-  backend, 5xx) deja una sesión local sin token, sin afectar el login.
-  `ModeAwareAuthRepositoryTest` 7/7. `jvm-tests`.
-
-**5. Estado de sync visible + verificación en dispositivo** (POS-151)
-- [x] Sección "Sincronización" en Configuración: última sync correcta, nº de
-  pendientes (suma de los `countPendientes()`), último error — leídos de
-  `SyncStateStore`/Room — y botón "Sincronizar ahora" que encola un
-  `OneTimeWorkRequest` único (D2). Hecho (2026-09-10): sección visible solo
-  en `LOCAL_CON_SINCRONIZACION` (REMOTO no acumula pendientes); pendientes
-  recalculado al entrar a la pantalla (`onRefrescarEstadoSync`, los DAO
-  exponen `suspend fun` no `Flow`). Diálogo de confirmación del cambio de
-  modo (D3.2, sub-paso 11 diferido) integrado en el mismo `ConfiguracionViewModel`:
-  sin pendientes aplica directo, con pendientes muestra el resumen por
-  entidad y pide "Cambiar de todos modos" / "Cancelar". `ConfiguracionViewModelTest`
-  +7. Suite Android **423 / 0 / 0**, `assembleDebug` verde.
-- [x] Verificación en el Xiaomi M2102J20SG, `LOCAL_CON_SINCRONIZACION` por
-  Wi-Fi: crear venta/entrada/corte/retiro/devolución con el backend
-  inalcanzable, restaurar conectividad, y comprobar que suben sin duplicar,
-  que `isSynced` pasa a `true`, y que un cambio hecho en otro
-  dispositivo/sucursal baja por el pull. `needs-device`. **En curso
-  (2026-09-11)**: primer intento en el Xiaomi encontró 382 pendientes
-  acumulados (historial real de las Partes 7-31, nunca sincronizado hasta
-  ahora) y "Sincronizar ahora" terminó en `HTTP 500`. Causa raíz confirmada
-  por log del contenedor (`docker compose logs backend`):
-  `ForeignKeyViolationError` en `inventario_sucursal_id_fkey` — una fila
-  local antigua trae un `sucursal_id` que no existe en el backend actual (el
-  backend se recreó varias veces a lo largo del proyecto; datos escritos en
-  modo `LOCAL` puro llevan el `local_id` de `LocalSucursalRepository`, sin
-  relación con ningún backend). Como `POST /entradas`/`/ventas`/
-  `/cortes-caja`/`/retiros-efectivo`/`/devoluciones` y `PATCH /inventario/{id}`
-  no validaban `sucursal_id` antes de escribir (a diferencia de `articulo_id`,
-  que sí), el `IntegrityError` no capturado escalaba a `500` sin capturar —y
-  como `empujarFila` trata un `5xx` como error de ciclo completo (`Reintentar`),
-  una sola fila envenenada bloqueaba las 381 restantes en cada ciclo. Corregido:
-  los 6 endpoints ahora validan `sucursal_id` con `db.get(Sucursal, ...)` →
-  `404` limpio si no existe (mismo patrón que la validación de `articulo_id`
-  ya existente), que `empujarFila` ya trata como "descartar fila, loguear,
-  seguir". No resuelve que esas filas históricas concretas puedan sincronizar
-  algún día (su `sucursal_id` no corresponde a ningún backend real y nunca lo
-  hará) — quedan como `saltadas` permanentes, sin bloquear el resto. `uv run
-  pytest` → **170 passed** (+6: `sucursal_id inexistente → 404` por
-  endpoint). Backend reconstruido (`docker compose up -d --build backend`) y
-  redesplegado para el Xiaomi.
-
-  Segundo hallazgo de la misma verificación, **sin relación con el motor de
-  sync**: no se pudo registrar la devolución de prueba porque
-  `DevolucionViewModel.buscar()` seguía sobre `CATALOGO_EJEMPLO` (3
-  artículos hardcodeados del sub-paso 1 de la Parte 11) — el mismo gap ya
-  encontrado y corregido en Venta y Entrada (Parte 16), pero nunca corregido
-  en Devolución; ningún artículo real del catálogo podía encontrarse.
-  Afecta a los tres modos por igual (`buscar()` no distingue `BackendMode`).
-  Corregido en la misma sesión, mismo patrón que
-  `VentaViewModel`/`EntradaViewModel`: `DevolucionViewModel` inyecta
-  `InventarioRepository` y busca por código de barras/SKU/nombre contra el
-  catálogo real, con el mismo mensaje "Selecciona una sucursal en
-  Configuración" si no hay sucursal seleccionada. `DevolucionViewModelTest`
-  reescrito (2 casos de `buscar()` nuevos + los 3 de `registrarDevolucion`
-  ajustados para seleccionar sucursal antes de buscar). Suite Android
-  **425 / 0 / 0**, `assembleDebug` verde.
-
-  Tercer hallazgo, con ambos fixes ya instalados: con 379 pendientes,
-  "Sincronizar ahora" no daba ninguna señal y el usuario lo tocó varias
-  veces sin ver cambios. Evidencia (`docker compose logs backend`): **5139
-  POSTs en 45 minutos**, la enorme mayoría `404` repetidos contra las
-  mismas filas. Causa raíz confirmada — dos bugs de diseño del propio motor
-  de sync, no del dato: (1) `empujarFila` descartaba una fila con `4xx`
-  pero **nunca marcaba `isSynced`**, así que cada ciclo (periódico o manual)
-  volvía a reintentar las ~370 filas irrecuperables desde cero; (2) el
-  botón no exponía ningún estado de "corriendo"/"listo", y
-  `sincronizarAhora()` encolaba con `ExistingWorkPolicy.KEEP` — si un
-  intento previo seguía encolado, un tap nuevo no hacía nada, sin avisar.
-  Corregido: cada pusher marca la fila como descartada
-  (`marcarXDescartada`/`marcarMovimientoSincronizadoSinRemoto`, `isSynced =
-  true` sin `remoteId`) cuando `empujarFila` la rechaza de forma no
-  recuperable, así deja de reintentarse en cada ciclo;
-  `sincronizarAhora()` pasa a `ExistingWorkPolicy.REPLACE`; `SyncScheduler
-  .observarTrabajoInmediato()` (nuevo, `WorkInfo.State` vía
-  `getWorkInfosForUniqueWorkFlow`) alimenta `ConfiguracionViewModel` para
-  mostrar "Sincronizando…" (botón deshabilitado) y refrescar pendientes al
-  terminar. Tests: `VentaPusherTest` (403 → descartada, no solo saltada),
-  `InventarioAjustePusherTest` (+1: descarta un ajuste irrecuperable, sin
-  tocar el caso legítimamente temporal de "artículo aún sin sincronizar"),
-  `SyncSchedulerTest` (+2: `REPLACE`, `observarTrabajoInmediato`),
-  `ConfiguracionViewModelTest` (+1: progreso + refresco al terminar).
-  Suite Android **429 / 0 / 0**, `assembleDebug` verde. APK reinstalado.
-
-  Resultado con los tres fixes: **382 → 1 pendiente**, "sincronizó bien"
-  (usuario). Pero el log de la app en el dispositivo (`adb run-as ... cat
-  files/logs/app-log-*.txt`, mismo camino que memoria previa) mostró
-  `Sync OK: subidas=0, saltadas=379` — **ninguna fila subió de verdad**,
-  las 379 se descartaron. Entre ellas, una devolución creada en la propia
-  sesión de prueba (`D-1789099884662`, con el catálogo real ya arreglado)
-  reintentada ~10 veces en 20 minutos, siempre `404`.
-
-  **Cuarto hallazgo, más grave que los anteriores** — no es dato viejo, es
-  un bug de diseño del push que afecta a *toda* venta/devolución con
-  líneas, de cualquier antigüedad: `VentaPusher`/`DevolucionPusher`
-  mandaban `articulo_id` (y `DevolucionPusher` además `venta_id`) con el id
-  **local** de Room tal cual, sin resolverlo al id remoto — a diferencia de
-  `EntradaPusher`, que sí lo hacía. El backend nunca podía encontrar ese
-  artículo/venta → `404` → con el fix anterior, **descartada
-  permanentemente en el primer intento**, silenciosamente marcada
-  `isSynced = true` sin haber llegado nunca al backend. Corregido:
-  `SyncMappers.toCreateRequestDto` para venta/devolución recibe una función
-  de resolución local→remoto; `VentaPusher`/`DevolucionPusher` la resuelven
-  vía `dao.getArticulo(...)`/`dao.getVentaRemoteId(...)` antes de mapear, y
-  si algún artículo (o la venta referenciada) todavía no tiene `remoteId`,
-  **aplazan** la fila entera (no la descartan) hasta el próximo ciclo, en
-  vez de mandar un id que el backend no puede resolver. Tests:
-  `SyncMappersTest`, `VentaPusherTest`, `DevolucionPusherTest` (nuevo) — casos
-  de resolución y de aplazamiento. Suite Android **436 / 0 / 0**,
-  `assembleDebug` verde. APK reinstalado.
-
-  Efecto colateral aceptado: la devolución de prueba `D-1789099884662` ya
-  quedó descartada por el fix anterior antes de este arreglo — no
-  resincroniza sola; para volver a probarla hay que crear una devolución
-  nueva. Es dato de prueba, sin impacto real.
-
-  **Verificación con los cuatro fixes (2026-09-11): confirmada.** Venta +
-  devolución nuevas creadas offline, reconectado y sincronizado:
-  `Sync OK: subidas=2, saltadas=1` en el log del dispositivo; backend
-  confirma `POST /ventas` y `POST /devoluciones` en `201 Created` con los
-  folios exactos (`V-1789149864361`, `D-1789149885440`); sin filas
-  duplicadas por `local_id` en Postgres. El único pendiente restante es el
-  ajuste huérfano ya explicado (artículo de una entrada histórica
-  descartada, nunca tendrá `remoteId` — inofensivo, no genera tráfico).
-
-  **Pull cross-terminal: confirmado (2026-09-11).** Se simuló un retiro de
-  efectivo creado "desde otra terminal" (POST directo contra el backend con
-  el JWT del admin, misma sucursal, sin pasar por el Xiaomi). Se verificó
-  con `adb exec-out run-as ... cat databases/pdv.db{,-wal,-shm}` (mismo
-  camino que la técnica de memoria previa, esta vez incluyendo los sidecars
-  de WAL — sin ellos `sqlite3`/`python` reportan "database disk image is
-  malformed") que la fila llegó a Room local con su `remoteId` correcto.
-  La confusión inicial ("no aparece") fue de la propia inspección, no del
-  motor: Caja no tiene una lista general de retiros, solo el total del
-  corte en curso (acotado a su período) y el export CSV (acotado a un rango
-  de fechas) — el retiro simulado llevaba una `fecha` fuera de ambos
-  períodos consultados al principio. Al hacer un corte parcial nuevo (cuyo
-  período sí cubría esa fecha), el retiro de prueba apareció en el total.
-  Push y pull confirmados de punta a punta con evidencia directa de base
-  de datos, no solo de logs.
-
-  **Hallazgo lateral, fuera del motor de sync**: la confusión de arriba
-  ("18:14" vs. la hora real, 12:14 en México UTC-6) llevó a notar que
-  `CajaCsvExporter` mostraba las fechas en UTC crudo (`Instant.toString()`,
-  decisión deliberada de la Parte 18, "Fechas en ISO-8601 UTC") — confuso
-  para un negocio de una sola sucursal en una sola zona horaria. Corregido
-  (2026-09-11): `CajaCsvExporter.generar` recibe una `ZoneId` (default
-  `ZoneId.systemDefault()`, la del dispositivo) y formatea con
-  `DateTimeFormatter.ISO_OFFSET_DATE_TIME` — hora local con el offset
-  explícito (ej. `2026-09-11T12:14:28-06:00`), no solo local sin offset, así
-  el archivo sigue siendo inequívoco si se reprocesa en otra zona.
-  `CajaCsvExporterTest` +1 (zona fija `-06:00`, verifica el corrimiento
-  exacto). El resto de la app (pantallas, ticket PDF, log) ya mostraba hora
-  local correctamente vía `SimpleDateFormat` sin zona explícita (usa la del
-  dispositivo por defecto) — el export era el único punto con UTC crudo.
-  Suite Android **437 / 0 / 0**, `assembleDebug` verde. APK reinstalado.
-- [x] Verificación en el Xiaomi: cambio de modo `LOCAL` ↔
-  `LOCAL_CON_SINCRONIZACION` muestra el resumen de pendientes y, al
-  confirmar, sube los datos reales (ventas/inventario/cortes) sin pérdida.
-  `needs-device`. Verificado (2026-09-11): con el pendiente huérfano
-  presente, el diálogo apareció con su resumen; "Cambiar de todos modos" /
-  "Cancelar" funcionaron correctamente (usuario).
+**3. Android (A-5, M-10)**
+- [ ] A-5: `allowBackup="false"` o `dataExtractionRules` que excluyan
+  DataStore y la base; un fallo de descifrado en `SessionStore`/
+  `IaPreferences` se trata como "sin sesión / sin token" y limpia las
+  claves. `jvm-tests` con un `TokenCipher` que lanza.
+- [ ] M-10: limpieza única de claves obsoletas del DataStore (incluida
+  `ia_token` en claro) al arrancar. `jvm-tests`. Tarea operativa aparte:
+  rotar la API key del proveedor de IA del dispositivo de pruebas.
+- [ ] Verificación en el Xiaomi: repetir la reproducción de A-5 de
+  `review_code.md` (instalación limpia + archivos de una sesión con JWT) →
+  la app abre en el login sin cerrarse. `needs-device`.
 
 ### Decisiones abiertas
 
-*(Evaluadas por `code-architect` el 2026-09-09 — 2-3 enfoques por decisión —
-y resueltas con el usuario en la misma sesión. `CLAUDE.md` §11.)*
-
-- [x] **D1 — Orden y acoplamiento push/pull.** Decidido: un solo `SyncWorker`
-  con ciclo ordenado push→pull y un único `UniqueWork`; el merge del pull
-  siempre keyed por `local_id` (queda listo para partir en dos workers
-  después sin retrabajo). El pull corre aunque el push falle parcialmente,
-  acumulando los errores.
-- [x] **D2 — Disparadores del `SyncWorker`.** Decidido: periódico (~15 min) +
-  `Constraints` de conectividad + backoff, MÁS un botón "Sincronizar ahora"
-  en Configuración que encola un `OneTimeWorkRequest` único. Sin one-time
-  automático en foreground/tras venta por ahora.
-- [x] **D3 — Persistencia de sesión para el worker.** Decidido: persistir el
-  JWT actual cifrado con AndroidKeystore (patrón Parte 14) + re-login forzado
-  al expirar/401. Sin `refresh_token` en esta Parte (se agrega después sobre
-  esta misma base; sigue diferido en `api-contract.md` §13). Un dispositivo
-  offline > 24 h no sincroniza hasta el próximo login interactivo — aceptado.
-- [x] **D4 — Conflictos no auto-resolubles.** Decidido: regla fija, sin UI
-  nueva (es lo ya aprobado en la Parte 6). El delta se aplica (stock negativo
-  transitorio), se registra en `sync_conflicts` con
-  `resueltoAutomaticamente = false` + log `SYNC_CONFLICT`, y el admin corrige
-  con un ajuste normal (Parte 9). Borrado local vs edición remota:
-  last-write-wins por `updatedAt` sobre el tombstone. El panel de la Parte 19
-  sigue solo-lectura.
-- [x] **D5 — Infra de test de Room en JVM.** Decidido: no se agrega
-  Robolectric. La lógica de orquestación/merge/conflicto/gating se prueba en
-  JVM con fakes (`jvm-tests`, MockK); solo las queries `WHERE isSynced = 0` y
-  las migraciones quedan como instrumentado `needs-device`. Los ítems DAO del
-  checklist se etiquetan `needs-device` en consecuencia.
-- [x] **D3.1 — Cómo obtener el `remote_id` tras el push.** Decidido: pushers
-  dedicados en `sync/push/` que usan los `*ApiService` (ya devuelven el DTO
-  con `id`) + un `SyncMappers.kt` `internal` que mapea `Entity` →
-  `*CreateRequestDto` directo. `Local*`/`Remote*`/`ModeAware*` intactos.
-- [x] **D3.2 — `MigrationPlanner`.** Decidido: la idempotencia de la Parte 23
-  eliminó el hazard de "ambos lados con datos", así que el ítem se
-  reinterpreta a un resumen de pendientes pre-toggle + confirmación. Los 4
-  casos de `MigrationPlanner`/`PlanMigracion` siguen solo para sucursales,
-  fuera del alcance de esta Parte.
-- [x] **D3.3 — Alcance del pull.** Decidido: se limita a `inventario` /
-  `cortes-caja` / `retiros-efectivo` (ya tienen `GET`) + `?updated_since=`.
-  `GET /inventario` ya da existencia consolidada cross-sucursal. `GET /ventas`
-  y `GET /entradas` nuevos quedan para follow-up, salvo que la verificación
-  en dispositivo del Grupo 5 los exija.
-- [x] **Gap 1 — Idempotencia de `devoluciones`.** Decidido: entra en esta
-  Parte (Grupo 2) — la Parte 23 no la cubrió y el push la necesita. Migración
-  Alembic `UNIQUE(local_id)` + `IntegrityError` en el router + `local_id`
-  obligatorio + `schema-parity` + contrato §9.
+- [ ] Contraseña inicial del admin: ¿cambio forzado en el primer login, o
+  contraseña provista por variable de entorno en el despliegue (backend) y
+  asistente inicial (dispositivo)?
+- [ ] Límite de intentos de login: ¿en la app (contador en base/memoria) o
+  delegado al proxy/infraestructura del destino de despliegue (Parte 39)?
+- [ ] `allowBackup`: ¿desactivar por completo o mantener respaldo
+  excluyendo solo DataStore y la base?
 
 ---
 
-## Parte 33: Actualización del manual técnico (`docs/manual-tecnico.md`)  <!-- POS-152 -->
+## Parte 37: Integridad de datos del backend
 
-*(Sale de un hallazgo del cierre de la Parte 32, 2026-09-11: `docs/manual-tecnico.md`
-existe desde el 2026-09-09 pero quedó desactualizado desde su creación — cita
-una numeración de Partes vieja ("Parte 32 (primer release productivo)
-pendiente", cuando esa Parte pasó a ser la 33 y ahora la 34) y no refleja el
-motor de sincronización diferida real que entrega la Parte 32 actual.
-Apareció como archivo sin trackear durante el cierre de esa Parte y se
-excluyó del commit por estar stale — CLAUDE.md §1 exige que la documentación
-sea fuente de verdad vigente, no un snapshot congelado.)*
+*(Sale de los hallazgos M-1, M-2, B-1 y B-2 de `docs/review_code.md`,
+reproducidos contra el backend: `usuario_id` libre en todas las escrituras
+(se aceptó "otro-usuario-inventado"); montos sin validar (venta con
+subtotal 10 y total 0.01 → 201; corte con fechas invertidas → 201); primer
+insert concurrente de inventario → 500 (1 de 6); devoluciones con N+1 y
+`estado` libre.)*
 
-Claves de Jira: épica `POS-152`; historias `POS-153`..`POS-156` (asignadas por
-`/jira-sync` el 2026-09-16).
+Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
 
-Objetivo: dejar `docs/manual-tecnico.md` alineado con el estado real del
-proyecto — arquitectura, módulos y numeración de Partes — incorporando los
-cambios de las Partes recientes (hasta la 32 inclusive) y una sección que
-refleje el plan activo (`docs/PLAN.md`) y su checklist, para que el equipo
-de *application management* tenga una referencia técnica utilizable sin
-reconstruir el estado desde el historial de commits.
+Objetivo: que el backend sea la fuente confiable de atribución y de montos,
+sin depender de que el cliente mande datos consistentes.
 
 ### Checklist
 
-**1. Referencias y numeración** (POS-153)
-- [x] Corregir toda cita a una Parte con un alcance o número distinto al que
-  tiene hoy en `docs/PLAN.md` (empezando por la fecha/estado del encabezado
-  del manual y la mención a "Parte 32 (primer release productivo)").
-  Criterio: `grep -n "Parte [0-9]"` en `docs/manual-tecnico.md` sin
-  discrepancias contra los encabezados reales de `docs/PLAN.md` y
-  `docs/PLAN-historico.md`. Hecho (2026-09-11): encabezado (fecha, Partes
-  1-32 mergeadas, Partes 33-34 pendientes), todas las menciones a la vieja
-  "Parte 32 (primer release)" pasadas a Parte 34, `review_code.md` corregido
-  a "Partes 21-30", conteos de tests/migraciones (§10.3, §10.4, §2.3)
-  actualizados y verificados (`uv run pytest` -> 170 passed).
+**1. Contrato**
+- [ ] `docs/api-contract.md` §5/§6/§7/§8/§9: el usuario de cada escritura
+  sale del JWT; nuevos `422` por montos inconsistentes y por
+  `fecha_fin < fecha_inicio`; `estado` de devolución con valores cerrados.
+  Contrato primero (skill `sync-api-contract`). `needs-approval`.
 
-**2. Incorporar el motor de sincronización diferida (Parte 32)** (POS-154)
-- [x] La sección de arquitectura del manual describe el motor de sync real
-  (push por entidad vía WorkManager con idempotencia por `local_id`, pull
-  con `?updated_since=`, `SessionStore` cifrado para el worker desatendido)
-  en vez de las primitivas puras sin orquestación que describía antes.
-  Criterio: coherente con `CLAUDE.md` §3 y con el resumen de
-  `docs/PLAN.md` Parte 32. Hecho: §1.2 y §2.4 reescritas con la
-  orquestación real (SyncScheduler/SyncWorker/SyncOrchestrator, orden de
-  push, política de errores, SessionStore); tabla de módulos (§1.1) y
-  DataStore (§6.2) suman la sección "Sincronización" y `SyncStateStore`/
-  `SessionStore`; stack Android (§2.2) suma WorkManager/Hilt-Work.
-- [x] Si el manual trae diagramas de arquitectura o de flujo (ver su propio
-  índice), actualizarlos para reflejar push/pull; si el rediseño es
-  significativo, presentar el diagrama propuesto antes de reemplazar el
-  existente. `needs-approval`. Hecho: propuesta de los 3 diagramas
-  (§2.2 arquitectura Android, §4.1 componentes, §4.5 secuencia de conflicto)
-  presentada y aprobada por el usuario antes de reemplazar.
+**2. Backend**
+- [ ] M-1: `usuario_id` derivado de `usuario_actual` en ventas, entradas,
+  cortes, retiros, devoluciones y ajustes. Tests happy path + error.
+- [ ] M-2: validadores de montos con `Decimal` a 2 decimales
+  (`Σ lineas.subtotal == subtotal`, `cantidad * precio_unitario ==
+  linea.subtotal`, `total == subtotal - descuento + impuestos`) y de cortes
+  (fechas, totales). Criterio: los payloads de la reproducción de
+  `review_code.md` dan `422`.
+- [ ] B-1: el primer insert concurrente de inventario no da `500`
+  (`INSERT ... ON CONFLICT` + `FOR UPDATE`). Criterio: test con ventas
+  concurrentes sin fila previa → todas `201`.
+- [ ] B-2: `create_devolucion` valida artículos con una sola query y
+  `estado` como `Literal`. `uv run pytest` en verde.
 
-**3. Sección de plan y checklist activo** (POS-155)
-- [x] El manual incluye una sección "Estado del plan" que resume qué Partes
-  de `docs/PLAN.md` siguen pendientes (hoy, Parte 33 y Parte 34) y el
-  alcance de su checklist, enlazando a `docs/PLAN.md` en vez de duplicar su
-  contenido completo. Criterio: sección presente y verificable contra el
-  `docs/PLAN.md` vigente al momento del cierre de esta Parte. Hecho:
-  `docs/manual-tecnico.md` §11.1 "Estado del plan", con el detalle de la
-  Parte 34 movido a §11.2 y el hueco de sync resuelto reconvertido en
-  follow-ups en §11.3.
-
-**4. Revisión general de vigencia** (POS-156)
-- [x] Revisar el resto de las secciones del manual (requerimientos e
-  instalación, configuración, stack) contra el estado real del repo y
-  corregir cualquier otra referencia obsoleta encontrada (ej. comandos o
-  archivos que ya no existen, como el `requirements.txt` reemplazado en la
-  Parte 30). Criterio: sin referencias a comandos/archivos inexistentes en
-  el repo actual. Hecho: versiones de `libs.versions.toml` y
-  `backend/pyproject.toml` verificadas contra las tablas de stack; routers
-  del backend, scripts, workflows de CI y archivos citados confirmados
-  existentes; `local_id UNIQUE` (§3.3) corregido para incluir
-  `cortes_caja`/`retiros_efectivo` (Parte 23) y `devoluciones` (Parte 32),
-  un gap de precisión anterior a esta Parte.
+**3. Cliente Android**
+- [ ] Ajustes del cliente y de los pushers si el contrato cambia (ej. dejar
+  de enviar `usuario_id`). `jvm-tests`.
 
 ### Decisiones abiertas
 
-- [x] ¿El manual se actualiza de forma puntual en esta Parte, o se agrega un
-  paso de mantenimiento recurrente (ej. al comando `/parte` o a la
-  convención de cierre de Parte en `CLAUDE.md` §9) para que no vuelva a
-  quedar stale? Afecta si esta Parte deja un proceso nuevo instalado o solo
-  corrige el estado actual. Decidido (2026-09-11): solo corrección puntual;
-  no se agrega proceso recurrente a `CLAUDE.md`/`/parte` en esta Parte.
-- [x] ¿Los diagramas UML/ER del manual (si existen y quedaron desalineados)
-  se rehacen en esta Parte, o se marca el hallazgo y se difiere su rediseño
-  a una Parte propia? Afecta el alcance del grupo 2. Decidido (2026-09-11):
-  se rehacen ahora — los 3 diagramas afectados (§2.2, §4.1, §4.5 del manual)
-  se actualizaron en el grupo 2, con aprobación previa del usuario.
+- [ ] `usuario_id` del dispositivo: ¿se deja de enviar, o se guarda aparte
+  como dato informativo (ej. "usuario local") junto al usuario del JWT?
+- [ ] Ventas históricas ya guardadas con montos inconsistentes: ¿se
+  auditan con una consulta única o se ignoran?
 
 ---
 
-## Parte 34: Primer release productivo (APK firmado + backend desplegado)
+## Parte 38: Calidad y deuda menor pre-release
+
+*(Sale de los hallazgos M-7, B-3, B-4, B-5, B-6, B-8, B-11, B-12 y B-13 de
+`docs/review_code.md`. Ninguno bloquea por sí solo, pero varios son
+visibles para el usuario (botones con texto cortado, línea de prueba en el
+log) o protegen las migraciones futuras sobre datos reales (M-7).)*
+
+Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
+
+Objetivo: dejar el código y la app sin deuda visible ni riesgos conocidos
+de mantenimiento antes del primer release.
+
+### Checklist
+
+**1. Pruebas instrumentadas (M-7)**
+- [ ] `android/app/src/androidTest` con un test `MigrationTestHelper` de
+  `MIGRATION_7_8` (diferido desde las Partes 24 y 28) como plantilla para
+  las migraciones futuras, y una prueba de las queries `isSynced = 0`.
+  Criterio: `./gradlew connectedAndroidTest` en verde en el Xiaomi.
+  `needs-device`.
+
+**2. Android menor**
+- [ ] B-3: `AppLogger` con `DateTimeFormatter` (sin `SimpleDateFormat`
+  compartido), purga solo al rotar, y sin la línea "Verificacion Parte 5"
+  de cada arranque (`PdvApplication.logSampleLinePerCategory`). `jvm-tests`.
+- [ ] B-4/B-5: `String.toBigDecimalOrNull()` de Kotlin en lugar de las 6
+  copias privadas; `ModeAwareAuthRepository` captura `IOException`/
+  `HttpException` en vez de `runCatching`. `jvm-tests`.
+- [ ] B-6: medir con StrictMode en debug si `DynamicHostInterceptor` lee
+  DataStore en el hilo principal; corregir solo si se confirma.
+  `needs-device`.
+- [ ] B-11: advertencias de lint no relacionadas con versiones resueltas
+  (`ConstantLocale` en `ConfiguracionScreen.kt:263`, `ic_launcher_round` +
+  carpeta `mipmap-anydpi-v26`, `mutableLongStateOf` en `CajaScreen.kt`).
+  Criterio: `./gradlew lint` sin esas advertencias.
+- [ ] B-12: los botones segmentados de Configuración y Usuarios no cortan
+  palabras en el Xiaomi (1080x2400). `needs-device`.
+
+**3. Backend menor**
+- [ ] B-13: `path_separator = os` en `backend/alembic.ini`. Criterio:
+  `uv run pytest` sin el `DeprecationWarning`.
+
+### Decisiones abiertas
+
+- [ ] B-8: mover los textos de UI a `strings.xml`, ¿dentro del primer
+  release o después?
+- [ ] B-11: ¿se actualizan las dependencias marcadas por lint
+  (`GradleDependency`, `NewerVersionAvailable`) en esta Parte o en una
+  Parte de mantenimiento aparte?
+
+---
+
+## Parte 39: Primer release productivo (APK firmado + backend desplegado)
 
 *(Sale del análisis "qué falta para el primer release productivo" del
 2026-09-08. Absorbe el hallazgo B-7 —R8/shrinking, diferido en la Parte 29
 "hasta que haya distribución real"— y cierra el `[TODO]` de destino de
-despliegue de `CLAUDE.md` §7. Hoy `./gradlew assembleRelease` produce un APK
-sin firmar y sin ofuscar, y el modo REMOTO de la app depende de
-`adb reverse` contra `localhost:8000`.)*
+despliegue de `CLAUDE.md` §7. Era la Parte 34; se renumeró a 39 el
+2026-10-02 para ir después de las Partes 34-38 que salen de la revisión
+pre-release (`docs/review_code.md`), y se amplió con sus hallazgos A-7,
+M-9, B-9 y B-10 y con las decisiones de producto M-5 y M-8. Verificado el
+2026-09-29: `./gradlew assembleRelease` produce `app-release-unsigned.apk`
+(36.5 MB) sin firmar y sin ofuscar. Desde la Parte 31 el modo REMOTO ya no
+depende de `adb reverse` (Wi-Fi LAN), pero sigue sin un backend HTTPS
+productivo.)*
 
 Claves de Jira: **sin asignar todavía**. Las asigna `/jira-sync` cuando se
 sincronice esta Parte; no se pre-escriben en este archivo (evita el problema
@@ -954,18 +384,26 @@ desde fuera de la LAN.
   `alembic current` en prod devuelve el mismo head que el repo.
 - [ ] `CLAUDE.md` §7: destino de despliegue definido (ya no `[TODO]`), pasos
   de arranque/actualización y rotación de `JWT_SECRET_KEY`.
+- [ ] M-9 (`docs/review_code.md`): proceso de producción definido (workers
+  de Gunicorn/Uvicorn según `CLAUDE.md` §4, proxy TLS delante, `8000` no
+  publicado directamente) y respaldo automático de Postgres con una
+  restauración probada. Criterio: un respaldo restaurado en una base vacía
+  levanta el backend con `alembic current` en el head y los datos íntegros.
 
 **3. URL base productiva en la app**
 - [ ] El módulo Configuración permite fijar y persistir la URL base del
   backend remoto (`https`, host, puerto), o se hornea un valor productivo por
   defecto. Criterio: en el Xiaomi, modo REMOTO contra `https://<dominio>`
   completa login + una operación de sync sin `adb reverse`. `needs-device`.
+  Nota (2026-10-02): la Parte 31 ya agregó esquema http/https, host y
+  puerto editables en Configuración y en el login; queda decidir el valor
+  por defecto (ver Decisiones abiertas) y verificar contra HTTPS real.
 - [ ] Cleartext HTTP deshabilitado en release (network security config /
   `usesCleartextTraffic=false`), con allowlist explícito solo si se decide
   mantener pruebas locales. Criterio: una petición `http://` a un host
   productivo falla; `https://` funciona.
 
-**4. Endurecimiento del build de release (hallazgo B-7)**
+**4. Endurecimiento del build de release (hallazgo B-7 de `docs/review_code_2026-09-28_1816.md`)**
 - [ ] `isMinifyEnabled = true` e `isShrinkResources = true` en el `buildType
   release`. Criterio: `./gradlew assembleRelease` en verde; el APK de release
   pesa menos que el equivalente sin shrink.
@@ -986,6 +424,14 @@ desde fuera de la LAN.
   para `debug`). Criterio: `assembleRelease` emite un archivo con ese nombre.
 - [ ] Suite unitaria en verde sobre el variant de release:
   `./gradlew testReleaseUnitTest` (mostrar salida completa). `jvm-tests`.
+- [ ] B-9 (`docs/review_code.md`): `.github/workflows/android-ci.yml`
+  compila la variante de release (`assembleRelease`) para que un fallo de
+  reglas keep de R8 aparezca en CI y no en el teléfono. Criterio: el
+  workflow corre en verde en el PR de esta Parte.
+- [ ] B-10 (`docs/review_code.md`): decidido y aplicado si
+  `docs/manual-tecnico.html`/`.pdf` (salida de `/docs-sync`) se versionan o
+  se agregan a `.gitignore`. Criterio: `git status` limpio antes de
+  etiquetar el release.
 
 **6. Distribución**
 - [ ] Artefacto generado según el canal elegido (ver Decisiones abiertas):
@@ -999,6 +445,23 @@ desde fuera de la LAN.
 - [ ] Flujo de permiso `CAMERA` en runtime (escaneo de código de barras)
   probado en el dispositivo con el build de release: concesión y denegación.
   `needs-device`.
+- [ ] A-7 (`docs/review_code.md`): la política de privacidad y el formulario
+  Data Safety declaran los datos que el asistente IA envía al proveedor
+  (nombres, precios, costos y totales de caja, `ia/EstadoPuntoVenta.kt`) y
+  el uso de `RECORD_AUDIO` (dictado); la app pide consentimiento explícito
+  al activar la IA. Criterio: el consentimiento aparece en el Xiaomi al
+  activar la IA y sin él no se envía nada al proveedor. `needs-device`.
+
+**7. Pantalla principal y tema (hallazgo A-7)**
+- [ ] La pantalla principal deja de mostrar el texto de prueba de la
+  Parte 1 ("Hola desde una funcion local de Kotlin", "Backend: ok
+  (v0.1.0)") y muestra contenido propio del punto de venta (sucursal,
+  usuario en turno, estado de conexión). `jvm-tests` del ViewModel +
+  verificación visual en el Xiaomi. `needs-device`.
+- [ ] Tema propio de la Activity (paleta "Recibo" de `CLAUDE.md` §3) y
+  pantalla de arranque con `core-splashscreen` (librería nueva, señalar
+  según `CLAUDE.md` §9), sin el destello claro del tema de plataforma en el
+  arranque en frío con modo oscuro. `needs-device`.
 
 ### Decisiones abiertas
 
@@ -1013,6 +476,16 @@ desde fuera de la LAN.
   firma de la app a Google, o se mantiene la clave localmente?
 - [ ] **URL base**: ¿siempre configurable por el usuario en Configuración, o
   valor productivo por defecto con override oculto para soporte?
+- [ ] **Expiración de la sesión en modo LOCAL** (M-5 de `docs/review_code.md`,
+  reproducido: la app abrió con la sesión de `admin` de 17 días antes): ¿la
+  sesión persistida expira por inactividad, al cerrar turno/corte final, o
+  se mantiene como hoy? Si entra al release, se agregan sus ítems a esta
+  Parte.
+- [ ] **Venta por fracción/peso e IVA en el ticket** (M-8 de
+  `docs/review_code.md`): hoy `cantidad` es entera en el carrito y
+  `descuento`/`impuestos` están fijos en cero. ¿Lo necesita el primer
+  release a comercios reales, o se declara la limitación en la ficha de la
+  app y se planifica después?
 
 ---
 
@@ -1088,7 +561,8 @@ desde fuera de la LAN.
   absorbió en la Parte 21 porque sin auth no tiene sentido); los tipo B van
   juntos en la Parte 29, salvo B-2 (Parte 26) y B-3 (Parte 22) por afinidad
   temática. `docs/review_code.md` queda como documento fuente; ninguna Parte
-  nueva se implementó en esa sesión.
+  nueva se implementó en esa sesión. (Ese documento se archivó el 2026-09-28
+  como `docs/review_code_2026-09-28_1816.md`.)
 - **2026-09-07** (Parte 29, B-9): las Partes 1-28 (todas mergeadas) se
   movieron a `docs/PLAN-historico.md` con sus checklists finales y decisiones
   resueltas; `docs/PLAN.md` quedó solo con lo activo (Parte 29, Parte 30,
@@ -1116,3 +590,21 @@ desde fuera de la LAN.
   como archivo sin trackear durante ese cierre, excluido del commit por
   estar stale. La Parte 33 anterior (primer release productivo) pasó a Parte
   34, al final del listado.
+- **2026-10-02**: se incorporaron los hallazgos de la revisión pre-release
+  `docs/review_code.md` (2026-09-28/29: lectura estática + reproducción
+  contra el backend dockerizado y en el Xiaomi) como Partes 34-38, agrupados
+  por tema a decisión del usuario: 34 convergencia del inventario en el sync
+  (A-1, A-2, M-3), 35 sucursal estable y rechazos visibles (A-8, A-6, M-5
+  2º punto), 36 seguridad pre-release (A-3, A-4, A-5, M-4, M-6, M-10),
+  37 integridad de datos del backend (M-1, M-2, B-1, B-2), 38 calidad y
+  deuda menor (M-7, B-3..B-6, B-8, B-11..B-13). La Parte 34 anterior
+  (primer release productivo, sin claves de Jira) pasó a Parte 39, al final
+  del listado, ampliada con A-7, M-9, B-9 y B-10, y con las decisiones de
+  producto M-5 (1er punto, expiración de sesión) y M-8 (venta por fracción,
+  IVA) como Decisiones abiertas. B-7 (documentación desactualizada) se
+  corrigió en la misma sesión, fuera de cualquier Parte. Las Partes 29-33,
+  ya cerradas, se archivaron en `docs/PLAN-historico.md` (el ítem B-7 de la
+  Parte 29, R8, quedó absorbido por la Parte 39). La Parte 34 se agrega a la
+  lista de delegación a subagentes feature-dev de `CLAUDE.md` §11 y
+  `.claude/commands/parte.md`. Ninguna Parte nueva se implementó en esa
+  sesión.

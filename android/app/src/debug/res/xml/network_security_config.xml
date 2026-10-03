@@ -4,7 +4,7 @@
   host para poder apuntar el modo REMOTO a la IP LAN de la PC de desarrollo
   (DHCP variable, no se puede listar como rango en <domain>) sobre Wi-Fi, sin
   el tunel `adb reverse` por USB. El endurecimiento de cleartext para release
-  vive en la Parte 32: el build de release no incluye este archivo y Android
+  vive en la Parte 39: el build de release no incluye este archivo y Android
   9+ bloquea el trafico en claro por defecto.
 -->
 <network-security-config>
