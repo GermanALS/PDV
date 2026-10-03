@@ -1153,6 +1153,7 @@ PDV/
 │                   (este archivo) + derivados .html/.pdf
 ├── .claude/commands/  Comandos slash del proyecto (/parte, /docs-sync, /jira-sync)
 ├── .claude/agents/    Subagentes (doc-maintainer)
+├── .claude/hooks/     docs_guard.py (PreToolUse, registrado en .claude/settings.json)
 ├── .github/workflows/ android-ci.yml, backend-ci.yml
 ├── docker-compose.yml + docker-compose.prod.yml.example
 └── CLAUDE.md       Contexto de proyecto (raíz del monorepo)
@@ -1245,6 +1246,14 @@ para `cantidadNum`; la Parte 32 no agregó columnas nuevas).
   `build_manual.py --check`) verifica, sin generar nada, que el sha256 del
   Markdown coincida con el embebido en el HTML y en los metadatos del PDF. Se
   corre al cerrar una Parte, antes de `/jira-sync`.
+- Hook `PreToolUse` (`.claude/hooks/docs_guard.py`, registrado en
+  `.claude/settings.json` con matcher `Bash|Edit|Write|MultiEdit`): (1) bloquea
+  `Edit`/`Write`/`MultiEdit` sobre los derivados `docs/manual-tecnico.html`/
+  `.pdf` — deben regenerarse con `build_manual.py`, nunca editarse a mano; (2)
+  bloquea `git push` hacia `main`/`master` si el manual quedó desactualizado:
+  hay archivos cambiados fuera de `docs/` desde el commit registrado en la
+  línea `docs-sync:` de `docs/ALCANCE-DOCS.md`, o `build_manual.py --check`
+  falla. `exit 2` con el motivo en `stderr`, visible para Claude.
 - `/jira-sync <sección>` — sincroniza una sección de `PLAN.md` hacia Jira
   (proyecto `POS`) como épica + historias, unidireccional, con confirmación
   humana. `PLAN.md` es la única fuente de verdad del alcance. Antes de
