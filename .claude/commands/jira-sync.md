@@ -1,7 +1,7 @@
 ---
 description: Sincroniza una sección de docs/PLAN.md hacia Jira como épica + stories, con confirmación humana obligatoria y escritura de claves de vuelta al plan.
 argument-hint: "<sección de PLAN.md> | status | verify"
-allowed-tools: Read, Edit, Grep, Glob, Bash(git log:*), Bash(git rev-parse:*)
+allowed-tools: Read, Edit, Grep, Glob, Bash(git log:*), Bash(git rev-parse:*), Bash(git diff:*), Bash(git status:*)
 ---
 
 # /jira-sync
@@ -55,6 +55,12 @@ detente y pregunta en vez de resolverlo por tu cuenta.
    - Si no hay ninguna herramienta de Jira disponible, detente e informa al
      usuario que el MCP no está conectado en esta sesión. No intentes
      alternativas (curl, API REST directa, etc.).
+2b. **Frescura del manual** (solo Modo A):
+     Lee el commit de la línea `docs-sync:` en `docs/ALCANCE-DOCS.md` y ejecuta
+     `git diff --name-only <commit> HEAD -- . ":!docs"`.
+     Si hay cambios, o la `parte` registrada no coincide con la sección
+     solicitada, detente y sugiere correr `/docs-sync <sección>` primero.
+     El usuario puede decidir continuar igualmente.
 3. Determina el modo según el argumento recibido:
    - `status` → ve a **Modo B**
    - `verify` → ve a **Modo C**

@@ -1298,11 +1298,16 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   | cualquier `GET` (fuera de `/health`) | ninguno — solo token válido |
   | `/auth/*`, `/health` | ninguno (rutas exentas del header) |
 
-- **Modo LOCAL / LOCAL_CON_SINCRONIZACION**: no cambia. No hay backend que
-  valide; el enforcement solo aplica a las llamadas HTTP que el cliente
-  hace en modo REMOTO. Cuando se implemente el push diferido de
-  LOCAL_CON_SINCRONIZACION (PLAN.md Parte 32), adjuntará el mismo header
-  `Authorization: Bearer`.
+- **Modo LOCAL**: no hay llamadas al backend, así que el enforcement no
+  aplica.
+- **Modo LOCAL_CON_SINCRONIZACION**: el push/pull diferido (PLAN.md
+  Parte 32, implementado) adjunta el mismo header `Authorization: Bearer`.
+  El token sale del login: se valida contra la base local y, si el backend
+  es alcanzable, también contra `POST /auth/login` para obtener el JWT;
+  la sesión con el JWT cifrado se persiste en el dispositivo
+  (`SessionStore`) para que el worker sincronice tras un reinicio. Sin JWT
+  (login solo local), las llamadas reciben `401` y el sync se detiene sin
+  cerrar la sesión local.
 
 ## 13. Pendiente de definir
 
@@ -1324,9 +1329,13 @@ este contrato, sino prerequisitos pendientes):
 Genuinamente abierto (no depende de trabajo previo):
 
 - [ ] Estrategia de refresh token (¿se agrega `refresh_token` en login, y
-  con qué expiración?). **Diferido** (PLAN.md Parte 21, Decisión abierta):
-  mientras el cliente no persista la sesión, el JWT de 24 h + re-login al
-  recibir `401` alcanza. Retomar cuando exista persistencia de sesión.
+  con qué expiración?). **Diferido** (PLAN.md Parte 21, Decisión abierta;
+  ratificado en la Parte 32, decisión D3): la sesión ya se persiste en el
+  dispositivo desde la Parte 32 (`SessionStore`, JWT cifrado), pero se
+  mantiene el JWT de 24 h + re-login al recibir `401`; un dispositivo
+  offline más de 24 h no sincroniza hasta el próximo login interactivo.
+  Ligado al hallazgo M-5 de `docs/review_code.md` (Parte 35 de
+  `docs/PLAN.md`: que el `401` del worker no cierre la sesión del cajero).
 - [ ] ¿Los logs de la app (PLAN.md Parte 5, archivos `.txt` locales al
   dispositivo) alguna vez viajan por API, o son puramente locales? Si son
   puramente locales, no requieren entrada en este contrato.

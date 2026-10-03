@@ -1,3 +1,10 @@
+<!--
+manual-meta
+titulo: Manual técnico — PDV (Punto de Venta)
+lead: Descripción funcional, arquitectura, requerimientos de instalación, diagramas UML y de base de datos, y guías de diagnóstico, mantenimiento y evolución.
+actualizado: 2026-10-02
+chips: Partes 1-33 mergeadas | Partes 34-39 pendientes | Backend 170 tests | Android 437 tests | Alembic 0001-0013 | Room v8
+-->
 # Manual técnico — PDV (Punto de Venta)
 
 Documento de referencia para el equipo de *application management*: descripción
@@ -5,19 +12,25 @@ funcional, arquitectura, requerimientos de instalación, diagramas UML y de base
 de datos, y guías de diagnóstico, mantenimiento y evolución.
 
 - **Código de proyecto**: `POS` (Jira) / `PDV` (repo).
-- **Estado a la fecha de este manual (2026-09-11)**: Partes 1-32 de
-  `docs/PLAN.md` implementadas y mergeadas, incluyendo el motor de
-  sincronización diferida (Parte 32). Partes 33 (este manual) y 34 (primer
-  release productivo) pendientes. App corriendo en dispositivo físico contra
-  backend dockerizado en LAN.
+- **Estado a la fecha de este manual (2026-10-02)**: Partes 1-33
+  implementadas y mergeadas (archivadas en `docs/PLAN-historico.md`),
+  incluyendo el motor de sincronización diferida (Parte 32) y este propio
+  manual (Parte 33). Partes 34-39 (convergencia del inventario, sucursal
+  estable, seguridad pre-release, integridad del backend, calidad menor y
+  primer release productivo) pendientes, sin claves de Jira todavía; salen de
+  la revisión pre-release de `docs/review_code.md`. App corriendo en
+  dispositivo físico contra backend dockerizado en LAN.
 - **Fuentes de verdad vivas** (este manual las resume, no las reemplaza):
   - `CLAUDE.md` — arquitectura estable, convenciones, comandos.
   - `docs/api-contract.md` — contrato de endpoints REST.
   - `docs/schema-pos.json` — esquema de datos compartido (Room + Alembic).
-  - `docs/PLAN.md` — trabajo en curso (Partes 33-34 + Backlog).
-  - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-28.
-  - `docs/review_code.md` — revisión de código del 2026-08-30 (origen de las
-    Partes 21-30).
+  - `docs/PLAN.md` — trabajo pendiente (Partes 34-39 + Backlog).
+  - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33.
+  - `docs/review_code.md` — revisión pre-release del 2026-09-28/29 (origen de
+    las Partes 34-39). La revisión anterior (2026-08-30, origen de las Partes
+    21-30) se archivó como `docs/review_code_2026-09-28_1816.md`.
+  - `docs/ALCANCE-DOCS.md` — manifiesto de alcance de este manual y de sus
+    derivados HTML/PDF, mantenidos con `/docs-sync` ([§10.7](#107-comandos-slash-del-proyecto)).
 
 ---
 
@@ -340,7 +353,9 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
 - **Estado actual**: motor, orquestación y resolución de conflictos existen,
   están probados (`jvm-tests` con fakes, sin Robolectric) y **verificados de
   punta a punta en el Xiaomi** (push, pull cross-terminal y cambio de modo
-  con confirmación de pendientes). Follow-ups conocidos en
+  con confirmación de pendientes). La revisión pre-release encontró que el
+  inventario no converge entre terminales de una misma sucursal (Parte 34,
+  pendiente) y otros fallos silenciosos (Parte 35, pendiente); ver
   [§11.3](#113-seguimiento-del-motor-de-sync-parte-32).
 
 ---
@@ -892,9 +907,9 @@ los APK ya compilados.
 **Tamaño de los artefactos actuales** (build sin R8, sin ofuscación, sin App
 Bundle ni ABI splits):
 
-- APK debug: **41,6 MB**. APK release sin firmar: **36,2 MB**.
+- APK debug: **41,6 MB**. APK release sin firmar: **36,2 MB** (`docs/PLAN.md` Parte 39 registra 36,5 MB en la medición del 2026-09-29).
 - DEX (multidex, 17 archivos): ~45 MB sin comprimir en debug — grande porque
-  `isMinifyEnabled = false` (se reduce en la Parte 34).
+  `isMinifyEnabled = false` (se reduce en la Parte 39).
 - Nativas de ML Kit barcode (`libbarhopper_v3.so`): ~4,8 MB para la ABI
   `arm64-v8a` + ~0,9 MB de modelos `.tflite` empaquetados (sin descarga en
   runtime).
@@ -908,7 +923,7 @@ Bundle ni ABI splits):
 | Logs (`AppLogger`) | Pocos MB típico; decenas de MB con logging intenso | Archivos `app-log-*.txt` de 5 MB máx.; se purgan los de más de 30 días. No hay tope de tamaño total, solo retención temporal. |
 | Tickets PDF y exportaciones CSV/Excel | Pequeño (ticket pocos KB; export escala con el catálogo) | Van a `cacheDir/exports/`. Son cache: el SO puede evictarlos bajo presión de almacenamiento; la app no los borra por su cuenta. |
 
-La Parte 34 (`isMinifyEnabled` + `isShrinkResources` + AAB / ABI splits)
+La Parte 39 (`isMinifyEnabled` + `isShrinkResources` + AAB / ABI splits)
 reduciría de forma notable el tamaño de descarga e instalación.
 
 ### 5.4 Conectividad dispositivo físico -> backend
@@ -937,7 +952,7 @@ El túnel **no persiste** entre reconexiones de cable, reinicios ni
 
 **Cleartext HTTP**: habilitado solo en el build de **debug**
 (`app/src/debug/res/xml/network_security_config.xml`, `base-config`). El build
-de release bloquea cleartext por defecto (endurecimiento formal: Parte 34).
+de release bloquea cleartext por defecto (endurecimiento formal: Parte 39).
 
 ### 5.5 Asistente de IA (opcional)
 
@@ -956,7 +971,7 @@ de release bloquea cleartext por defecto (endurecimiento formal: Parte 34).
   credenciales reales de Postgres, y levantar con
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
 - El destino de despliegue productivo (Render / Fly.io / VPS / AWS) está
-  **sin decidir** (`CLAUDE.md` §7 `[TODO]`; se resuelve en la Parte 34).
+  **sin decidir** (`CLAUDE.md` §7 `[TODO]`; se resuelve en la Parte 39).
 
 ---
 
@@ -1011,7 +1026,7 @@ deja pasar la request con el `BASE_URL` por defecto
 | Aspecto | Implementación |
 |---|---|
 | **Contraseñas** | bcrypt cost 12 en ambos lados. El hash se calcula **siempre en el dispositivo Android** que recibe el texto plano; el endpoint de usuarios recibe `password_hash` ya calculado y nunca devuelve el hash. |
-| **Tokens** | JWT `HS256`, `sub` = `usuario.id`, expiración 24 h, firmado con `JWT_SECRET_KEY`. Sin `refresh_token` (diferido: la sesión no se persiste, se re-loguea en cada arranque). |
+| **Tokens** | JWT `HS256`, `sub` = `usuario.id`, expiración 24 h, firmado con `JWT_SECRET_KEY`. Sin `refresh_token` (diferido, ratificado en la Parte 32: se mantiene el JWT de 24 h + re-login al recibir 401, aunque `SessionStore` persista la sesión para el worker de sync). |
 | **Enforcement backend** | `Depends(usuario_actual)` en el router `protected`: valida firma/expiración y que el `sub` corresponda a un usuario existente, activo y no borrado. `401 {"detail": "token invalido o expirado"}` genérico. `health` y `auth` exentos. |
 | **Autorización por módulo** | `verificar_modulo` gatea **solo escrituras** (`POST`/`PATCH`/`DELETE`) según `(método, ruta)` -> módulo requerido (mapa en `app/permissions.py`). Los `GET` solo exigen token válido. `403 {"detail": "el rol no tiene permiso para el modulo: X"}`. |
 | **Reacción del cliente a 401** | `AuthInterceptor` cierra la sesión y vuelve a `LoginScreen` **solo si** la request llevaba token (`token != null`) y no era `/auth/login`. Un 401 a una request sin token (esperado en LOCAL / LOCAL_CON_SINCRONIZACION contra un backend con enforcement) lo maneja el repositorio que llamó. |
@@ -1022,10 +1037,15 @@ deja pasar la request con el `BASE_URL` por defecto
 | **Contenedor** | Corre como usuario no privilegiado `app` (`adduser --system` + `USER app` en el `Dockerfile`). |
 | **Logging de auditoría** | `AppLogger` (dispositivo): categoría `AUTH` para logins y rechazos de permiso de la IA; `SYNC_CONFLICT` para conflictos. Archivos `.txt` locales, nunca viajan por API. Backend: logging operativo a stdout/stderr, nivel `ERROR` en el handler global. |
 
-**Pendientes de seguridad para producción (Parte 34):** APK firmado (hoy
+**Pendientes de seguridad para producción (Partes 36 y 39):** APK firmado (hoy
 `assembleRelease` produce un APK sin firmar), `JWT_SECRET_KEY` fuerte en el
 entorno desplegado, backend por HTTPS, cleartext deshabilitado en release,
-R8/ofuscación (B-7, diferido).
+R8/ofuscación (B-7, diferido). La Parte 36 (`docs/PLAN.md`, hallazgos de
+`docs/review_code.md`) cubre además el endurecimiento previo al release:
+cambio forzado de la contraseña `admin/admin123` de arranque, arranque del
+backend sin `JWT_SECRET_KEY` por defecto, límite de intentos de login,
+`/docs` deshabilitado en producción y `allowBackup`/respaldo de claves de
+Keystore. Todo pendiente, nada implementado.
 
 ---
 
@@ -1073,7 +1093,7 @@ para guiar el proceso.
 |---|---|
 | Backend vivo | `curl http://<host>:8000/api/v1/health` -> `{"status":"ok","version":"0.1.0"}`. |
 | Contenedores | `docker compose ps` (backend `healthy`, `migrate` `exited 0`). |
-| Migraciones aplicadas | `docker compose exec backend alembic current` (debe coincidir con el head del repo, hoy `0012`). |
+| Migraciones aplicadas | `docker compose exec backend alembic current` (debe coincidir con el head del repo, hoy `0013`). |
 | Prueba de conexión desde la app | Panel de conexión -> "Probar conexión" (`BackendHealthChecker`, OkHttp propio sin interceptores, contra la URL tecleada). |
 
 ### 9.2 Logs del backend
@@ -1136,11 +1156,16 @@ python -c "import sqlite3;c=sqlite3.connect('pdv.db');print(c.execute('select na
 PDV/
 ├── android/        App Android nativa (Kotlin)         -> build system Gradle
 ├── backend/        API FastAPI (Python)                -> build system uv + Docker
-├── scripts/        Arranque/detención del backend, tuneling APK
+├── scripts/        Arranque/detención del backend, tuneling APK;
+│                   scripts/docs/ (build_manual.py + manual-template.html)
 ├── docs/           PLAN.md, PLAN-historico.md, api-contract.md,
-│                   schema-pos.json, review_code.md, inventario-inicial.csv,
-│                   manual-tecnico.md (este archivo)
-├── .claude/commands/  Comandos slash del proyecto (/parte, /jira-sync)
+│                   schema-pos.json, review_code.md (+ la revisión anterior
+│                   review_code_2026-09-28_1816.md), inventario-inicial.csv,
+│                   ALCANCE-DOCS.md (alcance del manual), manual-tecnico.md
+│                   (este archivo) + derivados .html/.pdf
+├── .claude/commands/  Comandos slash del proyecto (/parte, /docs-sync, /jira-sync)
+├── .claude/agents/    Subagentes (doc-maintainer)
+├── .claude/hooks/     docs_guard.py (PreToolUse, registrado en .claude/settings.json)
 ├── .github/workflows/ android-ci.yml, backend-ci.yml
 ├── docker-compose.yml + docker-compose.prod.yml.example
 └── CLAUDE.md       Contexto de proyecto (raíz del monorepo)
@@ -1157,14 +1182,14 @@ sincronizados vía `docs/api-contract.md`.
   `uv run alembic upgrade head`, `uv run alembic check`, `uv run pytest`.
 - **`.github/workflows/android-ci.yml`** (trigger en `android/**`).
 - **No hay CI/CD de despliegue** todavía (pendiente; Parte 26 del historial /
-  Parte 34).
+  Parte 39).
 
 ### 10.3 Pruebas
 
 | Lado | Comando | Estado de referencia |
 |---|---|---|
-| Backend | `uv run pytest` | 16 archivos de test, **170 passed** (verificado 2026-09-11). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
-| Android | `./gradlew testDebugUnitTest` | ~76 clases de test; última corrida registrada (cierre de la Parte 32, 2026-09-11): **437 / 0 fallos / 0 errores**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
+| Backend | `uv run pytest` | 15 archivos `test_*.py` más `conftest.py`, **170 passed** (verificado 2026-09-28, `docs/review_code.md` §5). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
+| Android | `./gradlew testDebugUnitTest` | 90 clases de test; última corrida registrada (cierre de la Parte 32, 2026-09-11; reconfirmada como `UP-TO-DATE` en `docs/review_code.md` §5, 2026-09-28): **437 / 0 fallos / 0 errores**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
 
 Ningún PR/feature se considera terminado sin tests unitarios en el lado
 modificado (`CLAUDE.md` §6). "Compilar" no es evidencia suficiente para cerrar
@@ -1223,9 +1248,30 @@ para `cantidadNum`; la Parte 32 no agregó columnas nuevas).
 
 - `/parte <n>` — carga la Parte `n` de `docs/PLAN.md` y las secciones que
   referencia; algunas Partes delegan en subagentes del plugin `feature-dev`.
+- `/docs-sync <Parte n> | check` — mantiene este manual (`docs/manual-tecnico.md`)
+  alineado con el código, recorriendo siempre el alcance completo de
+  `docs/ALCANCE-DOCS.md` (nunca parcial). Delega la revisión en el subagente
+  `doc-maintainer` (único que lee y edita el Markdown); tras la confirmación
+  explícita del usuario, genera los derivados `docs/manual-tecnico.html` y
+  `.pdf` con `uv run scripts/docs/build_manual.py` y registra el commit/Parte/
+  fecha en la línea `docs-sync:` de `docs/ALCANCE-DOCS.md`. `--check` (o
+  `build_manual.py --check`) verifica, sin generar nada, que el sha256 del
+  Markdown coincida con el embebido en el HTML y en los metadatos del PDF. Se
+  corre al cerrar una Parte, antes de `/jira-sync`.
+- Hook `PreToolUse` (`.claude/hooks/docs_guard.py`, registrado en
+  `.claude/settings.json` con matcher `Bash|Edit|Write|MultiEdit`): (1) bloquea
+  `Edit`/`Write`/`MultiEdit` sobre los derivados `docs/manual-tecnico.html`/
+  `.pdf` — deben regenerarse con `build_manual.py`, nunca editarse a mano; (2)
+  bloquea `git push` hacia `main`/`master` si el manual quedó desactualizado:
+  hay archivos cambiados fuera de `docs/` desde el commit registrado en la
+  línea `docs-sync:` de `docs/ALCANCE-DOCS.md`, o `build_manual.py --check`
+  falla. `exit 2` con el motivo en `stderr`, visible para Claude.
 - `/jira-sync <sección>` — sincroniza una sección de `PLAN.md` hacia Jira
   (proyecto `POS`) como épica + historias, unidireccional, con confirmación
-  humana. `PLAN.md` es la única fuente de verdad del alcance.
+  humana. `PLAN.md` es la única fuente de verdad del alcance. Antes de
+  sincronizar, revisa la frescura del manual contra la línea `docs-sync:` de
+  `docs/ALCANCE-DOCS.md` y sugiere correr `/docs-sync` primero si hay deriva
+  (el usuario puede optar por continuar igual).
 
 ---
 
@@ -1233,23 +1279,56 @@ para `cantidadNum`; la Parte 32 no agregó columnas nuevas).
 
 ### 11.1 Estado del plan (`docs/PLAN.md`)
 
-Las únicas Partes activas hoy son la **33** y la **34** (todo lo anterior,
-1-32, está implementado y mergeado). El checklist completo de cada una —
-criterios de cierre, etiquetas de verificación y decisiones abiertas — vive en
-`docs/PLAN.md`; esta sección solo resume el alcance, no lo duplica.
+Las Partes 1-33 están implementadas y mergeadas (su detalle se archivó en
+`docs/PLAN-historico.md`); `docs/PLAN.md` conserva solo las Partes pendientes
+34-39, que salen de la revisión pre-release del 2026-09-28/29
+(`docs/review_code.md`, hallazgos A-n / M-n / B-n con reproducción). Ninguna
+tiene todavía claves de Jira. El checklist completo — criterios de cierre,
+etiquetas de verificación y decisiones abiertas — vive en `docs/PLAN.md`; esta
+sección solo resume el alcance, no lo duplica.
 
-- **Parte 33 — actualización del manual técnico** (este documento, en curso):
-  corregir la numeración de Partes, reflejar el motor de sincronización
-  diferida de la Parte 32, agregar esta sección de estado del plan, y revisar
-  el resto del manual contra el estado real del repo.
-- **Parte 34 — primer release productivo** (pendiente): firma de release,
-  despliegue del backend productivo, URL base productiva en la app,
-  endurecimiento del build de release (R8/shrinking), y preparación +
-  distribución del primer artefacto. Detalle en §11.2 (abajo).
+- **Parte 33 — actualización del manual técnico** (cerrada, PR #42, merge
+  `1ccfc5e`): corrigió la numeración de Partes, incorporó el motor de
+  sincronización diferida de la Parte 32, agregó esta sección de estado del
+  plan y revisó el resto del manual contra el estado real del repo. Se
+  decidió (2026-09-11) que su mantenimiento fuera puntual, sin agregar un
+  proceso recurrente a `CLAUDE.md`/`/parte`; la infraestructura de
+  `/docs-sync` (comando + subagente `doc-maintainer` +
+  `scripts/docs/build_manual.py`, [§10.7](#107-comandos-slash-del-proyecto))
+  se agregó después, fuera de la numeración de Partes.
+- **Parte 34 — convergencia del inventario en el sync** (pendiente;
+  hallazgos A-1, A-2, M-3; delegada a `feature-dev`): ajuste de stock por delta
+  idempotente por `local_id`, `inventario.updated_at` actualizado en cada
+  movimiento, filas de inventario que dejan de quedar "sucias" tras subir una
+  venta/entrada, cursor del pull por `(entidad, sucursal)` con ventana de
+  solape y reconciliación de dispositivos ya divergentes.
+- **Parte 35 — sucursal estable y rechazos visibles del sync** (pendiente;
+  A-8, A-6, M-5): la sucursal seleccionada no cambia sola al pasar a
+  `LOCAL_CON_SINCRONIZACION`; las filas rechazadas con 4xx quedan en un estado
+  propio, registradas en `sync_conflicts` y contadas en Configuración; un 401
+  del `SyncWorker` no cierra la sesión interactiva.
+- **Parte 36 — endurecimiento de seguridad pre-release** (pendiente; A-3,
+  A-4, A-5, M-4, M-6, M-10): credenciales de arranque, `JWT_SECRET_KEY`
+  obligatoria, límite de intentos y `/docs` en producción, borrado de roles,
+  `allowBackup` y limpieza de claves obsoletas del DataStore.
+- **Parte 37 — integridad de datos del backend** (pendiente; M-1, M-2, B-1,
+  B-2): `usuario_id` derivado del JWT, validación de montos y fechas, primer
+  insert concurrente de inventario sin `500`, devoluciones sin N+1.
+- **Parte 38 — calidad y deuda menor pre-release** (pendiente; M-7, B-3 a
+  B-6, B-8, B-11 a B-13): test `MigrationTestHelper` de `MIGRATION_7_8`,
+  `AppLogger`, advertencias de lint, textos cortados en el Xiaomi y
+  `path_separator` de Alembic.
+- **Parte 39 — primer release productivo** (pendiente; era la Parte 34 y se
+  renumeró el 2026-10-02): firma de release, despliegue del backend
+  productivo, URL base productiva en la app, endurecimiento del build
+  (R8/shrinking), preparación y distribución, y pantalla principal/tema
+  propios. Detalle en §11.2 (abajo).
 
-### 11.2 Detalle — Parte 34: primer release productivo (pendiente)
+### 11.2 Detalle — Parte 39: primer release productivo (pendiente)
 
-Origen: análisis "qué falta para el primer release productivo" (`docs/PLAN.md`). Grupos:
+Origen: análisis "qué falta para el primer release productivo" del 2026-09-08,
+ampliado con los hallazgos A-7, M-9, B-9 y B-10 de `docs/review_code.md`
+(`docs/PLAN.md`). Grupos:
 
 1. **Firma de release**: `signingConfigs.release` leyendo un
    `keystore.properties` gitignoreado; keystore generado con `keytool` y
@@ -1257,30 +1336,51 @@ Origen: análisis "qué falta para el primer release productivo" (`docs/PLAN.md`
 2. **Despliegue del backend productivo**: destino por decidir
    (Render / Fly.io / VPS / AWS), `docker-compose.prod.yml` real
    (`JWT_SECRET_KEY` fuerte, Postgres propio, sin publicar `5432`), TLS válido,
-   migraciones aplicadas.
+   migraciones aplicadas; proceso de producción (workers, proxy TLS) y
+   respaldo automático de Postgres con restauración probada (M-9).
 3. **URL base productiva en la app**: configurable o horneada; login + sync
    contra `https://<dominio>` sin `adb reverse`.
 4. **Endurecimiento del build de release (B-7)**: `isMinifyEnabled = true` +
    `isShrinkResources = true` + reglas keep para Room, Hilt,
-   kotlinx-serialization, Retrofit, ML Kit. **Diferido** hasta que haya
-   distribución real (decisión 2026-09-07).
+   kotlinx-serialization, Retrofit, ML Kit. Hoy `isMinifyEnabled = false`
+   (`android/app/build.gradle.kts`).
 5. **Cleartext HTTP deshabilitado en release**; allowlist explícito solo si se
    mantienen pruebas locales.
-6. **Preparación y distribución**: subir `versionCode`/`versionName`,
-   `outputFileName` para el variant release, `testReleaseUnitTest` en verde;
-   canal (Play Console AAB vs. sideload de APK firmado); flujo de permiso
-   `CAMERA` en runtime probado con el build de release.
+6. **Preparación del release**: subir `versionCode`/`versionName`,
+   `outputFileName` para el variant release, `testReleaseUnitTest` en verde,
+   `assembleRelease` en el CI (B-9) y decidir si los derivados HTML/PDF del
+   manual se versionan (B-10; hoy están versionados desde el commit
+   `4ff12bb`).
+7. **Distribución**: canal (Play Console AAB vs. sideload de APK firmado),
+   flujo de permiso `CAMERA` en runtime con el build de release, y política
+   de privacidad / Data Safety / consentimiento al activar la IA (A-7).
+8. **Pantalla principal y tema (A-7)**: reemplazar el texto de prueba de la
+   Parte 1, tema propio de la Activity y `core-splashscreen`.
 
 Decisiones abiertas: canal de distribución, destino de despliegue del backend,
-Play App Signing, política de URL base.
+Play App Signing, política de URL base, expiración de la sesión en modo LOCAL
+(M-5) y venta por fracción/peso e IVA en el ticket (M-8).
 
 ### 11.3 Seguimiento del motor de sync (Parte 32)
 
 El hueco funcional que describía esta sección — `LOCAL_CON_SINCRONIZACION` sin
 push ni pull — **se cerró en la Parte 32** (push por entidad vía WorkManager,
 pull con `updated_since`, `SessionStore` cifrado; ver §2.4).
-Quedan follow-ups puntuales, sin bloquear el uso normal del modo:
+La revisión pre-release (`docs/review_code.md`) encontró, sin embargo, que el
+inventario no converge entre terminales de la misma sucursal y que el sync
+tiene fallos silenciosos; esos follow-ups son ahora las **Partes 34 y 35**
+(§11.1), todas pendientes:
 
+- **Inventario que no converge** (Parte 34, A-1/A-2/M-3): el backend no
+  actualiza `inventario.updated_at` en ventas/entradas, así que el pull no ve
+  esos cambios; en Android la fila de inventario queda con `isSynced = false`;
+  y `InventarioAjustePusher` manda la cantidad absoluta (el
+  `PATCH /inventario` la impone, pisando ventas de otras terminales).
+  Reproducido en el Xiaomi (12 vs 20, 42 vs 48). El cursor del pull se
+  comparte entre sucursales.
+- **Sucursal que cambia sola** (Parte 35, A-8) y **filas rechazadas por 4xx
+  que se descartan en silencio** (Parte 35, A-6, ver política de errores en
+  §2.4). Un 401 del `SyncWorker` hoy cierra la sesión interactiva (M-5).
 - **Pull limitado a `inventario` / `cortes-caja` / `retiros-efectivo`** (D3.3):
   `GET /ventas` y `GET /entradas` no tienen filtro `updated_since` todavía; el
   catálogo consolidado de `GET /inventario` cubre el caso de uso principal.
@@ -1304,8 +1404,10 @@ Quedan follow-ups puntuales, sin bloquear el uso normal del modo:
 
 ### 11.5 Diferidos explícitos
 
-- **`refresh_token`**: mientras el cliente no persista la sesión, el JWT de 24 h
-  + re-login al recibir 401 alcanza (`docs/api-contract.md` §13).
+- **`refresh_token`**: se mantiene el JWT de 24 h + re-login al recibir 401,
+  ratificado en la Parte 32 aunque la sesión ya se persista
+  (`docs/api-contract.md` §13); un dispositivo offline más de 24 h no
+  sincroniza hasta el próximo login interactivo.
 - **Política CORS**: revisar `allow_origins=["*"]` el día que exista un cliente
   web; los `500` del handler global no llevan headers CORS.
 - **Persistencia de sesión en el dispositivo**: hoy `SessionManager` es en

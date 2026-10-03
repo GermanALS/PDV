@@ -2,5 +2,19 @@
   "enabledPlugins": {
     "feature-dev@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --quiet \"$CLAUDE_PROJECT_DIR/.claude/hooks/docs_guard.py\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
   }
 }

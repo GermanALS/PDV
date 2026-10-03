@@ -2,3 +2,9 @@
 # (core.autocrlf=true) does not leave them spuriously "modified".
 uv.lock text eol=lf
 .python-version text eol=lf
+
+# Manual técnico: fuente y derivados con LF fijo; el PDF es binario.
+docs/manual-tecnico.md    text eol=lf
+docs/manual-tecnico.html  text eol=lf
+docs/ALCANCE-DOCS.md      text eol=lf
+docs/*.pdf                binary
