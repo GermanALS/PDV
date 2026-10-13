@@ -34,6 +34,7 @@ ESCRITURAS = [
     ("POST", "/api/v1/ventas", "venta"),
     ("POST", "/api/v1/entradas", "entrada"),
     ("PATCH", f"/api/v1/inventario/{uuid.uuid4()}", "inventario"),
+    ("POST", "/api/v1/ajustes-inventario", "inventario"),
     ("POST", "/api/v1/cortes-caja", "caja"),
     ("POST", "/api/v1/retiros-efectivo", "caja"),
     ("POST", "/api/v1/devoluciones", "devoluciones"),

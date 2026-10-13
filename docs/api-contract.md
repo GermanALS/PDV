@@ -1378,7 +1378,7 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   |---|---|
   | `POST /ventas` | `venta` |
   | `POST /entradas` | `entrada` |
-  | `PATCH /inventario/{articulo_id}` | `inventario` |
+  | `PATCH /inventario/{articulo_id}`, `POST /ajustes-inventario` | `inventario` |
   | `POST /cortes-caja`, `POST /retiros-efectivo` | `caja` |
   | `POST /devoluciones` | `devoluciones` |
   | `POST`/`PATCH`/`DELETE /usuarios` | `usuarios` |
