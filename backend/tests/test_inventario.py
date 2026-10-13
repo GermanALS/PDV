@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta
 
 
 async def _seeded_sucursal_id(client_autenticado) -> str:
@@ -159,6 +160,144 @@ async def test_list_inventario_incluye_updated_at_y_filtra_por_updated_since(cli
         "/api/v1/inventario", params={"sucursal_id": sucursal_id, "updated_since": "2000-01-01T00:00:00Z"}
     )
     assert any(item["articulo_id"] == articulo_id for item in pasado.json()["items"])
+
+
+async def test_venta_y_entrada_actualizan_updated_at_de_inventario(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-MOV", cantidad="10")
+
+    async def _updated_at() -> datetime:
+        response = await client_autenticado.get(
+            "/api/v1/inventario", params={"sucursal_id": sucursal_id, "q": "INV-MOV"}
+        )
+        return datetime.fromisoformat(response.json()["items"][0]["updated_at"])
+
+    antes_venta = await _updated_at()
+    await client_autenticado.post(
+        "/api/v1/ventas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "folio": "F-INV-MOV",
+            "fecha": "2026-08-19T12:00:00Z",
+            "subtotal": "40.00",
+            "total": "40.00",
+            "metodo_pago": "efectivo",
+            "lineas": [{"articulo_id": articulo_id, "cantidad": "2", "precio_unitario": "20.00", "subtotal": "40.00"}],
+        },
+    )
+    despues_venta = await _updated_at()
+    assert despues_venta > antes_venta
+
+    await client_autenticado.post(
+        "/api/v1/entradas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "fecha": "2026-08-19T12:00:00Z",
+            "cantidad": "5",
+            "articulo_id": articulo_id,
+        },
+    )
+    assert await _updated_at() > despues_venta
+
+    since = (despues_venta + timedelta(microseconds=1)).isoformat()
+    response = await client_autenticado.get(
+        "/api/v1/inventario", params={"sucursal_id": sucursal_id, "updated_since": since}
+    )
+    assert any(item["articulo_id"] == articulo_id for item in response.json()["items"])
+
+
+def _ajuste_delta_payload(sucursal_id: str, articulo_id: str, delta: str, local_id: str | None = None) -> dict:
+    return {
+        "local_id": local_id or str(uuid.uuid4()),
+        "sucursal_id": sucursal_id,
+        "articulo_id": articulo_id,
+        "usuario_id": "admin",
+        "fecha": "2026-08-19T12:00:00Z",
+        "delta": delta,
+    }
+
+
+async def test_ajuste_delta_no_borra_venta_de_otra_terminal(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-DELTA", cantidad="10")
+    await client_autenticado.post(
+        "/api/v1/ventas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "folio": "F-DELTA",
+            "fecha": "2026-08-19T12:00:00Z",
+            "subtotal": "60.00",
+            "total": "60.00",
+            "metodo_pago": "efectivo",
+            "lineas": [{"articulo_id": articulo_id, "cantidad": "3", "precio_unitario": "20.00", "subtotal": "60.00"}],
+        },
+    )
+
+    response = await client_autenticado.post(
+        "/api/v1/ajustes-inventario", json=_ajuste_delta_payload(sucursal_id, articulo_id, "5")
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["inventario"]["cantidad"] == "12.000"
+    assert body["movimiento"]["tipo"] == "ajuste"
+    assert body["movimiento"]["cantidad"] == "5.000"
+
+
+async def test_ajuste_delta_reintento_con_mismo_local_id_no_duplica(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-DELTA-2", cantidad="10")
+    payload = _ajuste_delta_payload(sucursal_id, articulo_id, "-4")
+
+    primero = await client_autenticado.post("/api/v1/ajustes-inventario", json=payload)
+    reintento = await client_autenticado.post("/api/v1/ajustes-inventario", json=payload)
+
+    assert primero.status_code == 201
+    assert reintento.status_code == 200
+    assert reintento.json()["inventario"]["cantidad"] == "6.000"
+    assert reintento.json()["movimiento"]["id"] == primero.json()["movimiento"]["id"]
+
+
+async def test_ajuste_delta_sin_inventario_previo_lo_crea(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    otra = await client_autenticado.post(
+        "/api/v1/sucursales", json={"local_id": str(uuid.uuid4()), "nombre": "Delta nueva", "direccion": "x"}
+    )
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-DELTA-3", cantidad="1")
+
+    response = await client_autenticado.post(
+        "/api/v1/ajustes-inventario", json=_ajuste_delta_payload(otra.json()["id"], articulo_id, "7")
+    )
+
+    assert response.status_code == 201
+    assert response.json()["inventario"]["cantidad"] == "7.000"
+
+
+async def test_ajuste_delta_cero_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-DELTA-4", cantidad="1")
+
+    response = await client_autenticado.post(
+        "/api/v1/ajustes-inventario", json=_ajuste_delta_payload(sucursal_id, articulo_id, "0")
+    )
+
+    assert response.status_code == 422
+
+
+async def test_ajuste_delta_articulo_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.post(
+        "/api/v1/ajustes-inventario", json=_ajuste_delta_payload(sucursal_id, str(uuid.uuid4()), "1")
+    )
+
+    assert response.status_code == 404
 
 
 async def test_list_inventario_updated_since_malformado_returns_422(client_autenticado):

@@ -9,15 +9,16 @@ Parte se estabiliza, su resumen final se migra a `CLAUDE.md`.
 **Estado del documento**: las Partes 1-33 están implementadas y mergeadas; su
 detalle (checklists cerrados, decisiones resueltas, criterios de verificación)
 se archivó en `docs/PLAN-historico.md` para mantener este archivo enfocado.
-Aquí quedan únicamente las Partes pendientes (34-39), el Backlog de trabajo
+Aquí quedan únicamente las Partes pendientes (34-40), el Backlog de trabajo
 futuro y el historial de decisiones estructurales.
 
 Origen de las Partes que salen de revisiones de código:
 - Partes 21-30: revisión del 2026-08-30, hoy archivada como
   `docs/review_code_2026-09-28_1816.md`.
-- Partes 34-39: revisión pre-release del 2026-09-28/29, `docs/review_code.md`
-  (hallazgos A-n / M-n / B-n de ese documento; sus identificadores no
-  coinciden con los de la revisión anterior).
+- Partes 34 y 36-39: revisión pre-release del 2026-09-28/29,
+  `docs/review_code.md` (hallazgos A-n / M-n / B-n de ese documento; sus
+  identificadores no coinciden con los de la revisión anterior). La Parte 40
+  es el primer release; la 35 salió de la ejecución de la 34 (2026-10-12).
 
 Cada Parte tiene su sección `### Checklist` con
 ítems verificables y criterios de éxito concretos (comando, archivo, o
@@ -31,7 +32,7 @@ convención de ramas/commits): ver `CLAUDE.md` sección 10.
 
 ---
 
-## Parte 34: Convergencia del inventario en el sync
+## Parte 34: Convergencia del inventario en el sync  <!-- POS-157 -->
 
 *(Sale de los hallazgos A-1, A-2 y M-3 de `docs/review_code.md` (revisión
 pre-release del 2026-09-28/29), los tres reproducidos. Con más de una
@@ -46,7 +47,8 @@ se comparte entre sucursales. En el Xiaomi ya había divergencias reales
 (12 vs 20, 42 vs 48). Toca contrato, backend y motor de sync: delegación
 `feature-dev` (`CLAUDE.md` §11).)*
 
-Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
+Claves de Jira: épica `POS-157`; historias `POS-158`..`POS-161` (asignadas
+por `/jira-sync` el 2026-10-12).
 
 Objetivo: que dos terminales de la misma sucursal en
 `LOCAL_CON_SINCRONIZACION` converjan al mismo stock tras un ciclo de sync,
@@ -54,61 +56,144 @@ sin perder ventas, ajustes ni entradas de ninguna de las dos.
 
 ### Checklist
 
-**1. Contrato del inventario incremental**
-- [ ] `docs/api-contract.md` §7: ajuste de stock por **delta** idempotente
+**1. Contrato del inventario incremental** (POS-158)
+- [x] `docs/api-contract.md` §7: ajuste de stock por **delta** idempotente
   por `local_id` (endpoint o campo según Decisiones abiertas), aplicado con
   bloqueo de fila; §7.1 documenta que `updated_at` cambia con **todo**
   movimiento de stock y que el cliente consulta con una ventana de solape.
   Contrato primero (skill `sync-api-contract`). `needs-approval`.
 
-**2. Backend**
-- [ ] A-1(a): `Inventario.updated_at` se actualiza en cada cambio de
+**2. Backend** (POS-159)
+- [x] A-1(a): `Inventario.updated_at` se actualiza en cada cambio de
   `cantidad` (`onupdate` o asignación en `ventas.py`/`entradas.py`).
   Criterio: test nuevo — crear inventario, registrar una venta, y
   `GET /inventario?updated_since=<antes de la venta>` devuelve la fila;
   `uv run pytest` en verde.
-- [ ] A-2: ajuste por delta con `with_for_update()` e idempotente por
+- [x] A-2: ajuste por delta con `with_for_update()` e idempotente por
   `local_id`. Criterio: test que reproduce el escenario de la revisión
   (stock 10, venta de 3 de la terminal B, ajuste +5 de la terminal A) y
   termina en 12; reintento con el mismo `local_id` no duplica.
   `uv run alembic check` sin drift si cambia el esquema (`schema-parity`).
 
-**3. Android: push y pull**
-- [ ] A-1(b): tras subir una venta/entrada, la fila de inventario afectada
+**3. Android: push y pull** (POS-160)
+- [x] A-1(b): tras subir una venta/entrada, la fila de inventario afectada
   deja de quedar "sucia" (marcada sincronizada o sobrescrita con la cantidad
   del backend); la regla "gana lo local" del `InventarioPuller` aplica solo
   si hay movimientos pendientes de ese `(sucursal, artículo)`. `jvm-tests`:
   venta local sincronizada + cambio remoto → la fila local toma el valor
   remoto.
-- [ ] A-2: `InventarioAjustePusher` envía la suma de los movimientos
+- [x] A-2: `InventarioAjustePusher` envía la suma de los movimientos
   `ajuste` pendientes como delta con su `local_id`. `jvm-tests`.
-- [ ] M-3: cursor de pull por `(entidad, sucursal)` y consulta con ventana
+- [x] M-3: cursor de pull por `(entidad, sucursal)` y consulta con ventana
   de solape. `jvm-tests`: cambio de sucursal no hereda el cursor; una fila
   con `updated_at` anterior al cursor pero dentro de la ventana se baja.
 
-**4. Reconciliación y verificación**
-- [ ] Reconciliación única de dispositivos que ya divergen (política en
+**4. Reconciliación y verificación** (POS-161)
+- [x] Reconciliación única de dispositivos que ya divergen (política en
   Decisiones abiertas), ejecutada al primer ciclo de sync tras actualizar.
   `jvm-tests`.
-- [ ] Verificación en el Xiaomi M2102J20SG con una segunda "terminal"
+- [x] Verificación en el Xiaomi M2102J20SG con una segunda "terminal"
   simulada contra el backend (curl), repitiendo las pruebas de A-1/A-2 de
   `review_code.md`: tras un ciclo, el stock del teléfono y el del backend
   coinciden y no se registran conflictos espurios. `needs-device`.
 
 ### Decisiones abiertas
 
-- [ ] ¿Ajuste por delta como endpoint nuevo (`POST /ajustes-inventario`) o
+- [x] ¿Ajuste por delta como endpoint nuevo (`POST /ajustes-inventario`) o
   como campos `delta` + `local_id` en el `PATCH /inventario/{id}` actual?
   El PATCH absoluto puede quedarse para el modo REMOTO interactivo.
-- [ ] Política de reconciliación de dispositivos ya divergentes: ¿gana el
+  **Resuelta (2026-10-12)**: endpoint nuevo, un request por movimiento
+  `ajuste`, idempotente por `movimientos.local_id` (UNIQUE ya existente).
+- [x] Política de reconciliación de dispositivos ya divergentes: ¿gana el
   backend en las filas sin movimientos pendientes, o se registra cada
   diferencia en `sync_conflicts` para que el admin decida?
-- [ ] Tamaño de la ventana de solape del cursor (propuesta: 2 minutos; el
+  **Resuelta (2026-10-12)**: híbrida; el backend gana en filas sin
+  pendientes, `remoto + efecto de pendientes` en las demás, y un único
+  registro resumen en `sync_conflicts`. Bandera por sucursal
+  (`inventario_reconciliado_v2`).
+- [x] Tamaño de la ventana de solape del cursor (propuesta: 2 minutos; el
   merge ya es idempotente), o secuencia monotónica asignada por el servidor.
+  **Resuelta (2026-10-12)**: ventana de 2 minutos en el cliente y cursor por
+  `(entidad, sucursal)`; la secuencia del servidor no se implementa.
 
 ---
 
-## Parte 35: Sucursal estable y rechazos visibles del sync
+## Parte 35: Convergencia de catálogo y ubicación en el sync
+
+*(Sale de un hallazgo del `code-reviewer` en el sub-paso 3 de la Parte 34
+(2026-10-12), confirmado leyendo el código; no está en `docs/review_code.md`.
+Hasta la Parte 34, el `PATCH /inventario/{id}` del ajuste llevaba junto con la
+cantidad los atributos de catálogo (nombre, precio, categoría, etc.) y la
+`ubicacion`. Al pasar el ajuste a delta (`POST /ajustes-inventario`, que solo
+suma stock), esos atributos dejaron de subirse; el `POST` tampoco transporta
+`ubicacion`. En sentido inverso, `InventarioPuller.mergeItem` solo actualiza
+la fila de `inventario`, nunca `articulos`: las ediciones de catálogo hechas
+en otra terminal no llegan. Además, una edición de `ubicacion` sin cambio de
+stock queda como fila local sucia sin movimiento, y el siguiente pull la pisa
+con el valor remoto. Toca contrato, backend y motor de sync: igual que la 34,
+delegación `feature-dev` (`CLAUDE.md` §11).)*
+
+Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
+
+Objetivo: que nombre, precio, categoría, unidad de medida y ubicación de un
+artículo, editados en una terminal, lleguen a las demás de la sucursal sin
+pisar el stock ni perderse en el siguiente pull.
+
+### Checklist
+
+**1. Contrato de edición de catálogo y ubicación**
+- [ ] `docs/api-contract.md` §7: operación que actualiza atributos de
+  catálogo y `ubicacion` sin tocar `cantidad`, con resolución
+  last-write-wins por `updated_at` (forma según Decisiones abiertas).
+  Contrato primero (skill `sync-api-contract`). `needs-approval`.
+
+**2. Backend**
+- [ ] La operación del contrato: actualiza `articulos` (y `ubicacion` de
+  `inventario`) con `updated_at` nuevo, sin movimiento ni cambio de
+  `cantidad`. Criterio: tests happy path + error (artículo inexistente);
+  una edición no altera el stock de una venta concurrente.
+  `uv run pytest` en verde; `uv run alembic check` sin drift si cambia el
+  esquema (`schema-parity`).
+
+**3. Android: push**
+- [ ] Una edición de catálogo o de `ubicacion` sin cambio de stock queda
+  registrada como pendiente de subir con una señal propia (no
+  `inventario.isSynced`, que toda escritura local deja en `false`); un
+  pusher la sube y la limpia. Si cambia el esquema de Room: migración +
+  `docs/schema-pos.json` alineados (`schema-parity`). `jvm-tests`.
+- [ ] El ajuste de stock con cambio de `ubicacion` también la sube (campo del
+  contrato o llamada de edición, según la decisión). `jvm-tests`.
+
+**4. Android: pull**
+- [ ] `InventarioPuller` mergea también los atributos de `articulos` y la
+  `ubicacion` del backend: sin edición local pendiente gana el remoto; con
+  una pendiente se conserva lo local. `jvm-tests`: catálogo editado en otra
+  terminal → el artículo local lo refleja; edición local pendiente no se
+  pisa.
+
+**5. Verificación**
+- [ ] Verificación en el Xiaomi M2102J20SG con una segunda "terminal"
+  simulada contra el backend (curl): editar nombre y ubicación en el teléfono
+  y en el backend, tras un ciclo ambos coinciden y el stock no cambia.
+  `needs-device`.
+
+### Decisiones abiertas
+
+- [ ] Operación de edición: ¿endpoint nuevo `PATCH /articulos/{id}` (con
+  `ubicacion` de la sucursal en el body) o reutilizar `PATCH
+  /inventario/{id}` enviando `cantidad` igual al valor del servidor? Lo
+  segundo reabre la carrera de la Parte 34.
+- [ ] `ubicacion` en el ajuste por delta: ¿campo opcional de `POST
+  /ajustes-inventario` o solo vía la operación de edición?
+- [ ] Señal de pendiente de una edición sin movimiento: ¿columna en
+  `articulos`/`inventario`, o tabla de pendientes?
+- [ ] Conflicto de edición simultánea del mismo artículo en dos terminales:
+  ¿last-write-wins silencioso por `updated_at` o registro en
+  `sync_conflicts`?
+
+---
+
+## Parte 36: Sucursal estable y rechazos visibles del sync
 
 *(Sale de los hallazgos A-8, A-6 y M-5 (2º punto) de `docs/review_code.md`.
 A-8, reproducido dos veces en el Xiaomi: al pasar a
@@ -119,7 +204,11 @@ catálogo emitido en ese momento; el catálogo alterna entre local y remoto
 otra sucursal sin avisar. A-6: una fila rechazada con 4xx (ej. 403 por rol)
 se marca `isSynced = true` sin `remoteId` y solo deja una línea de log —
 ventas que nunca llegan al backend. M-5: un 401 del `SyncWorker` cierra la
-sesión interactiva del cajero.)*
+sesión interactiva del cajero. Caso real visto en el Xiaomi durante la
+Parte 34 (2026-10-12): un ajuste de stock sobre un artículo con `sku` vacío,
+cuyas entradas el backend rechazó con 4xx, se queda "pendiente" para siempre
+(contador "Pendientes por subir: 1") sin que nada lo vuelva visible ni
+recuperable.)*
 
 Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
 
@@ -170,7 +259,7 @@ que toda fila que el backend rechace quede visible y recuperable.
 
 ---
 
-## Parte 36: Endurecimiento de seguridad pre-release
+## Parte 37: Endurecimiento de seguridad pre-release
 
 *(Sale de los hallazgos A-3, A-4, A-5, M-4, M-6 y M-10 de
 `docs/review_code.md`, reproducidos contra el backend y en el Xiaomi:
@@ -228,13 +317,13 @@ restauración y resistan los ataques básicos de login.
   contraseña provista por variable de entorno en el despliegue (backend) y
   asistente inicial (dispositivo)?
 - [ ] Límite de intentos de login: ¿en la app (contador en base/memoria) o
-  delegado al proxy/infraestructura del destino de despliegue (Parte 39)?
+  delegado al proxy/infraestructura del destino de despliegue (Parte 40)?
 - [ ] `allowBackup`: ¿desactivar por completo o mantener respaldo
   excluyendo solo DataStore y la base?
 
 ---
 
-## Parte 37: Integridad de datos del backend
+## Parte 38: Integridad de datos del backend
 
 *(Sale de los hallazgos M-1, M-2, B-1 y B-2 de `docs/review_code.md`,
 reproducidos contra el backend: `usuario_id` libre en todas las escrituras
@@ -283,7 +372,7 @@ sin depender de que el cliente mande datos consistentes.
 
 ---
 
-## Parte 38: Calidad y deuda menor pre-release
+## Parte 39: Calidad y deuda menor pre-release
 
 *(Sale de los hallazgos M-7, B-3, B-4, B-5, B-6, B-8, B-11, B-12 y B-13 de
 `docs/review_code.md`. Ninguno bloquea por sí solo, pero varios son
@@ -335,14 +424,15 @@ de mantenimiento antes del primer release.
 
 ---
 
-## Parte 39: Primer release productivo (APK firmado + backend desplegado)
+## Parte 40: Primer release productivo (APK firmado + backend desplegado)
 
 *(Sale del análisis "qué falta para el primer release productivo" del
 2026-09-08. Absorbe el hallazgo B-7 —R8/shrinking, diferido en la Parte 29
 "hasta que haya distribución real"— y cierra el `[TODO]` de destino de
 despliegue de `CLAUDE.md` §7. Era la Parte 34; se renumeró a 39 el
 2026-10-02 para ir después de las Partes 34-38 que salen de la revisión
-pre-release (`docs/review_code.md`), y se amplió con sus hallazgos A-7,
+pre-release (`docs/review_code.md`), a 40 el 2026-10-12 al insertarse la
+Parte 35, y se amplió con sus hallazgos A-7,
 M-9, B-9 y B-10 y con las decisiones de producto M-5 y M-8. Verificado el
 2026-09-29: `./gradlew assembleRelease` produce `app-release-unsigned.apk`
 (36.5 MB) sin firmar y sin ofuscar. Desde la Parte 31 el modo REMOTO ya no
@@ -608,3 +698,20 @@ desde fuera de la LAN.
   lista de delegación a subagentes feature-dev de `CLAUDE.md` §11 y
   `.claude/commands/parte.md`. Ninguna Parte nueva se implementó en esa
   sesión.
+- **2026-10-12**: durante la ejecución de la Parte 34 (sub-pasos 1-3 listos:
+  contrato, backend y push/pull Android) el `code-reviewer` detectó que el
+  ajuste por delta dejó de subir atributos de catálogo y `ubicacion`, y que
+  el pull nunca mergea `articulos`. Se evaluó absorberlo en las Partes
+  35-39 y ninguna encajaba (36 sucursal/rechazos, 37 seguridad, 38 integridad
+  del backend, 39 deuda cosmética, 40 release), y por ser una regresión que
+  introduce la 34 no va al Backlog: se insertó como Parte 35 "Convergencia de
+  catálogo y ubicación en el sync", por decisión del usuario. Las antiguas
+  35-39 pasaron a 36-40 (ninguna tenía claves de Jira asignadas). La Parte
+  35 se agrega a la lista de delegación a subagentes feature-dev de
+  `CLAUDE.md` §11 y `.claude/commands/parte.md`. Decisiones de la Parte 34
+  (resueltas por el usuario): ajuste por delta como `POST
+  /ajustes-inventario` con un request por movimiento, idempotente por
+  `movimientos.local_id`; reconciliación híbrida (backend gana en filas sin
+  pendientes, `remoto + pendientes` en las demás, un registro resumen en
+  `sync_conflicts`); cursor por `(entidad, sucursal)` con ventana de solape
+  de 2 minutos.

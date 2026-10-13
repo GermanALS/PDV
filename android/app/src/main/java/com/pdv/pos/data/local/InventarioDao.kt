@@ -118,15 +118,29 @@ interface InventarioDao {
 
     // Push diferido (PLAN.md Parte 32, Grupo 2, sub-paso 7b): ajustes
     // manuales creados offline. La unidad a subir es el movimiento tipo
-    // "ajuste"; se agrupan por (sucursalId, articuloId) y se envia un solo
-    // PATCH /inventario/{articulo} con la cantidad actual (el backend calcula
-    // su propio delta). Un articulo sin remoteId todavia (entrada aun sin
+    // "ajuste"; cada uno se envia como delta a POST /ajustes-inventario
+    // (Parte 34). Un articulo sin remoteId todavia (entrada aun sin
     // sincronizar) se salta este ciclo.
     @Query("SELECT * FROM movimientos WHERE tipo = 'ajuste' AND isSynced = 0 AND deletedAt IS NULL")
     suspend fun getMovimientosAjustePendientes(): List<MovimientoEntity>
 
     @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'ajuste' AND isSynced = 0 AND deletedAt IS NULL")
     suspend fun contarAjustesPendientes(): Int
+
+    // Pull de inventario (PLAN.md Parte 34, A-1(b)): la fila local solo "gana"
+    // si quedan movimientos de ese (sucursal, articulo) sin subir, de
+    // cualquier tipo. inventario.isSynced no sirve de senal: toda escritura
+    // local lo deja en false y nada lo limpia al subir ventas/entradas. La
+    // reconciliacion inicial ademas suma su efecto sobre el valor remoto. Se
+    // excluyen los movimientos de ventas ya marcadas como sincronizadas o
+    // descartadas: antes de la Parte 34 el descarte de una venta dejaba sus
+    // movimientos en isSynced = 0 para siempre.
+    @Query(
+        "SELECT * FROM movimientos WHERE sucursalId = :sucursalId AND articuloId = :articuloId " +
+            "AND isSynced = 0 AND deletedAt IS NULL " +
+            "AND NOT (referenciaTipo = 'venta' AND referenciaId IN (SELECT localId FROM ventas WHERE isSynced = 1))",
+    )
+    suspend fun getMovimientosPendientes(sucursalId: String, articuloId: String): List<MovimientoEntity>
 
     @Query("UPDATE movimientos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
     suspend fun marcarMovimientoSincronizado(localId: String, remoteId: String)

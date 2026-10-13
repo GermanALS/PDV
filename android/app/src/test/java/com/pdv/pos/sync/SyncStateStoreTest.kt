@@ -54,11 +54,39 @@ class SyncStateStoreTest {
     fun `pull cursor round-trips per entidad`(@TempDir tempDir: File) = runTest {
         val store = store(tempDir)
 
-        store.setPullCursor("inventario", "2026-09-09T12:00:00Z")
-        store.setPullCursor("cortes_caja", "2026-09-09T13:30:00Z")
+        store.setPullCursor("inventario", "suc-1", "2026-09-09T12:00:00Z")
+        store.setPullCursor("cortes_caja", "suc-1", "2026-09-09T13:30:00Z")
 
-        assertEquals("2026-09-09T12:00:00Z", store.pullCursor("inventario"))
-        assertEquals("2026-09-09T13:30:00Z", store.pullCursor("cortes_caja"))
-        assertNull(store.pullCursor("retiros_efectivo"))
+        assertEquals("2026-09-09T12:00:00Z", store.pullCursor("inventario", "suc-1"))
+        assertEquals("2026-09-09T13:30:00Z", store.pullCursor("cortes_caja", "suc-1"))
+        assertNull(store.pullCursor("retiros_efectivo", "suc-1"))
+    }
+
+    @Test
+    fun `a different sucursal does not inherit the pull cursor`(@TempDir tempDir: File) = runTest {
+        val store = store(tempDir)
+        store.setPullCursor("inventario", "suc-1", "2026-09-09T12:00:00Z")
+
+        assertNull(store.pullCursor("inventario", "suc-2"))
+        assertNull(store.pullDesde("inventario", "suc-2"))
+    }
+
+    @Test
+    fun `inventory reconciliation flag is per sucursal and defaults to false`(@TempDir tempDir: File) = runTest {
+        val store = store(tempDir)
+
+        assertEquals(false, store.inventarioReconciliado("suc-1"))
+        store.marcarInventarioReconciliado("suc-1")
+
+        assertEquals(true, store.inventarioReconciliado("suc-1"))
+        assertEquals(false, store.inventarioReconciliado("suc-2"))
+    }
+
+    @Test
+    fun `pullDesde subtracts the overlap window from the cursor`(@TempDir tempDir: File) = runTest {
+        val store = store(tempDir)
+        store.setPullCursor("inventario", "suc-1", "2026-09-09T12:00:00Z")
+
+        assertEquals("2026-09-09T11:58:00Z", store.pullDesde("inventario", "suc-1"))
     }
 }

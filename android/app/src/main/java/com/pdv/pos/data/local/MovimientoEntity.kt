@@ -23,3 +23,7 @@ data class MovimientoEntity(
     val isSynced: Boolean,
     val deletedAt: Long?,
 )
+
+// Efecto con signo del movimiento sobre la existencia: la salida (venta) se
+// guarda en positivo y resta; entrada y ajuste ya llevan su signo.
+fun MovimientoEntity.deltaStock(): BigDecimal = if (tipo == "salida") cantidad.negate() else cantidad

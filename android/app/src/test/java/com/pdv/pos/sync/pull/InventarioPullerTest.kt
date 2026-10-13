@@ -3,6 +3,7 @@ package com.pdv.pos.sync.pull
 import com.pdv.pos.data.local.ArticuloEntity
 import com.pdv.pos.data.local.InventarioDao
 import com.pdv.pos.data.local.InventarioEntity
+import com.pdv.pos.data.local.MovimientoEntity
 import com.pdv.pos.data.remote.InventarioApiService
 import com.pdv.pos.data.remote.dto.InventarioItemDto
 import com.pdv.pos.data.remote.dto.InventarioListResponseDto
@@ -51,8 +52,20 @@ class InventarioPullerTest {
         updatedAt = 0L, isSynced = isSynced, deletedAt = null,
     )
 
+    private fun movimiento(tipo: String, cantidad: String) = MovimientoEntity(
+        localId = "mov-$tipo-$cantidad", remoteId = null, sucursalId = "suc-1", articuloId = "art-local",
+        usuarioId = "admin", tipo = tipo, cantidad = BigDecimal(cantidad), ubicacion = null,
+        referenciaTipo = null, referenciaId = null, fecha = 0L, updatedAt = 0L, isSynced = false, deletedAt = null,
+    )
+
+    private fun stubReconciliacionPendiente(vararg items: InventarioItemDto) {
+        stubPage(*items)
+        coEvery { syncStateStore.inventarioReconciliado("suc-1") } returns false
+    }
+
     private fun stubPage(vararg items: InventarioItemDto) {
-        coEvery { syncStateStore.pullCursor("inventario") } returns null
+        coEvery { syncStateStore.inventarioReconciliado("suc-1") } returns true
+        coEvery { syncStateStore.pullDesde("inventario", "suc-1") } returns null
         coEvery { api.getInventario(any(), any(), any(), any(), any()) } returns
             InventarioListResponseDto(items = items.toList(), page = 1, pageSize = 100, total = items.size)
     }
@@ -69,14 +82,15 @@ class InventarioPullerTest {
 
         assertEquals(BigDecimal("12"), nueva.captured.cantidad)
         assertTrue(nueva.captured.isSynced)
-        coVerify { syncStateStore.setPullCursor("inventario", "2026-08-20T14:00:00Z") }
+        coVerify { syncStateStore.setPullCursor("inventario", "suc-1", "2026-08-20T14:00:00Z") }
     }
 
     @Test
-    fun `overwrites a clean local row from the remote value`() = runTest {
+    fun `overwrites a local row whose movimientos were already synced even if the row is flagged dirty`() = runTest {
         stubPage(item(cantidad = "9"))
         coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
-        coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("20", isSynced = true)
+        coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("20", isSynced = false)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns emptyList()
         val actualizada = slot<InventarioEntity>()
         coEvery { dao.updateInventario(capture(actualizada)) } returns Unit
 
@@ -88,10 +102,11 @@ class InventarioPullerTest {
     }
 
     @Test
-    fun `keeps a dirty local row and records the divergence when the remote value differs`() = runTest {
+    fun `keeps the local row and records the divergence when movimientos are pending and the remote value differs`() = runTest {
         stubPage(item(cantidad = "9"))
         coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
         coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("15", isSynced = false)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns listOf(movimiento("salida", "1"))
 
         puller.pull("suc-1")
 
@@ -102,6 +117,75 @@ class InventarioPullerTest {
                 valorLocal = BigDecimal("15"), valorRemoto = BigDecimal("9"),
             )
         }
+    }
+
+    @Test
+    fun `asks the backend for rows since the cursor minus the overlap window`() = runTest {
+        stubPage(item(cantidad = "9"))
+        coEvery { syncStateStore.pullDesde("inventario", "suc-1") } returns "2026-08-20T13:58:00Z"
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns null
+
+        puller.pull("suc-1")
+
+        coVerify { api.getInventario("suc-1", null, 1, 100, "2026-08-20T13:58:00Z") }
+    }
+
+    @Test
+    fun `reconciliation pulls the whole inventory ignoring the cursor and marks the sucursal as reconciled`() = runTest {
+        stubReconciliacionPendiente(item(cantidad = "9"))
+        coEvery { syncStateStore.pullDesde("inventario", "suc-1") } returns "2026-08-20T13:58:00Z"
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
+        coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("9", isSynced = true)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns emptyList()
+
+        puller.pull("suc-1")
+
+        coVerify { api.getInventario("suc-1", null, 1, 100, null) }
+        coVerify { syncStateStore.marcarInventarioReconciliado("suc-1") }
+        coVerify(exactly = 0) { eventoAditivoSyncEngine.registrarReconciliacionInventario(any(), any(), any()) }
+    }
+
+    @Test
+    fun `reconciliation overwrites a diverged row without pendings and records a single summary`() = runTest {
+        stubReconciliacionPendiente(item(cantidad = "20"))
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
+        coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("12", isSynced = false)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns emptyList()
+        val actualizada = slot<InventarioEntity>()
+        coEvery { dao.updateInventario(capture(actualizada)) } returns Unit
+
+        puller.pull("suc-1")
+
+        assertEquals(BigDecimal("20"), actualizada.captured.cantidad)
+        coVerify(exactly = 1) { eventoAditivoSyncEngine.registrarReconciliacionInventario("suc-1", "system", 1) }
+        coVerify { syncStateStore.marcarInventarioReconciliado("suc-1") }
+    }
+
+    @Test
+    fun `reconciliation sets a row with pendings to remote plus the effect of its pendings`() = runTest {
+        stubReconciliacionPendiente(item(cantidad = "9"))
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
+        coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("15", isSynced = false)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns
+            listOf(movimiento("salida", "2"), movimiento("entrada", "4"), movimiento("ajuste", "-1"))
+        val actualizada = slot<InventarioEntity>()
+        coEvery { dao.updateInventario(capture(actualizada)) } returns Unit
+
+        puller.pull("suc-1")
+
+        assertEquals(BigDecimal("10"), actualizada.captured.cantidad)
+        coVerify(exactly = 0) { eventoAditivoSyncEngine.registrarDivergenciaLocalGana(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { eventoAditivoSyncEngine.registrarReconciliacionInventario("suc-1", "system", 1) }
+    }
+
+    @Test
+    fun `does not mark the sucursal as reconciled when the pull fails`() = runTest {
+        coEvery { syncStateStore.inventarioReconciliado("suc-1") } returns false
+        coEvery { api.getInventario(any(), any(), any(), any(), any()) } throws java.io.IOException("sin conexion")
+
+        runCatching { puller.pull("suc-1") }
+
+        coVerify(exactly = 0) { syncStateStore.marcarInventarioReconciliado(any()) }
     }
 
     @Test

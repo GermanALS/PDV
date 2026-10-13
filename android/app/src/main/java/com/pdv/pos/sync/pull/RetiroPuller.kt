@@ -20,7 +20,7 @@ class RetiroPuller @Inject constructor(
     override val entidad = "retiros_efectivo"
 
     override suspend fun pull(sucursalId: String) {
-        val cursor = syncStateStore.pullCursor(entidad)
+        val desde = syncStateStore.pullDesde(entidad, sucursalId)
         var pagina = 1
         var maxUpdated: Instant? = null
         while (true) {
@@ -28,7 +28,7 @@ class RetiroPuller @Inject constructor(
                 sucursalId = sucursalId,
                 page = pagina,
                 pageSize = PULL_PAGE_SIZE,
-                updatedSince = cursor,
+                updatedSince = desde,
             )
             for (item in respuesta.items) {
                 val localId = item.localId ?: item.id
@@ -39,6 +39,6 @@ class RetiroPuller @Inject constructor(
             if (respuesta.items.isEmpty() || pagina.toLong() * PULL_PAGE_SIZE >= respuesta.total.toLong()) break
             pagina++
         }
-        maxUpdated?.let { syncStateStore.setPullCursor(entidad, it.toString()) }
+        maxUpdated?.let { syncStateStore.setPullCursor(entidad, sucursalId, it.toString()) }
     }
 }
