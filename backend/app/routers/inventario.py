@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,6 +14,8 @@ from app.models.movimiento import Movimiento
 from app.models.sucursal import Sucursal
 from app.schemas.entrada import ArticuloResponseSchema, InventarioResponseSchema, MovimientoResponseSchema
 from app.schemas.inventario import (
+    AjusteDeltaCreateSchema,
+    AjusteDeltaResponseSchema,
     AjusteInventarioResponseSchema,
     ArticuloEdicionSchema,
     InventarioItemResponseSchema,
@@ -208,7 +211,71 @@ async def ajustar_articulo(
     )
 
 
-@router.get("/articulos/categorias", response_model=ValoresResponseSchema)
+@router.post("/ajustes-inventario", response_model=AjusteDeltaResponseSchema, status_code=201)
+async def create_ajuste_delta(
+    payload: AjusteDeltaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+) -> AjusteDeltaResponseSchema:
+    """Suma un delta a la existencia; idempotente por `local_id` del movimiento (PLAN.md Parte 34)."""
+    if await db.get(Sucursal, payload.sucursal_id) is None:
+        raise HTTPException(status_code=404, detail=f"sucursal no encontrada: {payload.sucursal_id}")
+    if await db.get(Articulo, payload.articulo_id) is None:
+        raise HTTPException(status_code=404, detail="articulo no encontrado")
+
+    try:
+        inventario = (
+            await db.execute(
+                select(Inventario)
+                .where(Inventario.sucursal_id == payload.sucursal_id, Inventario.articulo_id == payload.articulo_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if inventario is None:
+            inventario = Inventario(
+                sucursal_id=payload.sucursal_id, articulo_id=payload.articulo_id, cantidad=payload.delta
+            )
+            db.add(inventario)
+        else:
+            inventario.cantidad = inventario.cantidad + payload.delta
+
+        movimiento = Movimiento(
+            local_id=payload.local_id,
+            sucursal_id=payload.sucursal_id,
+            articulo_id=payload.articulo_id,
+            usuario_id=payload.usuario_id,
+            tipo=TIPO_MOVIMIENTO_AJUSTE,
+            cantidad=payload.delta,
+            referencia_tipo=REFERENCIA_AJUSTE_MANUAL,
+            fecha=payload.fecha,
+        )
+        db.add(movimiento)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        movimiento = (
+            await db.execute(select(Movimiento).where(Movimiento.local_id == payload.local_id))
+        ).scalar_one_or_none()
+        if movimiento is None:
+            raise
+        inventario = (
+            await db.execute(
+                select(Inventario).where(
+                    Inventario.sucursal_id == movimiento.sucursal_id, Inventario.articulo_id == movimiento.articulo_id
+                )
+            )
+        ).scalar_one()
+        response.status_code = 200
+        return AjusteDeltaResponseSchema(
+            movimiento=_movimiento_to_response(movimiento), inventario=_inventario_to_response(inventario)
+        )
+
+    await db.refresh(movimiento)
+    await db.refresh(inventario)
+    return AjusteDeltaResponseSchema(
+        movimiento=_movimiento_to_response(movimiento), inventario=_inventario_to_response(inventario)
+    )
+
+
+@router.get("/articulos/categorias",response_model=ValoresResponseSchema)
 async def list_categorias(db: AsyncSession = Depends(get_db)) -> ValoresResponseSchema:
     resultado = await db.execute(
         select(Articulo.categoria)

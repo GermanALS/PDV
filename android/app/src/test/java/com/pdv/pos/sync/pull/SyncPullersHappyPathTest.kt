@@ -36,7 +36,7 @@ class SyncPullersHappyPathTest {
     fun `CorteCajaPuller inserts an unseen corte and advances the cursor`() = runTest {
         val api = mockk<CajaApiService>()
         val dao = mockk<CajaDao>(relaxUnitFun = true)
-        coEvery { syncStateStore.pullCursor("cortes_caja") } returns null
+        coEvery { syncStateStore.pullDesde("cortes_caja", "suc-1") } returns null
         coEvery { api.getCortes(any(), any(), any(), any(), any(), any()) } returns
             CorteCajaListResponseDto(items = listOf(corteDto("remoto-1", localId = "corte-x")), page = 1, pageSize = 100, total = 1)
         coEvery { dao.getCorteByLocalId("corte-x") } returns null
@@ -44,14 +44,14 @@ class SyncPullersHappyPathTest {
         CorteCajaPuller(api, dao, syncStateStore).pull("suc-1")
 
         coVerify { dao.insertCorte(match<CorteCajaEntity> { it.localId == "corte-x" && it.remoteId == "remoto-1" && it.isSynced }) }
-        coVerify { syncStateStore.setPullCursor("cortes_caja", "2026-08-20T14:00:00Z") }
+        coVerify { syncStateStore.setPullCursor("cortes_caja", "suc-1", "2026-08-20T14:00:00Z") }
     }
 
     @Test
     fun `CorteCajaPuller skips a corte it already has`() = runTest {
         val api = mockk<CajaApiService>()
         val dao = mockk<CajaDao>(relaxUnitFun = true)
-        coEvery { syncStateStore.pullCursor("cortes_caja") } returns null
+        coEvery { syncStateStore.pullDesde("cortes_caja", "suc-1") } returns null
         coEvery { api.getCortes(any(), any(), any(), any(), any(), any()) } returns
             CorteCajaListResponseDto(items = listOf(corteDto("remoto-1", localId = "corte-x")), page = 1, pageSize = 100, total = 1)
         coEvery { dao.getCorteByLocalId("corte-x") } returns mockk()
@@ -65,7 +65,7 @@ class SyncPullersHappyPathTest {
     fun `RetiroPuller inserts an unseen retiro using the id when local_id is absent`() = runTest {
         val api = mockk<RetiroApiService>()
         val dao = mockk<RetiroDao>(relaxUnitFun = true)
-        coEvery { syncStateStore.pullCursor("retiros_efectivo") } returns null
+        coEvery { syncStateStore.pullDesde("retiros_efectivo", "suc-1") } returns null
         coEvery { api.getRetiros(any(), any(), any(), any(), any(), any()) } returns
             RetiroEfectivoListResponseDto(items = listOf(retiroDto("remoto-9", localId = null)), page = 1, pageSize = 100, total = 1)
         coEvery { dao.getRetiroByLocalId("remoto-9") } returns null

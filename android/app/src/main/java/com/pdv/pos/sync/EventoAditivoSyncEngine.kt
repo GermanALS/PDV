@@ -11,6 +11,7 @@ import javax.inject.Singleton
 
 private const val POLITICA_EVENTO_ADITIVO = "evento_aditivo_delta"
 private const val POLITICA_LWW_LOCAL_GANA = "last_write_wins_local_gana"
+private const val POLITICA_RECONCILIACION_INICIAL = "reconciliacion_inicial_backend_gana"
 
 // Merge de cantidades de inventario en el pull del motor de sync diferido
 // (PLAN.md Parte 32, Grupo 3): aplica siempre el delta con signo y, si el
@@ -70,6 +71,33 @@ class EventoAditivoSyncEngine @Inject constructor(
             usuario = usuario,
             mensaje = "Conflicto en $entidad ($entidadLocalId): la fila local sin subir " +
                 "(local=$valorLocal) diverge del backend (remoto=$valorRemoto); gana lo local hasta el proximo push",
+        )
+    }
+
+    // Reconciliacion unica del inventario (PLAN.md Parte 34): un solo registro
+    // informativo por sucursal con cuantas filas se corrigieron, en vez de uno
+    // por fila (resuelto automaticamente: no requiere accion del admin).
+    suspend fun registrarReconciliacionInventario(sucursalId: String, usuario: String, filasCorregidas: Int) {
+        syncConflictDao.insert(
+            SyncConflictEntity(
+                id = UUID.randomUUID().toString(),
+                entidad = "inventario",
+                entidadLocalId = sucursalId,
+                sucursalId = sucursalId,
+                valorLocal = "$filasCorregidas filas",
+                valorRemoto = "backend",
+                valorResuelto = "remoto + pendientes locales",
+                politicaAplicada = POLITICA_RECONCILIACION_INICIAL,
+                resueltoAutomaticamente = true,
+                fechaDeteccion = System.currentTimeMillis(),
+            ),
+        )
+        appLogger.log(
+            LogType.SYNC_CONFLICT,
+            sucursalId = sucursalId,
+            usuario = usuario,
+            mensaje = "Reconciliacion inicial de inventario: $filasCorregidas filas distintas del backend " +
+                "se corrigieron a remoto + movimientos locales pendientes",
         )
     }
 

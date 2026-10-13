@@ -40,8 +40,11 @@ class VentaPusher @Inject constructor(
             }
             if (dto == null) {
                 // Irrecuperable (4xx no-401): se descarta para no
-                // reintentarla en cada ciclo.
+                // reintentarla en cada ciclo. Sus movimientos tambien se
+                // marcan: si quedaran pendientes, el pull de inventario no
+                // convergeria nunca para ese articulo (PLAN.md Parte 34).
                 dao.marcarVentaDescartada(venta.localId)
+                dao.marcarMovimientosVentaSincronizados(venta.localId)
                 saltadas++
                 continue
             }

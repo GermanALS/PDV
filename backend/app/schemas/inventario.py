@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.entrada import ArticuloResponseSchema, InventarioResponseSchema, MovimientoResponseSchema
 
@@ -48,6 +48,27 @@ class AjusteInventarioResponseSchema(BaseModel):
     articulo: ArticuloResponseSchema
     inventario: InventarioResponseSchema
     movimiento: MovimientoResponseSchema | None
+
+
+class AjusteDeltaCreateSchema(BaseModel):
+    local_id: uuid.UUID
+    sucursal_id: uuid.UUID
+    articulo_id: uuid.UUID
+    usuario_id: str = Field(min_length=1, max_length=120)
+    fecha: datetime
+    delta: Decimal
+
+    @field_validator("delta")
+    @classmethod
+    def _delta_no_cero(cls, value: Decimal) -> Decimal:
+        if value == 0:
+            raise ValueError("delta no puede ser 0")
+        return value
+
+
+class AjusteDeltaResponseSchema(BaseModel):
+    movimiento: MovimientoResponseSchema
+    inventario: InventarioResponseSchema
 
 
 class ValoresResponseSchema(BaseModel):

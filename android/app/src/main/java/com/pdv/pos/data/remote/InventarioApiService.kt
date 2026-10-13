@@ -1,5 +1,7 @@
 package com.pdv.pos.data.remote
 
+import com.pdv.pos.data.remote.dto.AjusteDeltaDto
+import com.pdv.pos.data.remote.dto.AjusteDeltaRequestDto
 import com.pdv.pos.data.remote.dto.AjusteInventarioDto
 import com.pdv.pos.data.remote.dto.ArticuloEdicionRequestDto
 import com.pdv.pos.data.remote.dto.InventarioListResponseDto
@@ -7,6 +9,7 @@ import com.pdv.pos.data.remote.dto.ValoresDto
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.PATCH
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -25,6 +28,9 @@ interface InventarioApiService {
         @Path("articuloId") articuloId: String,
         @Body request: ArticuloEdicionRequestDto,
     ): AjusteInventarioDto
+
+    @POST("ajustes-inventario")
+    suspend fun ajustarPorDelta(@Body request: AjusteDeltaRequestDto): AjusteDeltaDto
 
     @GET("inventario/ubicaciones")
     suspend fun getUbicaciones(@Query("sucursal_id") sucursalId: String): ValoresDto

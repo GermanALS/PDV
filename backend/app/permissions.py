@@ -12,6 +12,7 @@ _ESCRITURA_MODULO: dict[tuple[str, str], str] = {
     ("POST", "/ventas"): "venta",
     ("POST", "/entradas"): "entrada",
     ("PATCH", "/inventario/{articulo_id}"): "inventario",
+    ("POST", "/ajustes-inventario"): "inventario",
     ("POST", "/cortes-caja"): "caja",
     ("POST", "/retiros-efectivo"): "caja",
     ("POST", "/devoluciones"): "devoluciones",

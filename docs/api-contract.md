@@ -529,9 +529,19 @@ Response `200 OK`
 }
 ```
 
-`updated_at` es el de la fila `inventario` (cambia con cada movimiento de
-stock); el pull lo usa como cursor (`max(updated_at)` de la página) y para
-el merge last-write-wins de filas sin cambios locales.
+`updated_at` es el de la fila `inventario` y cambia con **todo** movimiento
+de stock (venta, entrada, ajuste por `PATCH` o por
+`POST /ajustes-inventario`), no sólo con las ediciones de la fila (PLAN.md
+Parte 34, hallazgo A-1 de `docs/review_code.md`). El pull lo usa como
+cursor (`max(updated_at)` de la página) y para el merge de filas sin
+movimientos locales pendientes.
+
+**Ventana de solape**: el cliente consulta con
+`updated_since = cursor - 2 minutos` y no con el cursor exacto, porque una
+transacción puede confirmar después de otra con `updated_at` posterior y
+quedar por debajo del cursor (hallazgo M-3). El merge del cliente es
+idempotente, así que re-recibir filas ya vistas es inofensivo. El servidor
+no impone la ventana: es una convención del cliente.
 
 ### 7.2 Ajustar artículo (atributos de catálogo + cantidad en existencia)
 
@@ -645,6 +655,86 @@ Response `200 OK`
 ```json
 { "valores": ["Estante A1", "Estante B2"] }
 ```
+
+### 7.4 Ajustar existencia por delta
+
+**POST** `/ajustes-inventario`
+
+Aplica un **delta con signo** a la existencia de un artículo en una
+sucursal. A diferencia de `PATCH /inventario/{articulo_id}` (7.2), que
+impone un valor absoluto y queda para el modo REMOTO interactivo, este
+endpoint es el que usa el sync diferido: dos terminales que ajustan o
+venden sobre el mismo artículo no se pisan, porque cada una suma su propio
+delta (PLAN.md Parte 34, hallazgo A-2 de `docs/review_code.md`).
+
+El servidor bloquea la fila de `inventario` (`SELECT ... FOR UPDATE`),
+suma `delta` a `cantidad`, actualiza `updated_at` e inserta un
+`movimiento` `tipo = "ajuste"`. Si la fila de `inventario` no existe, se
+crea con `cantidad = delta`. No toca atributos de catálogo.
+
+**Idempotente por `local_id`**: obligatorio; es el `local_id` del
+`movimiento` insertado y tiene constraint `UNIQUE` en `movimientos` (mismo
+patrón que `POST /entradas`). Reintentar con el mismo `local_id` no vuelve
+a sumar el delta ni inserta un segundo movimiento.
+
+Request body
+```json
+{
+  "local_id": "uuid",
+  "sucursal_id": "uuid",
+  "articulo_id": "uuid",
+  "usuario_id": "admin",
+  "fecha": "2026-08-19T12:00:00Z",
+  "delta": "-2.500"
+}
+```
+`delta` no puede ser `0`. El cliente envía un request por cada movimiento
+`ajuste` pendiente.
+
+Response `201 Created` → se aplicó el ajuste.
+
+Response `200 OK` → ya existía un movimiento con ese `local_id` (reintento
+de sync); devuelve el estado ya persistido sin volver a sumar.
+
+Ambos casos devuelven el mismo shape:
+```json
+{
+  "movimiento": {
+    "id": "uuid",
+    "local_id": "uuid",
+    "sucursal_id": "uuid",
+    "articulo_id": "uuid",
+    "usuario_id": "admin",
+    "tipo": "ajuste",
+    "cantidad": "-2.500",
+    "ubicacion": "string o null",
+    "referencia_tipo": "ajuste_manual",
+    "referencia_id": null,
+    "fecha": "2026-08-19T12:00:00Z",
+    "updated_at": "2026-08-19T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  },
+  "inventario": {
+    "id": "uuid",
+    "local_id": "uuid o null",
+    "sucursal_id": "uuid",
+    "articulo_id": "uuid",
+    "cantidad": "21.500",
+    "ubicacion": "string o null",
+    "updated_at": "2026-08-19T12:00:00Z",
+    "is_synced": true,
+    "deleted_at": null
+  }
+}
+```
+`inventario.cantidad` es la existencia resultante en el servidor, que el
+cliente puede usar para reconciliar su fila local.
+
+Response `404 Not Found` — `articulo_id` o `sucursal_id` no existen.
+
+Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
+`articulo_id`/`usuario_id`/`delta`, o `delta` es `0`.
 
 ---
 
@@ -1288,7 +1378,7 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   |---|---|
   | `POST /ventas` | `venta` |
   | `POST /entradas` | `entrada` |
-  | `PATCH /inventario/{articulo_id}` | `inventario` |
+  | `PATCH /inventario/{articulo_id}`, `POST /ajustes-inventario` | `inventario` |
   | `POST /cortes-caja`, `POST /retiros-efectivo` | `caja` |
   | `POST /devoluciones` | `devoluciones` |
   | `POST`/`PATCH`/`DELETE /usuarios` | `usuarios` |
@@ -1334,7 +1424,7 @@ Genuinamente abierto (no depende de trabajo previo):
   dispositivo desde la Parte 32 (`SessionStore`, JWT cifrado), pero se
   mantiene el JWT de 24 h + re-login al recibir `401`; un dispositivo
   offline más de 24 h no sincroniza hasta el próximo login interactivo.
-  Ligado al hallazgo M-5 de `docs/review_code.md` (Parte 35 de
+  Ligado al hallazgo M-5 de `docs/review_code.md` (Parte 36 de
   `docs/PLAN.md`: que el `401` del worker no cierre la sesión del cajero).
 - [ ] ¿Los logs de la app (PLAN.md Parte 5, archivos `.txt` locales al
   dispositivo) alguna vez viajan por API, o son puramente locales? Si son

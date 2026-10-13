@@ -91,6 +91,7 @@ class VentaPusherTest {
         // (PLAN.md Parte 32, hallazgo de verificacion en dispositivo - 5000+
         // requests identicos en 45 minutos contra el mismo dato irrecuperable).
         coVerify(exactly = 1) { dao.marcarVentaDescartada("v-1") }
+        coVerify(exactly = 1) { dao.marcarMovimientosVentaSincronizados("v-1") }
         coVerify(exactly = 1) { dao.marcarVentaSincronizada("v-2", "remoto-2") }
     }
 

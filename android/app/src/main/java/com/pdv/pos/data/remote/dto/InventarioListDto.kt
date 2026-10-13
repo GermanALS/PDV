@@ -49,6 +49,22 @@ data class AjusteInventarioDto(
 )
 
 @Serializable
+data class AjusteDeltaRequestDto(
+    @SerialName("local_id") val localId: String,
+    @SerialName("sucursal_id") val sucursalId: String,
+    @SerialName("articulo_id") val articuloId: String,
+    @SerialName("usuario_id") val usuarioId: String,
+    val fecha: String,
+    val delta: String,
+)
+
+@Serializable
+data class AjusteDeltaDto(
+    val movimiento: MovimientoDto,
+    val inventario: InventarioDto,
+)
+
+@Serializable
 data class ValoresDto(
     val valores: List<String>,
 )
