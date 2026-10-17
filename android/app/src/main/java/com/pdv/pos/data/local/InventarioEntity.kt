@@ -1,5 +1,6 @@
 package com.pdv.pos.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -15,6 +16,11 @@ import java.util.UUID
 // guarda como TEXT (Converters.fromBigDecimal -> toPlainString) y el orden
 // lexicografico de TEXT no sirve para agregar. cantidad sigue siendo la
 // fuente de verdad exacta; cantidadNum solo alimenta consultas agregadas.
+// edicionPendiente (PLAN.md Parte 35) marca que el catalogo del articulo o la
+// ubicacion de esta fila se editaron localmente y falta subirlos con PATCH
+// /articulos/{id}. Es una senal propia: isSynced no sirve porque toda
+// escritura local lo deja en false.
+//
 // Toda escritura de cantidad DEBE pasar por nuevoInventario(...) /
 // InventarioEntity.conCantidad(...) para que las dos columnas no se separen.
 @Entity(
@@ -32,6 +38,7 @@ data class InventarioEntity(
     val updatedAt: Long,
     val isSynced: Boolean,
     val deletedAt: Long?,
+    @ColumnInfo(defaultValue = "0") val edicionPendiente: Boolean = false,
 )
 
 // Fila nueva de inventario con cantidadNum ya derivada de cantidad.
@@ -41,6 +48,7 @@ fun nuevoInventario(
     cantidad: BigDecimal,
     ubicacion: String?,
     now: Long,
+    edicionPendiente: Boolean = false,
 ): InventarioEntity = InventarioEntity(
     localId = UUID.randomUUID().toString(),
     remoteId = null,
@@ -52,6 +60,7 @@ fun nuevoInventario(
     updatedAt = now,
     isSynced = false,
     deletedAt = null,
+    edicionPendiente = edicionPendiente,
 )
 
 // Nueva cantidad (y su espejo cantidadNum) sobre una fila existente,

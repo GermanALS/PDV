@@ -83,6 +83,17 @@ class SyncStateStoreTest {
     }
 
     @Test
+    fun `catalog reconciliation flag is per sucursal and defaults to false`(@TempDir tempDir: File) = runTest {
+        val store = store(tempDir)
+
+        assertEquals(false, store.catalogoReconciliado("suc-1"))
+        store.marcarCatalogoReconciliado("suc-1")
+
+        assertEquals(true, store.catalogoReconciliado("suc-1"))
+        assertEquals(false, store.catalogoReconciliado("suc-2"))
+    }
+
+    @Test
     fun `pullDesde subtracts the overlap window from the cursor`(@TempDir tempDir: File) = runTest {
         val store = store(tempDir)
         store.setPullCursor("inventario", "suc-1", "2026-09-09T12:00:00Z")

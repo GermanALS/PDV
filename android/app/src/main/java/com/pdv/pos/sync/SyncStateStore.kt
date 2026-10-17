@@ -27,6 +27,11 @@ private fun pullCursorKey(entidad: String, sucursalId: String) =
 private fun reconciliadoKey(sucursalId: String) =
     booleanPreferencesKey("sync_inventario_reconciliado_v2_$sucursalId")
 
+// Reconciliacion unica del catalogo (PLAN.md Parte 35): los dispositivos con
+// cursor ya avanzado no ven las ediciones y articulos anteriores a la 35.
+private fun catalogoReconciliadoKey(sucursalId: String) =
+    booleanPreferencesKey("sync_catalogo_reconciliado_$sucursalId")
+
 data class SyncState(
     val lastSuccessAtMillis: Long? = null,
     val lastError: String? = null,
@@ -78,6 +83,13 @@ class SyncStateStore @Inject constructor(
 
     suspend fun marcarInventarioReconciliado(sucursalId: String) {
         dataStore.edit { it[reconciliadoKey(sucursalId)] = true }
+    }
+
+    suspend fun catalogoReconciliado(sucursalId: String): Boolean =
+        dataStore.data.first()[catalogoReconciliadoKey(sucursalId)] ?: false
+
+    suspend fun marcarCatalogoReconciliado(sucursalId: String) {
+        dataStore.edit { it[catalogoReconciliadoKey(sucursalId)] = true }
     }
 
     suspend fun setPullCursor(entidad: String, sucursalId: String, isoTimestamp: String) {

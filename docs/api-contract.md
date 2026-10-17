@@ -497,12 +497,14 @@ artículo, el inventario y el movimiento juntos (sección 6).
 parcial, sin distinguir mayúsculas/minúsculas) — mismo criterio de
 búsqueda que `InventarioDao.observarPagina` del lado Android.
 
-`updated_since` (opcional, ISO-8601): sólo filas de `inventario` con
-`updated_at >= updated_since`. Lo usa el pull del motor de sync diferido
-(PLAN.md Parte 32, Grupo 3) para traer sólo lo cambiado desde el último
-ciclo; filtra por `inventario.updated_at`, no por `articulos.updated_at`.
-Si se omite, no filtra por fecha (comportamiento previo). Malformado →
-`422`.
+`updated_since` (opcional, ISO-8601): sólo filas con
+`inventario.updated_at >= updated_since` **o** `articulos.updated_at >=
+updated_since`. Lo usa el pull del motor de sync diferido (PLAN.md Parte 32,
+Grupo 3) para traer sólo lo cambiado desde el último ciclo; incluir el
+`updated_at` del artículo hace que una edición de catálogo (7.5) llegue a
+las demás sucursales, cuyas filas de `inventario` no cambiaron (PLAN.md
+Parte 35). Si se omite, no filtra por fecha (comportamiento previo).
+Malformado → `422`.
 
 Response `200 OK`
 ```json
@@ -529,12 +531,15 @@ Response `200 OK`
 }
 ```
 
-`updated_at` es el de la fila `inventario` y cambia con **todo** movimiento
-de stock (venta, entrada, ajuste por `PATCH` o por
-`POST /ajustes-inventario`), no sólo con las ediciones de la fila (PLAN.md
-Parte 34, hallazgo A-1 de `docs/review_code.md`). El pull lo usa como
-cursor (`max(updated_at)` de la página) y para el merge de filas sin
-movimientos locales pendientes.
+`updated_at` es el **mayor** entre el de la fila `inventario` y el del
+artículo. El de `inventario` cambia con **todo** movimiento de stock
+(venta, entrada, ajuste por `PATCH` o por `POST /ajustes-inventario`), no
+sólo con las ediciones de la fila (PLAN.md Parte 34, hallazgo A-1 de
+`docs/review_code.md`); el del artículo cambia con una edición de catálogo
+(7.5). El pull lo usa como cursor (`max(updated_at)` de la página) y para
+el merge de filas sin movimientos locales pendientes. Cada ítem trae los
+atributos actuales del artículo, así que el cliente los mergea junto con la
+existencia y la ubicación.
 
 **Ventana de solape**: el cliente consulta con
 `updated_since = cursor - 2 minutos` y no con el cursor exacto, porque una
@@ -735,6 +740,68 @@ Response `404 Not Found` — `articulo_id` o `sucursal_id` no existen.
 
 Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
 `articulo_id`/`usuario_id`/`delta`, o `delta` es `0`.
+
+### 7.5 Editar catálogo y ubicación de un artículo
+
+**PATCH** `/articulos/{articulo_id}`
+
+Edita los atributos de catálogo del artículo y la `ubicacion` de su fila de
+`inventario` en `sucursal_id`, **sin tocar `cantidad` ni insertar
+movimiento**. Es la contraparte de 7.4: el ajuste por delta sólo mueve
+stock y esta operación sólo mueve catálogo y ubicación, por lo que una
+edición no pisa una venta concurrente (PLAN.md Parte 35). Lo usa el sync
+diferido; el modo REMOTO interactivo sigue usando 7.2.
+
+**Resolución last-write-wins**: el servidor aplica la edición si
+`editado_en >= articulos.updated_at`. Si aplica, escribe los campos del
+body y fija `articulos.updated_at` a la hora del servidor (no a
+`editado_en`, para que el cursor del pull de las demás terminales la vea).
+Si no aplica, no cambia nada y devuelve el estado vigente con
+`aplicado: false`; el cliente lo adopta y registra el conflicto. El catálogo
+es global: una edición aplicada desde una sucursal llega a todas por 7.1.
+La comparación mezcla el reloj del dispositivo (`editado_en`) con el del
+servidor: un teléfono con la hora atrasada pierde sus ediciones.
+
+Si la fila de `inventario` de la sucursal no existe y la edición se aplica,
+se crea con `cantidad = 0` para guardar la `ubicacion`; si la edición no se
+aplica no se crea nada.
+
+Request body
+```json
+{
+  "sucursal_id": "uuid",
+  "usuario_id": "admin",
+  "nombre": "string, 1-160 caracteres",
+  "descripcion": "string o null",
+  "categoria": "string o null",
+  "unidad_medida": "string, 1-30 caracteres",
+  "precio_venta": "19.00",
+  "costo": "12.00 o null",
+  "ubicacion": "string o null",
+  "editado_en": "2026-08-19T12:00:00Z"
+}
+```
+
+Response `200 OK`
+```json
+{
+  "aplicado": true,
+  "articulo": { "...": "mismo shape que 7.2" },
+  "inventario": { "...": "mismo shape que 7.2" }
+}
+```
+`aplicado` es `false` cuando la edición perdió contra una más reciente;
+en ese caso, si la sucursal no tiene fila de `inventario`, `inventario` es
+`null`.
+
+Response `404 Not Found` — `articulo_id` o `sucursal_id` no existen.
+
+Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
+`nombre`/`unidad_medida`/`precio_venta`/`editado_en`.
+
+Limitación conocida: `POST /entradas` asigna `ubicacion` sin comparar
+fechas (la última en llegar gana), por lo que una entrada puede pisar una
+edición de ubicación hecha en otra terminal.
 
 ---
 
@@ -1378,7 +1445,7 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   |---|---|
   | `POST /ventas` | `venta` |
   | `POST /entradas` | `entrada` |
-  | `PATCH /inventario/{articulo_id}`, `POST /ajustes-inventario` | `inventario` |
+  | `PATCH /inventario/{articulo_id}`, `POST /ajustes-inventario`, `PATCH /articulos/{articulo_id}` | `inventario` |
   | `POST /cortes-caja`, `POST /retiros-efectivo` | `caja` |
   | `POST /devoluciones` | `devoluciones` |
   | `POST`/`PATCH`/`DELETE /usuarios` | `usuarios` |

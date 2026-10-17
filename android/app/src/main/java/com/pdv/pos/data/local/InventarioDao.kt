@@ -113,6 +113,20 @@ interface InventarioDao {
     @Update
     suspend fun updateArticulo(entity: ArticuloEntity)
 
+    @Insert
+    suspend fun insertArticulo(entity: ArticuloEntity)
+
+    // Pull (PLAN.md Parte 35): un articulo creado offline y aun sin subir
+    // (remoteId nulo) con el mismo SKU que uno remoto se enlaza en vez de
+    // duplicarse.
+    @Query("SELECT * FROM articulos WHERE sku = :sku AND remoteId IS NULL LIMIT 1")
+    suspend fun getArticuloSinRemotoPorSku(sku: String): ArticuloEntity?
+
+    // Catalogo global: basta una fila de inventario con edicion pendiente, en
+    // cualquier sucursal, para que el pull no pise los atributos del articulo.
+    @Query("SELECT EXISTS(SELECT 1 FROM inventario WHERE articuloId = :articuloId AND edicionPendiente = 1)")
+    suspend fun hayEdicionPendiente(articuloId: String): Boolean
+
     @Query("SELECT * FROM inventario WHERE sucursalId = :sucursalId AND articuloId = :articuloId LIMIT 1")
     suspend fun getInventario(sucursalId: String, articuloId: String): InventarioEntity?
 
@@ -142,6 +156,54 @@ interface InventarioDao {
     )
     suspend fun getMovimientosPendientes(sucursalId: String, articuloId: String): List<MovimientoEntity>
 
+    // Push de ediciones de catalogo/ubicacion (PLAN.md Parte 35): la unidad a
+    // subir es la fila de inventario con edicionPendiente.
+    @Query("SELECT * FROM inventario WHERE edicionPendiente = 1 AND deletedAt IS NULL")
+    suspend fun getEdicionesPendientes(): List<InventarioEntity>
+
+    @Query("SELECT COUNT(*) FROM inventario WHERE edicionPendiente = 1 AND deletedAt IS NULL")
+    suspend fun contarEdicionesPendientes(): Int
+
+    @Query("SELECT * FROM inventario WHERE localId = :localId LIMIT 1")
+    suspend fun getInventarioPorLocalId(localId: String): InventarioEntity?
+
+    @Query("UPDATE inventario SET edicionPendiente = 0 WHERE localId = :localId")
+    suspend fun limpiarEdicionPendiente(localId: String)
+
+    // Cierra una edicion ya subida. Si el usuario volvio a editar el articulo
+    // mientras el PATCH estaba en vuelo (articulos.updatedAt cambio respecto de
+    // editadoEnLeido, el valor enviado como editado_en), la edicion nueva sigue
+    // pendiente y no se toca nada. `vigente` != null cuando la edicion perdio:
+    // se adoptan sus atributos y la ubicacion remota sobre las filas actuales,
+    // no sobre copias leidas antes de la llamada de red (una venta o un pull
+    // pudieron cambiar cantidad entretanto).
+    @Transaction
+    suspend fun cerrarEdicionSubida(
+        inventarioLocalId: String,
+        articuloLocalId: String,
+        editadoEnLeido: Long,
+        vigente: ArticuloEntity?,
+        ubicacionVigente: String?,
+    ) {
+        val articulo = getArticulo(articuloLocalId) ?: return
+        if (articulo.updatedAt != editadoEnLeido) return
+        if (vigente != null) {
+            updateArticulo(
+                articulo.copy(
+                    nombre = vigente.nombre,
+                    descripcion = vigente.descripcion,
+                    categoria = vigente.categoria,
+                    unidadMedida = vigente.unidadMedida,
+                    precioVenta = vigente.precioVenta,
+                    costo = vigente.costo,
+                    updatedAt = vigente.updatedAt,
+                ),
+            )
+            getInventarioPorLocalId(inventarioLocalId)?.let { updateInventario(it.copy(ubicacion = ubicacionVigente)) }
+        }
+        limpiarEdicionPendiente(inventarioLocalId)
+    }
+
     @Query("UPDATE movimientos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
     suspend fun marcarMovimientoSincronizado(localId: String, remoteId: String)
 
@@ -168,7 +230,9 @@ interface InventarioDao {
     // nunca UPDATE cantidad = X directo) + movimiento tipo "ajuste", todo en
     // una sola transaccion Room (PLAN.md Parte 9, mismo patron que
     // EntradaDao.insertEntradaCompleta). Si la cantidad no cambio (delta =
-    // 0) no se toca inventario ni se inserta movimiento - solo el articulo.
+    // 0) no se inserta movimiento. Si cambio el catalogo o la ubicacion se
+    // marca edicionPendiente en la fila de inventario (PLAN.md Parte 35); un
+    // guardado que solo cambia stock no marca nada ni toca el articulo.
     @Transaction
     suspend fun actualizarArticuloCompleto(
         articulo: ArticuloEntity,
@@ -178,14 +242,18 @@ interface InventarioDao {
         ubicacion: String?,
         now: Long,
     ) {
-        updateArticulo(articulo)
-
+        val previo = getArticulo(articulo.localId)
         val existente = getInventario(sucursalId, articulo.localId)
+        val huboEdicion = previo == null || previo.catalogoDifiere(articulo) || ubicacion != existente?.ubicacion
+        if (huboEdicion) updateArticulo(articulo)
+
         val cantidadConocida = existente?.cantidad ?: BigDecimal.ZERO
         val delta = nuevaCantidad - cantidadConocida
         if (delta.compareTo(BigDecimal.ZERO) == 0 && existente != null) {
-            if (ubicacion != existente.ubicacion) {
-                updateInventario(existente.copy(ubicacion = ubicacion, updatedAt = now, isSynced = false))
+            if (huboEdicion) {
+                updateInventario(
+                    existente.copy(ubicacion = ubicacion, updatedAt = now, isSynced = false, edicionPendiente = true),
+                )
             }
             return
         }
@@ -198,13 +266,14 @@ interface InventarioDao {
                     cantidad = EventoAditivoCombiner.combinar(BigDecimal.ZERO, delta, BigDecimal.ZERO),
                     ubicacion = ubicacion,
                     now = now,
+                    edicionPendiente = huboEdicion,
                 ),
             )
         } else {
             updateInventario(
                 existente
                     .conCantidad(EventoAditivoCombiner.combinar(existente.cantidad, delta, BigDecimal.ZERO), now)
-                    .copy(ubicacion = ubicacion),
+                    .copy(ubicacion = ubicacion, edicionPendiente = existente.edicionPendiente || huboEdicion),
             )
         }
 

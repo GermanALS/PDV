@@ -34,7 +34,7 @@ Reglas:
 | §2.1 Contexto / despliegue | Dispositivo, servicios Compose, proveedor LLM | `docker-compose.yml`, `backend/Dockerfile`, cliente LLM en `android/` |
 | §2.2 App Android — capas | MVVM, `domain / data.local / data.remote`, DI | `android/app/src/main/java/com/pdv/pos/{domain,data,di}/**` |
 | §2.3 Backend — capas | `main.py`, routers, schemas, models, database | `backend/app/**`, `backend/alembic/versions/` |
-| §2.4 Motor de sincronización | Push/pull, resolvers, `SyncWorker`, conflictos | `android/.../sync/**`, `docs/api-contract.md` §12, `backend/app/routers/sync_conflicts.py` |
+| §2.4 Motor de sincronización | Push/pull, resolvers, `SyncWorker`, conflictos | `android/.../sync/**`, `docs/api-contract.md` §7.1, §7.4 y §12, `backend/app/routers/{sync_conflicts,inventario}.py`, `android/.../sync/SyncStateStore.kt`, `android/.../data/local/InventarioDao.kt` |
 | §3 Modelo de datos (ER) | Campos comunes, diagrama ER, integridad, Room | `docs/schema-pos.json`, `android/.../data/local/*Entity.kt`, `PdvDatabase`, `Migrations.kt`, `android/app/schemas/`, `backend/app/models/*.py` |
 | §4 Diagramas UML | Componentes, clases `ModeAware`, secuencias, despliegue | Mismas fuentes de §2 y §3; flujos en `ModeAware*Repository`, `EjecutorAccionesIa`, `backend/app/routers/{auth,ventas}.py` |
 | §5 Requerimientos e instalación | Docker, uv, Android, hardware, conectividad, IA, secretos | `scripts/*`, `docker-compose*.yml*`, `backend/pyproject.toml`, `backend/uv.lock`, `android/gradle/libs.versions.toml`, `android/app/build.gradle.kts`, `AndroidManifest.xml`, `app/src/debug/res/xml/network_security_config.xml` |

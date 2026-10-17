@@ -3,6 +3,8 @@ package com.pdv.pos.data.remote
 import com.pdv.pos.data.remote.dto.AjusteDeltaDto
 import com.pdv.pos.data.remote.dto.AjusteDeltaRequestDto
 import com.pdv.pos.data.remote.dto.AjusteInventarioDto
+import com.pdv.pos.data.remote.dto.ArticuloCatalogoDto
+import com.pdv.pos.data.remote.dto.ArticuloCatalogoRequestDto
 import com.pdv.pos.data.remote.dto.ArticuloEdicionRequestDto
 import com.pdv.pos.data.remote.dto.InventarioListResponseDto
 import com.pdv.pos.data.remote.dto.ValoresDto
@@ -31,6 +33,12 @@ interface InventarioApiService {
 
     @POST("ajustes-inventario")
     suspend fun ajustarPorDelta(@Body request: AjusteDeltaRequestDto): AjusteDeltaDto
+
+    @PATCH("articulos/{articuloId}")
+    suspend fun editarCatalogo(
+        @Path("articuloId") articuloId: String,
+        @Body request: ArticuloCatalogoRequestDto,
+    ): ArticuloCatalogoDto
 
     @GET("inventario/ubicaciones")
     suspend fun getUbicaciones(@Query("sucursal_id") sucursalId: String): ValoresDto

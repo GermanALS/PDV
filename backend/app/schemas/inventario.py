@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator
 
 from app.schemas.entrada import ArticuloResponseSchema, InventarioResponseSchema, MovimientoResponseSchema
 
@@ -19,8 +19,9 @@ class InventarioItemResponseSchema(BaseModel):
     costo: Decimal | None
     cantidad: Decimal
     ubicacion: str | None
-    # updated_at de la fila `inventario` (cambia con cada movimiento de
-    # stock): cursor y base del merge del pull diferido (PLAN.md Parte 32).
+    # Mayor entre el updated_at de `inventario` (cambia con cada movimiento
+    # de stock) y el del articulo (cambia con una edicion de catalogo):
+    # cursor y base del merge del pull diferido (PLAN.md Partes 32 y 35).
     updated_at: datetime
 
 
@@ -69,6 +70,25 @@ class AjusteDeltaCreateSchema(BaseModel):
 class AjusteDeltaResponseSchema(BaseModel):
     movimiento: MovimientoResponseSchema
     inventario: InventarioResponseSchema
+
+
+class ArticuloCatalogoEdicionSchema(BaseModel):
+    sucursal_id: uuid.UUID
+    usuario_id: str = Field(min_length=1, max_length=120)
+    nombre: str = Field(min_length=1, max_length=160)
+    descripcion: str | None = None
+    categoria: str | None = None
+    unidad_medida: str = Field(min_length=1, max_length=30)
+    precio_venta: Decimal = Field(ge=0)
+    costo: Decimal | None = Field(default=None, ge=0)
+    ubicacion: str | None = None
+    editado_en: AwareDatetime
+
+
+class ArticuloCatalogoEdicionResponseSchema(BaseModel):
+    aplicado: bool
+    articulo: ArticuloResponseSchema
+    inventario: InventarioResponseSchema | None
 
 
 class ValoresResponseSchema(BaseModel):
