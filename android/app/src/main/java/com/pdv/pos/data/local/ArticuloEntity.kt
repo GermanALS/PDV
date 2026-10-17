@@ -25,3 +25,15 @@ data class ArticuloEntity(
     val isSynced: Boolean,
     val deletedAt: Long?,
 )
+
+// Compara solo los atributos de catalogo editables (no ids ni tracking). Los
+// BigDecimal se comparan con compareTo: 19.0 y 19.00 son el mismo precio.
+fun ArticuloEntity.catalogoDifiere(otro: ArticuloEntity): Boolean =
+    codigoBarras != otro.codigoBarras ||
+        nombre != otro.nombre ||
+        descripcion != otro.descripcion ||
+        categoria != otro.categoria ||
+        unidadMedida != otro.unidadMedida ||
+        precioVenta.compareTo(otro.precioVenta) != 0 ||
+        (costo == null) != (otro.costo == null) ||
+        (costo != null && otro.costo != null && costo.compareTo(otro.costo) != 0)

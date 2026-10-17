@@ -46,10 +46,10 @@ class InventarioPullerTest {
         costo = null, activo = true, updatedAt = 0L, isSynced = true, deletedAt = null,
     )
 
-    private fun inventarioLocal(cantidad: String, isSynced: Boolean) = InventarioEntity(
+    private fun inventarioLocal(cantidad: String, isSynced: Boolean, edicionPendiente: Boolean = false) = InventarioEntity(
         localId = "inv-local", remoteId = null, sucursalId = "suc-1", articuloId = "art-local",
         cantidad = BigDecimal(cantidad), cantidadNum = BigDecimal(cantidad).toDouble(), ubicacion = "A1",
-        updatedAt = 0L, isSynced = isSynced, deletedAt = null,
+        updatedAt = 0L, isSynced = isSynced, deletedAt = null, edicionPendiente = edicionPendiente,
     )
 
     private fun movimiento(tipo: String, cantidad: String) = MovimientoEntity(
@@ -65,6 +65,8 @@ class InventarioPullerTest {
 
     private fun stubPage(vararg items: InventarioItemDto) {
         coEvery { syncStateStore.inventarioReconciliado("suc-1") } returns true
+        coEvery { syncStateStore.catalogoReconciliado("suc-1") } returns true
+        coEvery { dao.hayEdicionPendiente(any()) } returns false
         coEvery { syncStateStore.pullDesde("inventario", "suc-1") } returns null
         coEvery { api.getInventario(any(), any(), any(), any(), any()) } returns
             InventarioListResponseDto(items = items.toList(), page = 1, pageSize = 100, total = items.size)
@@ -108,9 +110,14 @@ class InventarioPullerTest {
         coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("15", isSynced = false)
         coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns listOf(movimiento("salida", "1"))
 
+        val actualizada = slot<InventarioEntity>()
+        coEvery { dao.updateInventario(capture(actualizada)) } returns Unit
+
         puller.pull("suc-1")
 
-        coVerify(exactly = 0) { dao.updateInventario(any()) }
+        // La cantidad local no se toca; la ubicacion remota si llega.
+        assertEquals(BigDecimal("15"), actualizada.captured.cantidad)
+        assertEquals("B2", actualizada.captured.ubicacion)
         coVerify {
             eventoAditivoSyncEngine.registrarDivergenciaLocalGana(
                 entidad = "inventario", entidadLocalId = "inv-local", sucursalId = "suc-1", usuario = "system",
@@ -123,7 +130,8 @@ class InventarioPullerTest {
     fun `asks the backend for rows since the cursor minus the overlap window`() = runTest {
         stubPage(item(cantidad = "9"))
         coEvery { syncStateStore.pullDesde("inventario", "suc-1") } returns "2026-08-20T13:58:00Z"
-        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns null
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
+        coEvery { dao.getInventario("suc-1", "art-local") } returns null
 
         puller.pull("suc-1")
 
@@ -181,6 +189,7 @@ class InventarioPullerTest {
     @Test
     fun `does not mark the sucursal as reconciled when the pull fails`() = runTest {
         coEvery { syncStateStore.inventarioReconciliado("suc-1") } returns false
+        coEvery { syncStateStore.catalogoReconciliado("suc-1") } returns false
         coEvery { api.getInventario(any(), any(), any(), any(), any()) } throws java.io.IOException("sin conexion")
 
         runCatching { puller.pull("suc-1") }
@@ -189,13 +198,101 @@ class InventarioPullerTest {
     }
 
     @Test
-    fun `skips an item whose article is unknown locally`() = runTest {
-        stubPage(item(cantidad = "9"))
-        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns null
+    fun `overwrites the local catalog attributes when there is no pending edit`() = runTest {
+        stubPage(item(cantidad = "9").copy(nombre = "Cafe tostado", precioVenta = "35.00"))
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
+        coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("9", isSynced = true)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns emptyList()
+        val actualizado = slot<ArticuloEntity>()
+        coEvery { dao.updateArticulo(capture(actualizado)) } returns Unit
 
         puller.pull("suc-1")
 
-        coVerify(exactly = 0) { dao.insertInventario(any()) }
-        coVerify(exactly = 0) { dao.updateInventario(any()) }
+        assertEquals("Cafe tostado", actualizado.captured.nombre)
+        assertEquals(0, BigDecimal("35.00").compareTo(actualizado.captured.precioVenta))
+        assertTrue(actualizado.captured.isSynced)
+    }
+
+    @Test
+    fun `does not write the article when the remote attributes are equal to the local ones`() = runTest {
+        stubPage(item(cantidad = "9"))
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
+        coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("9", isSynced = true)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns emptyList()
+
+        puller.pull("suc-1")
+
+        coVerify(exactly = 0) { dao.updateArticulo(any()) }
+    }
+
+    @Test
+    fun `keeps the local catalog and ubicacion when an edit is pending`() = runTest {
+        stubPage(item(cantidad = "9").copy(nombre = "Cafe tostado"))
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
+        coEvery { dao.hayEdicionPendiente("art-local") } returns true
+        coEvery { dao.getInventario("suc-1", "art-local") } returns
+            inventarioLocal("9", isSynced = false, edicionPendiente = true)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns emptyList()
+        val actualizada = slot<InventarioEntity>()
+        coEvery { dao.updateInventario(capture(actualizada)) } returns Unit
+
+        puller.pull("suc-1")
+
+        coVerify(exactly = 0) { dao.updateArticulo(any()) }
+        assertEquals("A1", actualizada.captured.ubicacion)
+        assertTrue(actualizada.captured.edicionPendiente)
+    }
+
+    @Test
+    fun `creates the article when it was created in another terminal`() = runTest {
+        stubPage(item(cantidad = "9"))
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns null
+        coEvery { dao.getArticuloSinRemotoPorSku("SKU-1") } returns null
+        coEvery { dao.getInventario(any(), any()) } returns null
+        val nuevo = slot<ArticuloEntity>()
+        val inventario = slot<InventarioEntity>()
+        coEvery { dao.insertArticulo(capture(nuevo)) } returns Unit
+        coEvery { dao.insertInventario(capture(inventario)) } returns Unit
+
+        puller.pull("suc-1")
+
+        assertEquals("art-remoto", nuevo.captured.remoteId)
+        assertEquals("SKU-1", nuevo.captured.sku)
+        assertTrue(nuevo.captured.isSynced)
+        assertEquals(nuevo.captured.localId, inventario.captured.articuloId)
+        assertEquals(BigDecimal("9"), inventario.captured.cantidad)
+    }
+
+    @Test
+    fun `links a local article without remote id that has the same sku instead of inserting a duplicate`() = runTest {
+        stubPage(item(cantidad = "9"))
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns null
+        coEvery { dao.getArticuloSinRemotoPorSku("SKU-1") } returns articulo().copy(remoteId = null)
+        coEvery { dao.getInventario("suc-1", "art-local") } returns null
+        val enlazado = slot<ArticuloEntity>()
+        coEvery { dao.updateArticulo(capture(enlazado)) } returns Unit
+
+        puller.pull("suc-1")
+
+        assertEquals("art-remoto", enlazado.captured.remoteId)
+        assertEquals("art-local", enlazado.captured.localId)
+        coVerify(exactly = 0) { dao.insertArticulo(any()) }
+    }
+
+    @Test
+    fun `catalog reconciliation pulls everything once even when the stock was already reconciled`() = runTest {
+        stubPage(item(cantidad = "9"))
+        coEvery { syncStateStore.catalogoReconciliado("suc-1") } returns false
+        coEvery { syncStateStore.pullDesde("inventario", "suc-1") } returns "2026-08-20T13:58:00Z"
+        coEvery { dao.getArticuloByRemoteId("art-remoto") } returns articulo()
+        coEvery { dao.getInventario("suc-1", "art-local") } returns inventarioLocal("9", isSynced = true)
+        coEvery { dao.getMovimientosPendientes("suc-1", "art-local") } returns emptyList()
+
+        puller.pull("suc-1")
+
+        coVerify { api.getInventario("suc-1", null, 1, 100, null) }
+        coVerify { syncStateStore.marcarCatalogoReconciliado("suc-1") }
+        coVerify(exactly = 0) { syncStateStore.marcarInventarioReconciliado(any()) }
+        coVerify(exactly = 0) { eventoAditivoSyncEngine.registrarReconciliacionInventario(any(), any(), any()) }
     }
 }

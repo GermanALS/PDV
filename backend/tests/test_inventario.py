@@ -327,3 +327,140 @@ async def test_ajustar_articulo_sucursal_id_inexistente_returns_404(client_auten
     )
 
     assert response.status_code == 404
+
+
+def _edicion_catalogo_payload(sucursal_id: str, editado_en: str, **cambios) -> dict:
+    payload = {
+        "sucursal_id": sucursal_id,
+        "usuario_id": "admin",
+        "nombre": "Nombre editado",
+        "unidad_medida": "pieza",
+        "precio_venta": "25.00",
+        "ubicacion": "Estante Z9",
+        "editado_en": editado_en,
+    }
+    return payload | cambios
+
+
+async def test_editar_catalogo_actualiza_atributos_y_ubicacion_sin_tocar_cantidad(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="CAT-OK", cantidad="10")
+
+    response = await client_autenticado.patch(
+        f"/api/v1/articulos/{articulo_id}", json=_edicion_catalogo_payload(sucursal_id, "2099-01-01T00:00:00Z")
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["aplicado"] is True
+    assert body["articulo"]["nombre"] == "Nombre editado"
+    assert body["articulo"]["precio_venta"] == "25.00"
+    assert body["inventario"]["ubicacion"] == "Estante Z9"
+    assert body["inventario"]["cantidad"] == "10.000"
+
+
+async def test_editar_catalogo_no_pisa_venta_concurrente(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="CAT-VENTA", cantidad="10")
+    await client_autenticado.post(
+        "/api/v1/ventas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "admin",
+            "folio": "F-CAT-VENTA",
+            "fecha": "2026-08-19T12:00:00Z",
+            "subtotal": "60.00",
+            "total": "60.00",
+            "metodo_pago": "efectivo",
+            "lineas": [{"articulo_id": articulo_id, "cantidad": "3", "precio_unitario": "20.00", "subtotal": "60.00"}],
+        },
+    )
+
+    response = await client_autenticado.patch(
+        f"/api/v1/articulos/{articulo_id}", json=_edicion_catalogo_payload(sucursal_id, "2099-01-01T00:00:00Z")
+    )
+
+    assert response.json()["inventario"]["cantidad"] == "7.000"
+
+
+async def test_editar_catalogo_mas_vieja_que_el_servidor_no_se_aplica(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="CAT-LWW", cantidad="4")
+
+    response = await client_autenticado.patch(
+        f"/api/v1/articulos/{articulo_id}", json=_edicion_catalogo_payload(sucursal_id, "2000-01-01T00:00:00Z")
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["aplicado"] is False
+    assert body["articulo"]["nombre"] == "Articulo CAT-LWW"
+    assert body["inventario"]["ubicacion"] is None
+
+
+async def test_editar_catalogo_articulo_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.patch(
+        f"/api/v1/articulos/{uuid.uuid4()}", json=_edicion_catalogo_payload(sucursal_id, "2099-01-01T00:00:00Z")
+    )
+
+    assert response.status_code == 404
+
+
+async def test_editar_catalogo_sin_fila_de_inventario_la_crea_con_cantidad_cero(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="CAT-SUC2", cantidad="4")
+    otra = await client_autenticado.post("/api/v1/sucursales", json={"nombre": f"Suc {uuid.uuid4().hex[:6]}"})
+
+    response = await client_autenticado.patch(
+        f"/api/v1/articulos/{articulo_id}",
+        json=_edicion_catalogo_payload(otra.json()["id"], "2099-01-01T00:00:00Z"),
+    )
+
+    assert response.json()["inventario"]["cantidad"] == "0.000"
+    assert response.json()["inventario"]["ubicacion"] == "Estante Z9"
+
+
+async def test_edicion_de_catalogo_aparece_en_el_pull_de_otra_sucursal(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="CAT-PULL", cantidad="4")
+    otra = await client_autenticado.post("/api/v1/sucursales", json={"nombre": f"Suc {uuid.uuid4().hex[:6]}"})
+    otra_id = otra.json()["id"]
+    await client_autenticado.patch(
+        f"/api/v1/articulos/{articulo_id}", json=_edicion_catalogo_payload(otra_id, "2099-01-01T00:00:00Z")
+    )
+    desde = datetime.fromisoformat(
+        (await client_autenticado.get("/api/v1/inventario", params={"sucursal_id": sucursal_id, "q": "CAT-PULL"}))
+        .json()["items"][0]["updated_at"]
+    )
+
+    # Un segundo artículo editado después: la fila de la sucursal original no cambió su inventario.
+    await client_autenticado.patch(
+        f"/api/v1/articulos/{articulo_id}",
+        json=_edicion_catalogo_payload(otra_id, "2099-01-01T00:00:00Z", nombre="Segundo nombre"),
+    )
+    response = await client_autenticado.get(
+        "/api/v1/inventario",
+        params={"sucursal_id": sucursal_id, "updated_since": (desde + timedelta(microseconds=1)).isoformat()},
+    )
+
+    fila = next(item for item in response.json()["items"] if item["articulo_id"] == articulo_id)
+    assert fila["nombre"] == "Segundo nombre"
+
+
+async def test_editar_catalogo_perdedora_en_sucursal_sin_fila_no_crea_inventario(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="CAT-PIERDE", cantidad="4")
+    otra = await client_autenticado.post("/api/v1/sucursales", json={"nombre": f"Suc {uuid.uuid4().hex[:6]}"})
+    otra_id = otra.json()["id"]
+
+    response = await client_autenticado.patch(
+        f"/api/v1/articulos/{articulo_id}", json=_edicion_catalogo_payload(otra_id, "2000-01-01T00:00:00Z")
+    )
+
+    assert response.json()["aplicado"] is False
+    assert response.json()["inventario"] is None
+    lista = await client_autenticado.get("/api/v1/inventario", params={"sucursal_id": otra_id})
+    assert lista.json()["total"] == 0

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,8 @@ from app.schemas.inventario import (
     AjusteDeltaCreateSchema,
     AjusteDeltaResponseSchema,
     AjusteInventarioResponseSchema,
+    ArticuloCatalogoEdicionResponseSchema,
+    ArticuloCatalogoEdicionSchema,
     ArticuloEdicionSchema,
     InventarioItemResponseSchema,
     InventarioListResponseSchema,
@@ -93,10 +95,10 @@ async def list_inventario(
         filtros.append(
             (Articulo.nombre.ilike(termino)) | (Articulo.sku.ilike(termino)) | (Articulo.codigo_barras.ilike(termino))
         )
-    # Pull diferido (PLAN.md Parte 32, Grupo 3): filtra por updated_at de la
-    # fila `inventario`, no del articulo.
+    # Pull diferido (PLAN.md Partes 32 y 35): una fila cambia si cambio su
+    # inventario (stock, ubicacion) o su articulo (catalogo global).
     if updated_since is not None:
-        filtros.append(Inventario.updated_at >= updated_since)
+        filtros.append(or_(Inventario.updated_at >= updated_since, Articulo.updated_at >= updated_since))
 
     total = await db.scalar(
         select(func.count()).select_from(Inventario).join(Articulo, Articulo.id == Inventario.articulo_id).where(*filtros)
@@ -122,7 +124,7 @@ async def list_inventario(
             costo=articulo.costo,
             cantidad=inventario.cantidad,
             ubicacion=inventario.ubicacion,
-            updated_at=inventario.updated_at,
+            updated_at=max(inventario.updated_at, articulo.updated_at),
         )
         for inventario, articulo in resultado.all()
     ]
@@ -272,6 +274,52 @@ async def create_ajuste_delta(
     await db.refresh(inventario)
     return AjusteDeltaResponseSchema(
         movimiento=_movimiento_to_response(movimiento), inventario=_inventario_to_response(inventario)
+    )
+
+
+@router.patch("/articulos/{articulo_id}", response_model=ArticuloCatalogoEdicionResponseSchema)
+async def editar_catalogo_articulo(
+    articulo_id: uuid.UUID,
+    payload: ArticuloCatalogoEdicionSchema,
+    db: AsyncSession = Depends(get_db),
+) -> ArticuloCatalogoEdicionResponseSchema:
+    """Edita catalogo y ubicacion sin tocar la cantidad; last-write-wins por `editado_en` (PLAN.md Parte 35)."""
+    articulo = (
+        await db.execute(select(Articulo).where(Articulo.id == articulo_id).with_for_update(key_share=True))
+    ).scalar_one_or_none()
+    if articulo is None:
+        raise HTTPException(status_code=404, detail="articulo no encontrado")
+    if await db.get(Sucursal, payload.sucursal_id) is None:
+        raise HTTPException(status_code=404, detail=f"sucursal no encontrada: {payload.sucursal_id}")
+
+    inventario = (
+        await db.execute(
+            select(Inventario).where(Inventario.sucursal_id == payload.sucursal_id, Inventario.articulo_id == articulo_id)
+        )
+    ).scalar_one_or_none()
+
+    aplicado = payload.editado_en >= articulo.updated_at
+    if aplicado:
+        if inventario is None:
+            inventario = Inventario(sucursal_id=payload.sucursal_id, articulo_id=articulo_id, cantidad=Decimal(0))
+            db.add(inventario)
+        articulo.nombre = payload.nombre
+        articulo.descripcion = payload.descripcion
+        articulo.categoria = payload.categoria
+        articulo.unidad_medida = payload.unidad_medida
+        articulo.precio_venta = payload.precio_venta
+        articulo.costo = payload.costo
+        articulo.updated_at = datetime.now(timezone.utc)
+        inventario.ubicacion = payload.ubicacion
+
+    await db.commit()
+    await db.refresh(articulo)
+    if inventario is not None:
+        await db.refresh(inventario)
+    return ArticuloCatalogoEdicionResponseSchema(
+        aplicado=aplicado,
+        articulo=_articulo_to_response(articulo),
+        inventario=_inventario_to_response(inventario) if inventario is not None else None,
     )
 
 

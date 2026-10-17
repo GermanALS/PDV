@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.WorkManager
 import com.pdv.pos.sync.DefaultSyncOrchestrator
 import com.pdv.pos.sync.SyncOrchestrator
+import com.pdv.pos.sync.push.ArticuloEdicionPusher
 import com.pdv.pos.sync.push.CorteCajaPusher
 import com.pdv.pos.sync.push.DevolucionPusher
 import com.pdv.pos.sync.push.EntityPusher
@@ -44,12 +45,13 @@ abstract class SyncModule {
         @Provides
         fun providePushers(
             entrada: EntradaPusher,
+            edicion: ArticuloEdicionPusher,
             venta: VentaPusher,
             ajuste: InventarioAjustePusher,
             corte: CorteCajaPusher,
             retiro: RetiroPusher,
             devolucion: DevolucionPusher,
-        ): List<EntityPusher> = listOf(entrada, venta, ajuste, corte, retiro, devolucion)
+        ): List<EntityPusher> = listOf(entrada, edicion, venta, ajuste, corte, retiro, devolucion)
 
         @Provides
         fun providePullers(

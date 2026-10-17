@@ -118,7 +118,7 @@ sin perder ventas, ajustes ni entradas de ninguna de las dos.
 
 ---
 
-## Parte 35: Convergencia de catálogo y ubicación en el sync
+## Parte 35: Convergencia de catálogo y ubicación en el sync  <!-- POS-162 -->
 
 *(Sale de un hallazgo del `code-reviewer` en el sub-paso 3 de la Parte 34
 (2026-10-12), confirmado leyendo el código; no está en `docs/review_code.md`.
@@ -133,7 +133,9 @@ stock queda como fila local sucia sin movimiento, y el siguiente pull la pisa
 con el valor remoto. Toca contrato, backend y motor de sync: igual que la 34,
 delegación `feature-dev` (`CLAUDE.md` §11).)*
 
-Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
+Claves de Jira: épica POS-162; historias POS-163 (grupo 1), POS-164 (grupo 2),
+POS-165 (grupo 3), POS-166 (grupo 4) y POS-167 (grupo 5), creadas por
+`/jira-sync` el 2026-10-16.
 
 Objetivo: que nombre, precio, categoría, unidad de medida y ubicación de un
 artículo, editados en una terminal, lleguen a las demás de la sucursal sin
@@ -141,55 +143,87 @@ pisar el stock ni perderse en el siguiente pull.
 
 ### Checklist
 
-**1. Contrato de edición de catálogo y ubicación**
-- [ ] `docs/api-contract.md` §7: operación que actualiza atributos de
+**1. Contrato de edición de catálogo y ubicación (POS-163)**
+- [x] `docs/api-contract.md` §7: operación que actualiza atributos de
   catálogo y `ubicacion` sin tocar `cantidad`, con resolución
   last-write-wins por `updated_at` (forma según Decisiones abiertas).
   Contrato primero (skill `sync-api-contract`). `needs-approval`.
+  Resultado: §7.5 `PATCH /articulos/{articulo_id}`, §7.1 (filtro y
+  `updated_at` incluyen el del artículo) y fila en la tabla de permisos de
+  §12. Aprobado por el usuario.
 
-**2. Backend**
-- [ ] La operación del contrato: actualiza `articulos` (y `ubicacion` de
+**2. Backend (POS-164)**
+- [x] La operación del contrato: actualiza `articulos` (y `ubicacion` de
   `inventario`) con `updated_at` nuevo, sin movimiento ni cambio de
   `cantidad`. Criterio: tests happy path + error (artículo inexistente);
   una edición no altera el stock de una venta concurrente.
   `uv run pytest` en verde; `uv run alembic check` sin drift si cambia el
   esquema (`schema-parity`).
+- [x] `GET /inventario?updated_since=` filtra por `inventario.updated_at` o
+  `articulos.updated_at` y devuelve el mayor de los dos como `updated_at`
+  (contrato §7.1); `PATCH /articulos/{articulo_id}` registrado en
+  `backend/app/permissions.py` (módulo `inventario`) y en
+  `test_permisos.py`. Tests: una edición de catálogo aparece en el pull de
+  otra sucursal; 403 sin el módulo.
 
-**3. Android: push**
-- [ ] Una edición de catálogo o de `ubicacion` sin cambio de stock queda
+**3. Android: push (POS-165)**
+- [x] Una edición de catálogo o de `ubicacion` sin cambio de stock queda
   registrada como pendiente de subir con una señal propia (no
   `inventario.isSynced`, que toda escritura local deja en `false`); un
   pusher la sube y la limpia. Si cambia el esquema de Room: migración +
   `docs/schema-pos.json` alineados (`schema-parity`). `jvm-tests`.
-- [ ] El ajuste de stock con cambio de `ubicacion` también la sube (campo del
+- [x] El ajuste de stock con cambio de `ubicacion` también la sube (campo del
   contrato o llamada de edición, según la decisión). `jvm-tests`.
+- [x] La migración de Room 8 a 9 rescata las ediciones locales que la Parte
+  34 dejó sin subir (`UPDATE inventario SET edicionPendiente = 1` para los
+  artículos con `articulos.isSynced = 0` y `remoteId` no nulo); el LWW del
+  servidor decide si ganan. Si el servidor responde `aplicado = false`, el
+  cliente adopta lo vigente y registra el conflicto en `sync_conflicts`
+  (`last_write_wins_remoto_gana`). `jvm-tests`.
 
-**4. Android: pull**
-- [ ] `InventarioPuller` mergea también los atributos de `articulos` y la
+**4. Android: pull (POS-166)**
+- [x] `InventarioPuller` mergea también los atributos de `articulos` y la
   `ubicacion` del backend: sin edición local pendiente gana el remoto; con
   una pendiente se conserva lo local. `jvm-tests`: catálogo editado en otra
   terminal → el artículo local lo refleja; edición local pendiente no se
   pisa.
+- [x] Un artículo creado en otra terminal (sin fila local con ese
+  `remoteId`) se crea localmente desde el ítem del pull; si ya existe un
+  artículo local con el mismo SKU y `remoteId` nulo, se enlaza en vez de
+  insertar. `jvm-tests`. *(Agregado a pedido del usuario el 2026-10-13, a
+  partir del hallazgo del `code-architect`.)*
+- [x] Reconciliación única de catálogo por sucursal (bandera nueva en
+  `SyncStateStore`, pull completo una vez) para que los dispositivos con
+  cursor y reconciliación de inventario ya marcados bajen las ediciones y
+  artículos anteriores. `jvm-tests`. *(Agregado a pedido del usuario el
+  2026-10-13.)*
 
-**5. Verificación**
-- [ ] Verificación en el Xiaomi M2102J20SG con una segunda "terminal"
+**5. Verificación (POS-167)**
+- [x] Verificación en el Xiaomi M2102J20SG con una segunda "terminal"
   simulada contra el backend (curl): editar nombre y ubicación en el teléfono
   y en el backend, tras un ciclo ambos coinciden y el stock no cambia.
-  `needs-device`.
+  `needs-device`. *(Verificado el 2026-10-16 en el Xiaomi 24030PN60G, porque
+  el M2102J20SG dejó de estar disponible: edición en el teléfono llegó al
+  backend y la edición por curl llegó al teléfono, con stock 30 sin cambio y
+  `edicionPendiente` en 0.)*
 
 ### Decisiones abiertas
 
-- [ ] Operación de edición: ¿endpoint nuevo `PATCH /articulos/{id}` (con
+- [x] Operación de edición: ¿endpoint nuevo `PATCH /articulos/{id}` (con
   `ubicacion` de la sucursal en el body) o reutilizar `PATCH
   /inventario/{id}` enviando `cantidad` igual al valor del servidor? Lo
-  segundo reabre la carrera de la Parte 34.
-- [ ] `ubicacion` en el ajuste por delta: ¿campo opcional de `POST
-  /ajustes-inventario` o solo vía la operación de edición?
-- [ ] Señal de pendiente de una edición sin movimiento: ¿columna en
-  `articulos`/`inventario`, o tabla de pendientes?
-- [ ] Conflicto de edición simultánea del mismo artículo en dos terminales:
+  segundo reabre la carrera de la Parte 34. **Resuelta (2026-10-13):**
+  endpoint nuevo `PATCH /articulos/{id}`.
+- [x] `ubicacion` en el ajuste por delta: ¿campo opcional de `POST
+  /ajustes-inventario` o solo vía la operación de edición? **Resuelta:**
+  solo vía la operación de edición.
+- [x] Señal de pendiente de una edición sin movimiento: ¿columna en
+  `articulos`/`inventario`, o tabla de pendientes? **Resuelta:** columna
+  `edicionPendiente` en `inventario` (migración de Room 8 a 9).
+- [x] Conflicto de edición simultánea del mismo artículo en dos terminales:
   ¿last-write-wins silencioso por `updated_at` o registro en
-  `sync_conflicts`?
+  `sync_conflicts`? **Resuelta:** LWW en el servidor; solo se registra en
+  `sync_conflicts` cuando la edición local pierde.
 
 ---
 
@@ -715,3 +749,17 @@ desde fuera de la LAN.
   pendientes, `remoto + pendientes` en las demás, un registro resumen en
   `sync_conflicts`); cursor por `(entidad, sucursal)` con ventana de solape
   de 2 minutos.
+- **2026-10-16**: se cierra la Parte 35. Decisiones (resueltas por el
+  usuario): endpoint nuevo `PATCH /articulos/{id}` con `ubicacion` en el body;
+  `ubicacion` viaja solo por la edición (el ajuste por delta queda solo de
+  stock); señal de pendiente en la columna `inventario.edicionPendiente`
+  (Room 8 a 9, con rescate de ediciones perdidas de la Parte 34); LWW en el
+  servidor por `editado_en` contra `articulos.updated_at`, con registro en
+  `sync_conflicts` (`last_write_wins_remoto_gana`) solo si la edición local
+  pierde. Alcance agregado a pedido del usuario: filtro y permisos del
+  backend, creación o enlace por SKU de artículos desde el pull y
+  reconciliación única de catálogo por sucursal. Verificación en dispositivo
+  hecha en un Xiaomi 24030PN60G distinto al de las Partes anteriores. Sin
+  cubrir en JVM: la carrera del DAO (`cerrarEdicionSubida`) y la migración
+  8 a 9; `InventarioPuller.resolverArticulo` no es atómico (ventana de
+  milisegundos entre `hayEdicionPendiente` y `updateArticulo`).

@@ -81,7 +81,7 @@
       "primary_key": "local_id",
       "unique_together": ["sucursal_id", "articulo_id"],
       "foreign_keys": { "articulo_id": "articulos" },
-      "notes": "cantidad es un snapshot de existencia. La politica de como se sincroniza (campo directo vs. derivado de movimientos) es la decision abierta de la Parte 6.",
+      "notes": "cantidad es un snapshot de existencia. La politica de como se sincroniza (campo directo vs. derivado de movimientos) es la decision abierta de la Parte 6. Columnas solo de cliente (Room, sin contraparte en el backend ni en Alembic): cantidad_num (espejo REAL de cantidad para agregados SQL, Parte 28) y edicion_pendiente (bool, true si el catalogo del articulo o la ubicacion de esta fila se editaron localmente y falta subirlos con PATCH /articulos/{id}, Parte 35).",
       "fields": [
         { "name": "articulo_id", "type": "uuid", "nullable": false },
         { "name": "cantidad", "type": "decimal", "nullable": false, "default": 0 },

@@ -11,6 +11,7 @@ import javax.inject.Singleton
 
 private const val POLITICA_EVENTO_ADITIVO = "evento_aditivo_delta"
 private const val POLITICA_LWW_LOCAL_GANA = "last_write_wins_local_gana"
+private const val POLITICA_LWW_REMOTO_GANA = "last_write_wins_remoto_gana"
 private const val POLITICA_RECONCILIACION_INICIAL = "reconciliacion_inicial_backend_gana"
 
 // Merge de cantidades de inventario en el pull del motor de sync diferido
@@ -98,6 +99,40 @@ class EventoAditivoSyncEngine @Inject constructor(
             usuario = usuario,
             mensaje = "Reconciliacion inicial de inventario: $filasCorregidas filas distintas del backend " +
                 "se corrigieron a remoto + movimientos locales pendientes",
+        )
+    }
+
+    // Push de una edicion de catalogo/ubicacion (PLAN.md Parte 35): el servidor
+    // aplico una edicion mas reciente de otra terminal y la local se perdio.
+    // Solo se registra cuando la local pierde, para que el usuario sepa que su
+    // cambio no quedo (resuelto automaticamente: el cliente adopta lo vigente).
+    suspend fun registrarEdicionCatalogoPerdida(
+        articuloLocalId: String,
+        sucursalId: String,
+        usuario: String,
+        resumenLocal: String,
+        resumenRemoto: String,
+    ) {
+        syncConflictDao.insert(
+            SyncConflictEntity(
+                id = UUID.randomUUID().toString(),
+                entidad = "articulo",
+                entidadLocalId = articuloLocalId,
+                sucursalId = sucursalId,
+                valorLocal = resumenLocal,
+                valorRemoto = resumenRemoto,
+                valorResuelto = resumenRemoto,
+                politicaAplicada = POLITICA_LWW_REMOTO_GANA,
+                resueltoAutomaticamente = true,
+                fechaDeteccion = System.currentTimeMillis(),
+            ),
+        )
+        appLogger.log(
+            LogType.SYNC_CONFLICT,
+            sucursalId = sucursalId,
+            usuario = usuario,
+            mensaje = "Edicion de catalogo del articulo $articuloLocalId perdida contra una mas reciente " +
+                "(local=[$resumenLocal] remoto=[$resumenRemoto]); se adopta lo vigente del backend",
         )
     }
 

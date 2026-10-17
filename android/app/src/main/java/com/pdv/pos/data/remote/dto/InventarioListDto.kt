@@ -65,6 +65,27 @@ data class AjusteDeltaDto(
 )
 
 @Serializable
+data class ArticuloCatalogoRequestDto(
+    @SerialName("sucursal_id") val sucursalId: String,
+    @SerialName("usuario_id") val usuarioId: String,
+    val nombre: String,
+    val descripcion: String? = null,
+    val categoria: String? = null,
+    @SerialName("unidad_medida") val unidadMedida: String,
+    @SerialName("precio_venta") val precioVenta: String,
+    val costo: String? = null,
+    val ubicacion: String? = null,
+    @SerialName("editado_en") val editadoEn: String,
+)
+
+@Serializable
+data class ArticuloCatalogoDto(
+    val aplicado: Boolean,
+    val articulo: ArticuloDto,
+    val inventario: InventarioDto? = null,
+)
+
+@Serializable
 data class ValoresDto(
     val valores: List<String>,
 )

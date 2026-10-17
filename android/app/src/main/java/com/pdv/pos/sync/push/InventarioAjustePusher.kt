@@ -18,9 +18,8 @@ import javax.inject.Singleton
 // remoteId (su entrada aun no sincronizo) el movimiento se salta y se
 // reintenta el proximo ciclo.
 //
-// Fuera de alcance: las ediciones de catalogo (nombre, precio, etc.) y de
-// ubicacion ya no viajan con el ajuste; este endpoint solo suma stock. Se
-// resuelve en la Parte 35 de PLAN.md.
+// Este endpoint solo suma stock: las ediciones de catalogo y de ubicacion las
+// sube ArticuloEdicionPusher (PLAN.md Parte 35).
 @Singleton
 class InventarioAjustePusher @Inject constructor(
     private val dao: InventarioDao,
