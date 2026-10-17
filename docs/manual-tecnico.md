@@ -2,8 +2,8 @@
 manual-meta
 titulo: Manual técnico — PDV (Punto de Venta)
 lead: Descripción funcional, arquitectura, requerimientos de instalación, diagramas UML y de base de datos, y guías de diagnóstico, mantenimiento y evolución.
-actualizado: 2026-10-12
-chips: Partes 1-33 mergeadas | Parte 34 implementada | Partes 35-40 pendientes | Backend 170 tests | Android 437 tests | Alembic 0001-0013 | Room v8
+actualizado: 2026-10-16
+chips: Partes 1-34 mergeadas | Parte 35 implementada | Partes 36-40 pendientes | Backend 185 tests | Android 458 tests | Alembic 0001-0013 | Room v9
 -->
 # Manual técnico — PDV (Punto de Venta)
 
@@ -12,25 +12,26 @@ funcional, arquitectura, requerimientos de instalación, diagramas UML y de base
 de datos, y guías de diagnóstico, mantenimiento y evolución.
 
 - **Código de proyecto**: `POS` (Jira) / `PDV` (repo).
-- **Estado a la fecha de este manual (2026-10-12)**: Partes 1-33
-  implementadas y mergeadas (archivadas en `docs/PLAN-historico.md`),
-  incluyendo el motor de sincronización diferida (Parte 32) y este propio
-  manual (Parte 33). La Parte 34 (convergencia del inventario en el sync;
-  épica `POS-157`, historias `POS-158`..`POS-161`) está implementada en la
-  rama `feature/POS-157-convergencia-inventario-sync` (commits `660f0fb` y `65513a1`), aún
-  sin mergear a `main`, y sigue listada en `docs/PLAN.md`. Partes 35-40
-  (convergencia de catálogo y ubicación, sucursal estable, seguridad
-  pre-release, integridad del backend, calidad menor y primer release
-  productivo) pendientes, sin claves de Jira todavía; la 35 salió de la
-  ejecución de la 34 y las 36-40 de la revisión pre-release de
+- **Estado a la fecha de este manual (2026-10-16)**: Partes 1-34
+  implementadas y mergeadas (PR #44, merge `11e0427`), incluyendo el motor de
+  sincronización diferida (Parte 32), este propio manual (Parte 33) y la
+  convergencia del inventario en el sync (Parte 34). La Parte 35
+  (convergencia de catálogo y ubicación en el sync; épica `POS-162`,
+  historias `POS-163`..`POS-167`) está implementada en la rama
+  `feature/POS-162-convergencia-catalogo-ubicacion` (commit `ba0031b`), aún
+  sin mergear a `main`, y sigue listada en `docs/PLAN.md`. Partes 36-40
+  (sucursal estable y rechazos visibles, seguridad pre-release, integridad
+  del backend, calidad menor y primer release productivo) pendientes, sin
+  claves de Jira todavía; salen de la revisión pre-release de
   `docs/review_code.md`. App corriendo en dispositivo físico contra backend
   dockerizado en LAN.
 - **Fuentes de verdad vivas** (este manual las resume, no las reemplaza):
   - `CLAUDE.md` — arquitectura estable, convenciones, comandos.
   - `docs/api-contract.md` — contrato de endpoints REST.
   - `docs/schema-pos.json` — esquema de datos compartido (Room + Alembic).
-  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 34 implementada, Partes 35-40 + Backlog).
-  - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33.
+  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 35 implementada, Partes 36-40 + Backlog).
+  - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33 (la 34,
+    ya mergeada, sigue en `docs/PLAN.md` hasta archivarse).
   - `docs/review_code.md` — revisión pre-release del 2026-09-28/29 (origen de
     las Partes 34 y 36-40). La revisión anterior (2026-08-30, origen de las Partes
     21-30) se archivó como `docs/review_code_2026-09-28_1816.md`.
@@ -180,7 +181,7 @@ flowchart TD
         SCHED["SyncScheduler\n(WorkManager)"]
         WORKER["SyncWorker"]
         ORCH["SyncOrchestrator\npush -> pull"]
-        PP["push/*Pusher (6)\npull/*Puller (3)"]
+        PP["push/*Pusher (7)\npull/*Puller (3)"]
         ENGINE["LastWriteWinsSyncEngine\nEventoAditivoSyncEngine"]
     end
 
@@ -192,7 +193,7 @@ flowchart TD
         IA["ia/ChatViewModel · LlmClient\nEjecutorAccionesIa · FaqRepository"]
     end
 
-    ROOM[("Room\npdv.db (v8)")]
+    ROOM[("Room\npdv.db (v9)")]
     HTTP["OkHttp/Retrofit\nDynamicHostInterceptor + AuthInterceptor"]
 
     S --> VM --> RIF
@@ -338,9 +339,9 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
   botón "Sincronizar ahora" de Configuración — ambos no-op salvo
   `BackendMode == LOCAL_CON_SINCRONIZACION`. `DefaultSyncOrchestrator` corre
   primero el **push**, un `EntityPusher` por entidad, en el orden
-  entradas → ventas → ajustes de inventario → cortes → retiros →
-  devoluciones (para que los artículos/ventas creados offline ya tengan
-  `remote_id` cuando otra fila los referencia), y luego el **pull**
+  entradas → ediciones de catálogo → ventas → ajustes de inventario → cortes →
+  retiros → devoluciones (para que los artículos/ventas creados offline ya
+  tengan `remote_id` cuando otra fila los referencia), y luego el **pull**
   (`EntityPuller` de `inventario` / `cortes_caja` / `retiros_efectivo`,
   acotado a la sucursal seleccionada). Desde la Parte 34 el cursor del pull
   lo persiste `SyncStateStore` **por `(entidad, sucursal)`** (clave
@@ -379,6 +380,45 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
     número de filas corregidas, y se marca la bandera. El sufijo `_v2`
     existe porque la primera versión contaba movimientos de ventas
     descartadas como pendientes.
+- **Convergencia de catálogo y ubicación** (Parte 35, `docs/api-contract.md`
+  7.1 y 7.5): el ajuste por delta solo suma stock, así que las ediciones de
+  nombre, descripción, categoría, unidad de medida, precio, costo y
+  `ubicacion` viajan por su propia operación.
+  - *Señal de pendiente*: columna `inventario.edicionPendiente` (Room v9).
+    `InventarioDao.actualizarArticuloCompleto` la marca solo si cambió el
+    catálogo (`ArticuloEntity.catalogoDifiere`, que compara los `BigDecimal`
+    con `compareTo`) o la `ubicacion`; un guardado que solo cambia stock no
+    marca nada. No se usa `isSynced` porque toda escritura local lo deja en
+    `false`. `MIGRATION_8_9` marca como pendientes las filas de artículos con
+    `remoteId` e `isSynced = 0`, para rescatar ediciones que la Parte 34 dejó
+    sin subir.
+  - *Push*: `ArticuloEdicionPusher` envía cada fila con `edicionPendiente` a
+    `PATCH /articulos/{articulo_id}` con `editado_en` = `articulos.updatedAt`.
+    El backend resuelve last-write-wins comparando `editado_en` con
+    `articulos.updated_at` y responde `aplicado` true/false. Con
+    `aplicado = false` el cliente adopta lo vigente del backend
+    (`InventarioDao.cerrarEdicionSubida`) y
+    `EventoAditivoSyncEngine.registrarEdicionCatalogoPerdida` deja un registro
+    en `sync_conflicts` con política `last_write_wins_remoto_gana`, resuelto
+    automáticamente. Si el usuario volvió a editar el artículo mientras la
+    llamada estaba en vuelo (`articulos.updatedAt` distinto del valor
+    enviado), la edición nueva sigue pendiente. Un artículo sin `remote_id`
+    se aplaza al siguiente ciclo; un 4xx no-401 descarta la edición.
+  - *Pull*: `InventarioPuller` mergea además los atributos del artículo y la
+    `ubicacion`: sin edición pendiente (`InventarioDao.hayEdicionPendiente`,
+    en cualquier sucursal, porque el catálogo es global) gana el remoto; con
+    una pendiente se conserva lo local y el LWW lo decide el push. La
+    `ubicacion` de una fila solo la protege su propia `edicionPendiente`, no
+    los movimientos de stock pendientes. Un artículo remoto desconocido se
+    crea localmente; si existe uno local con el mismo SKU y `remoteId` nulo,
+    se enlaza en vez de duplicarse (`getArticuloSinRemotoPorSku`).
+  - *Reconciliación única de catálogo* por sucursal: la bandera
+    `sync_catalogo_reconciliado_<sucursal>` (`SyncStateStore`) fuerza un pull
+    completo (sin `updated_since`) una vez, para que dispositivos con cursor
+    ya avanzado bajen ediciones y artículos anteriores a la Parte 35.
+  - *Backend*: `GET /inventario?updated_since=` devuelve una fila si cambió
+    `inventario.updated_at` o `articulos.updated_at`, y su `updated_at` es el
+    mayor de ambos.
 - **Política de errores del push**: `IOException`/`5xx` reintentan el ciclo
   completo; `401` corta el ciclo y marca la sesión expirada; un `4xx` no-401
   en una fila puntual la descarta (`isSynced = true` sin `remote_id`, para no
@@ -395,10 +435,12 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
   punta a punta en el Xiaomi** (push, pull cross-terminal y cambio de modo
   con confirmación de pendientes). La revisión pre-release encontró que el
   inventario no converge entre terminales de una misma sucursal; la Parte 34
-  lo corrige (implementada, ver arriba). Quedan limitaciones conocidas: el
-  ajuste por delta no sube atributos de catálogo ni `ubicacion` y el pull no
-  mergea `articulos` (Parte 35, pendiente), y otros fallos silenciosos
-  (Parte 36, pendiente); ver
+  lo corrige (mergeada) y la Parte 35 hace converger también catálogo y
+  `ubicacion` (implementada y verificada en un Xiaomi 24030PN60G, ver
+  arriba). Quedan limitaciones conocidas: otros fallos silenciosos del sync
+  (Parte 36, pendiente) y que `InventarioPuller.resolverArticulo` no es
+  atómico (ventana de milisegundos entre `hayEdicionPendiente` y
+  `updateArticulo`); ver
   [§11.3](#113-seguimiento-del-motor-de-sync-parte-32).
 
 ---
@@ -589,12 +631,19 @@ erDiagram
   `local_id`, igual que los ajustes por delta de `POST /ajustes-inventario`
   (Parte 34, el `local_id` del movimiento `ajuste`); las filas de venta y los
   ajustes por `PATCH /inventario` lo dejan nulo (`UNIQUE` permite múltiples
-  `NULL`). La Parte 34 no agregó migraciones: `Inventario.updated_at` pasó a
-  tener `onupdate` en el modelo SQLAlchemy sin cambio de esquema.
+  `NULL`). Las Partes 34 y 35 no agregaron migraciones Alembic:
+  `Inventario.updated_at` pasó a tener `onupdate` en el modelo SQLAlchemy sin
+  cambio de esquema, y `PATCH /articulos/{articulo_id}` (Parte 35) reutiliza
+  columnas existentes de `articulos` e `inventario`.
+- `sync_conflicts.politica_aplicada` toma en la práctica valores más
+  específicos que los dos del diccionario del esquema: `evento_aditivo_delta`,
+  `last_write_wins_local_gana`, `last_write_wins_remoto_gana` (edición de
+  catálogo local que perdió, Parte 35) y `reconciliacion_inicial_backend_gana`
+  (Parte 34).
 
 ### 3.4 Room (dispositivo)
 
-- Base `pdv.db`, `@Database(version = 8, exportSchema = true)`, 13 entidades,
+- Base `pdv.db`, `@Database(version = 9, exportSchema = true)`, 13 entidades,
   10 DAOs (`PdvDatabase`). Esquemas exportados en `android/app/schemas/`.
 - `Converters` (TypeConverters): `BigDecimal <-> String` (`toPlainString`),
   `List<modulo> <-> String` con separador U+001F (Unit Separator).
@@ -602,8 +651,14 @@ erDiagram
   poder `SUM()`/`ORDER BY` numérico en SQL (M-9, migración Room `MIGRATION_7_8`).
   Toda escritura de `cantidad` debe pasar por `nuevoInventario(...)` /
   `InventarioEntity.conCantidad(...)` para no desincronizar las dos columnas.
-- Migraciones registradas en `DatabaseModule` (`addMigrations(MIGRATION_7_8)`);
-  la v7 es la línea base con `exportSchema` (Parte 24).
+- `inventario.edicionPendiente` (INTEGER/Boolean, default 0) marca que el
+  catálogo del artículo o la `ubicacion` de esa fila se editaron localmente y
+  falta subirlos (Parte 35, migración Room `MIGRATION_8_9`). Es columna solo
+  de cliente, sin contraparte en el backend (`docs/schema-pos.json`, notas de
+  `inventario`).
+- Migraciones registradas en `DatabaseModule`
+  (`addMigrations(MIGRATION_7_8, MIGRATION_8_9)`); la v7 es la línea base con
+  `exportSchema` (Parte 24).
 
 ---
 
@@ -1048,8 +1103,9 @@ Parámetros fijos en código (`app/security.py`): `JWT_ALGORITHM = "HS256"`,
 Otras preferencias: `IaPreferences` (activo, proveedor, modelo, token cifrado),
 `PromptIaPreferences` (prompt de sistema editable), `SyncStateStore` (Parte
 32: `lastSuccessAtMillis`, `lastError`, cursor `updated_since` del pull por
-`(entidad, sucursal)` desde la Parte 34, y bandera
-`sync_inventario_reconciliado_v2_<sucursal>`), `SessionStore` (Parte 32: sesión del usuario para el `SyncWorker`
+`(entidad, sucursal)` desde la Parte 34, y banderas
+`sync_inventario_reconciliado_v2_<sucursal>` y, desde la Parte 35,
+`sync_catalogo_reconciliado_<sucursal>`), `SessionStore` (Parte 32: sesión del usuario para el `SyncWorker`
 desatendido, `accessToken` cifrado igual que el token de IA).
 
 `DynamicHostInterceptor` cachea `DeviceConfig` en un campo `@Volatile` (sembrado
@@ -1109,9 +1165,10 @@ códigos de error, ejemplos): `docs/api-contract.md`.
 | GET / POST | `/sync-conflicts` | — (infraestructura) | POST idempotente por `id` del dispositivo. |
 | POST | `/ventas` | `venta` | Idempotente por `local_id`. Decrementa inventario + movimiento. |
 | POST | `/entradas` | `entrada` | Idempotente por `local_id`. Alta de artículo + inventario + movimiento en una llamada atómica. |
-| GET | `/inventario` | — | `sucursal_id` requerido; `q` filtra nombre/SKU/código; `updated_since` para el pull del sync diferido (Parte 32); `updated_at` cambia con todo movimiento de stock (Parte 34) y el cliente consulta con 2 min de solape. |
+| GET | `/inventario` | — | `sucursal_id` requerido; `q` filtra nombre/SKU/código; `updated_since` para el pull del sync diferido (Parte 32) filtra por `inventario.updated_at` o `articulos.updated_at` (Parte 35); el `updated_at` devuelto es el mayor de ambos, cambia con todo movimiento de stock (Parte 34) o edición de catálogo, y el cliente consulta con 2 min de solape. |
 | PATCH | `/inventario/{articulo_id}` | `inventario` | `cantidad` = nuevo valor; el server aplica el delta con signo. Valor absoluto: queda para el modo REMOTO interactivo (el sync diferido usa `/ajustes-inventario`). |
 | POST | `/ajustes-inventario` | `inventario` | Ajuste de existencia por **delta** con signo (`delta` distinto de 0), idempotente por `local_id` del movimiento (`201` aplicado, `200` reintento), con `with_for_update()`; lo usa el sync diferido (Parte 34, `docs/api-contract.md` 7.4). No toca catálogo ni `ubicacion`. |
+| PATCH | `/articulos/{articulo_id}` | `inventario` | Edita nombre, descripción, categoría, unidad de medida, precio, costo y `ubicacion` (de la sucursal del body) sin tocar `cantidad` ni crear movimiento. Last-write-wins: se aplica si `editado_en` >= `articulos.updated_at`; responde `200` con `aplicado` true/false y el estado vigente. Bloquea el artículo con `FOR NO KEY UPDATE`; `404` si no existe el artículo o la sucursal (Parte 35, `docs/api-contract.md` 7.5). |
 | GET | `/inventario/ubicaciones` | — | Valores usados. |
 | GET | `/articulos/categorias`, `/articulos/unidades-medida` | — | Valores usados (sin tabla de catálogo). |
 | POST / GET | `/cortes-caja` | `caja` (POST) | Idempotente por `local_id`. Filtros `desde`/`hasta`/`updated_since` (este último para el pull del sync diferido). |
@@ -1236,8 +1293,8 @@ sincronizados vía `docs/api-contract.md`.
 
 | Lado | Comando | Estado de referencia |
 |---|---|---|
-| Backend | `uv run pytest` | 15 archivos `test_*.py` más `conftest.py`, **170 passed** (verificado 2026-09-28, `docs/review_code.md` §5). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
-| Android | `./gradlew testDebugUnitTest` | 90 clases de test; última corrida registrada (cierre de la Parte 32, 2026-09-11; reconfirmada como `UP-TO-DATE` en `docs/review_code.md` §5, 2026-09-28): **437 / 0 fallos / 0 errores**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
+| Backend | `uv run pytest` | 15 archivos `test_*.py` más `conftest.py`, **185 passed** (verificado 2026-10-17, tras la Parte 35). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
+| Android | `./gradlew testDebugUnitTest` | 92 archivos `*Test.kt` (la Parte 35 sumó `ArticuloEdicionPusherTest` y `ArticuloEntityTest`); última corrida completa (2026-10-17, tras la Parte 35): **458 / 0 fallos / 0 errores**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
 
 Ningún PR/feature se considera terminado sin tests unitarios en el lado
 modificado (`CLAUDE.md` §6). "Compilar" no es evidencia suficiente para cerrar
@@ -1261,8 +1318,8 @@ Verificación: `uv run alembic check` (drift modelo/migración) y
 
 Estado actual: **13 migraciones Alembic** (`0001`..`0013`, la última agrega
 `UNIQUE(local_id)` a `devoluciones` para la idempotencia del push de la Parte
-32; la Parte 34 no agregó migraciones), Room en **v8** (línea base v7 con `exportSchema`, más `MIGRATION_7_8`
-para `cantidadNum`; la Parte 32 no agregó columnas nuevas).
+32; las Partes 34 y 35 no agregaron migraciones), Room en **v9** (línea base v7 con `exportSchema`, más `MIGRATION_7_8`
+para `cantidadNum` y `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35; la Parte 32 no agregó columnas nuevas).
 
 ### 10.5 Añadir o cambiar un endpoint
 
@@ -1328,13 +1385,15 @@ para `cantidadNum`; la Parte 32 no agregó columnas nuevas).
 ### 11.1 Estado del plan (`docs/PLAN.md`)
 
 Las Partes 1-33 están implementadas y mergeadas (su detalle se archivó en
-`docs/PLAN-historico.md`); `docs/PLAN.md` conserva la Parte 34 (implementada
-en la rama `feature/POS-157-convergencia-inventario-sync`, pendiente de
-merge) y las Partes pendientes 35-40. La 34 y las 36-40 salen de la revisión
+`docs/PLAN-historico.md`); `docs/PLAN.md` conserva la Parte 34 (mergeada,
+PR #44, merge `11e0427`, aún sin archivar), la Parte 35 (implementada en la
+rama `feature/POS-162-convergencia-catalogo-ubicacion`, pendiente de merge) y
+las Partes pendientes 36-40. La 34 y las 36-40 salen de la revisión
 pre-release del 2026-09-28/29 (`docs/review_code.md`, hallazgos A-n / M-n /
 B-n con reproducción); la 35 salió de la ejecución de la 34 (2026-10-12). Solo
-la 34 tiene claves de Jira (épica `POS-157`, historias `POS-158`..`POS-161`);
-las 35-40 no. El checklist completo — criterios de cierre,
+la 34 y la 35 tienen claves de Jira (épica `POS-157`, historias
+`POS-158`..`POS-161`; épica `POS-162`, historias `POS-163`..`POS-167`); las
+36-40 no. El checklist completo — criterios de cierre,
 etiquetas de verificación y decisiones abiertas — vive en `docs/PLAN.md`; esta
 sección solo resume el alcance, no lo duplica.
 
@@ -1347,8 +1406,8 @@ sección solo resume el alcance, no lo duplica.
   `/docs-sync` (comando + subagente `doc-maintainer` +
   `scripts/docs/build_manual.py`, [§10.7](#107-comandos-slash-del-proyecto))
   se agregó después, fuera de la numeración de Partes.
-- **Parte 34 — convergencia del inventario en el sync** (implementada, sin
-  mergear; épica `POS-157`, historias `POS-158`..`POS-161`; hallazgos A-1,
+- **Parte 34 — convergencia del inventario en el sync** (mergeada, PR #44;
+  épica `POS-157`, historias `POS-158`..`POS-161`; hallazgos A-1,
   A-2, M-3; delegada a `feature-dev`): `POST /ajustes-inventario` (ajuste por
   delta idempotente por `local_id`, `docs/api-contract.md` 7.4),
   `Inventario.updated_at` con `onupdate` (7.1), `InventarioAjustePusher` con un
@@ -1358,14 +1417,21 @@ sección solo resume el alcance, no lo duplica.
   divergentes (detalle en [§2.4](#24-motor-de-sincronización)). Todos los
   ítems del checklist figuran marcados en `docs/PLAN.md`, incluida la
   verificación `needs-device` en el Xiaomi.
-- **Parte 35 — convergencia de catálogo y ubicación en el sync** (pendiente;
-  sin claves de Jira; sale de un hallazgo del `code-reviewer` durante la
-  Parte 34, no de `docs/review_code.md`; delegada a `feature-dev`): el ajuste
-  por delta no sube atributos de catálogo (nombre, precio, categoría, etc.) ni
-  `ubicacion`, el `InventarioPuller` no mergea `articulos` y una edición de
-  `ubicacion` sin cambio de stock queda como fila local sucia que el siguiente
-  pull pisa. Requiere una operación de edición en el contrato, una señal de
-  pendiente propia y el merge de `articulos` en el pull.
+- **Parte 35 — convergencia de catálogo y ubicación en el sync**
+  (implementada y verificada en dispositivo, sin mergear; épica `POS-162`,
+  historias `POS-163`..`POS-167`; sale de un hallazgo del `code-reviewer`
+  durante la Parte 34, no de `docs/review_code.md`; delegada a
+  `feature-dev`): `PATCH /articulos/{articulo_id}` (contrato 7.5,
+  last-write-wins por `editado_en`, `FOR NO KEY UPDATE`), filtro
+  `updated_since` de `GET /inventario` por inventario o artículo, permiso en
+  `permissions.py`, Room v8 a v9 con `inventario.edicionPendiente` y
+  `MIGRATION_8_9`, `ArticuloEdicionPusher`, merge de catálogo y `ubicacion`
+  en `InventarioPuller` (con alta o enlace por SKU de artículos remotos),
+  bandera `sync_catalogo_reconciliado_<sucursal>` y política
+  `last_write_wins_remoto_gana` en `sync_conflicts` (detalle en
+  [§2.4](#24-motor-de-sincronización)). Verificada el 2026-10-16 en un Xiaomi
+  24030PN60G (el M2102J20SG dejó de estar disponible). Sin cubrir en JVM: la
+  carrera del DAO (`cerrarEdicionSubida`) y la migración 8 a 9.
 - **Parte 36 — sucursal estable y rechazos visibles del sync** (pendiente;
   A-8, A-6, M-5): la sucursal seleccionada no cambia sola al pasar a
   `LOCAL_CON_SINCRONIZACION`; las filas rechazadas con 4xx quedan en un estado
@@ -1433,7 +1499,7 @@ pull con `updated_since`, `SessionStore` cifrado; ver §2.4).
 La revisión pre-release (`docs/review_code.md`) encontró, sin embargo, que el
 inventario no converge entre terminales de la misma sucursal y que el sync
 tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
-(§11.1): la 34 está implementada y las 35-36 pendientes:
+(§11.1): la 34 está mergeada, la 35 implementada y la 36 pendiente:
 
 - **Inventario que no converge** (Parte 34, A-1/A-2/M-3, **resuelto**): el
   backend no actualizaba `inventario.updated_at` en ventas/entradas, en
@@ -1443,14 +1509,15 @@ tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
   en el Xiaomi (12 vs 20, 42 vs 48), con el cursor del pull compartido entre
   sucursales. La Parte 34 lo corrige como se describe en
   [§2.4](#24-motor-de-sincronización).
-- **Limitación conocida de la Parte 34 — catálogo y ubicación** (Parte 35,
-  pendiente): como el ajuste por delta (`POST /ajustes-inventario`) solo suma
-  stock, las ediciones de nombre, precio, categoría, etc. y de `ubicacion`
-  hechas en una terminal ya no se suben; `InventarioPuller.mergeItem` solo
-  actualiza la fila de `inventario`, nunca `articulos`, así que las ediciones
-  de catálogo de otra terminal no llegan; y una edición de `ubicacion` sin
-  cambio de stock queda como fila local sucia sin movimiento y el siguiente
-  pull la pisa con el valor remoto.
+- **Catálogo y ubicación que no convergían** (hueco que dejó la Parte 34,
+  **resuelto** en la Parte 35): como el ajuste por delta
+  (`POST /ajustes-inventario`) solo suma stock, las ediciones de nombre,
+  precio, categoría, etc. y de `ubicacion` dejaron de subirse; el pull no
+  mergeaba `articulos`; y una edición de `ubicacion` sin cambio de stock
+  quedaba como fila local sucia que el siguiente pull pisaba. La Parte 35 lo
+  corrige como se describe en [§2.4](#24-motor-de-sincronización). Queda como
+  limitación menor que `InventarioPuller.resolverArticulo` no es atómico
+  (ventana de milisegundos entre `hayEdicionPendiente` y `updateArticulo`).
 - **Sucursal que cambia sola** (Parte 36, A-8) y **filas rechazadas por 4xx
   que se descartan en silencio** (Parte 36, A-6, ver política de errores en
   §2.4). Un 401 del `SyncWorker` hoy cierra la sesión interactiva (M-5).
@@ -1515,6 +1582,7 @@ evidencia directa de dispositivo y base de datos, no solo de logs — ver
 | **`is_synced`** | `false` mientras haya cambios locales sin subir. |
 | **`deleted_at`** | Soft-delete: fila inactiva sin borrado físico. |
 | **Ajuste por delta** | Ajuste de existencia que viaja como diferencia con signo (`POST /ajustes-inventario`, idempotente por `local_id`) en vez de la cantidad absoluta; permite que varias terminales converjan sin pisarse (Parte 34). |
+| **`edicionPendiente`** | Columna de `inventario` (Room v9, solo cliente) que marca una edición local de catálogo o `ubicacion` aún sin subir con `PATCH /articulos/{articulo_id}` (Parte 35). |
 | **Ventana de solape** | Margen de 2 minutos que el cliente resta al cursor del pull (`SyncStateStore.pullDesde`) para no saltar filas confirmadas tarde en el backend. |
 | **Evento aditivo** | Política de sync para cantidades: se combinan deltas con signo (`base + deltaLocal + deltaRemoto`), nunca se sobrescribe el valor. |
 | **`last_write_wins`** | Política de sync para entidades sin ambigüedad de cantidad: gana el `updated_at` más reciente. |

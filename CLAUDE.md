@@ -23,7 +23,7 @@ mantén este archivo enfocado (evita que crezca de forma descontrolada).
   motor de sync diferido de `LOCAL_CON_SINCRONIZACION` con push por entidad
   vía WorkManager y pull `updated_since`, manual técnico con `/docs-sync`).
   Parte 34 mergeada y Parte 35 implementada y verificada en dispositivo
-  (pendiente de commit y PR). Pendientes las Partes 36-40 de
+  (commit ba0031b, PR en curso). Pendientes las Partes 36-40 de
   `docs/PLAN.md`: las 36-39 corrigen los hallazgos de la revisión
   pre-release (`docs/review_code.md`) y la 40 es el primer release
   productivo.
