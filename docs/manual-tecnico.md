@@ -2,8 +2,8 @@
 manual-meta
 titulo: Manual técnico — PDV (Punto de Venta)
 lead: Descripción funcional, arquitectura, requerimientos de instalación, diagramas UML y de base de datos, y guías de diagnóstico, mantenimiento y evolución.
-actualizado: 2026-10-16
-chips: Partes 1-34 mergeadas | Parte 35 implementada | Partes 36-40 pendientes | Backend 185 tests | Android 458 tests | Alembic 0001-0013 | Room v9
+actualizado: 2026-10-20
+chips: Partes 1-35 mergeadas | Parte 36 implementada | Partes 37-40 pendientes | Backend 185 tests | Android 463 tests | Alembic 0001-0013 | Room v10
 -->
 # Manual técnico — PDV (Punto de Venta)
 
@@ -12,26 +12,26 @@ funcional, arquitectura, requerimientos de instalación, diagramas UML y de base
 de datos, y guías de diagnóstico, mantenimiento y evolución.
 
 - **Código de proyecto**: `POS` (Jira) / `PDV` (repo).
-- **Estado a la fecha de este manual (2026-10-16)**: Partes 1-34
-  implementadas y mergeadas (PR #44, merge `11e0427`), incluyendo el motor de
-  sincronización diferida (Parte 32), este propio manual (Parte 33) y la
-  convergencia del inventario en el sync (Parte 34). La Parte 35
-  (convergencia de catálogo y ubicación en el sync; épica `POS-162`,
-  historias `POS-163`..`POS-167`) está implementada en la rama
-  `feature/POS-162-convergencia-catalogo-ubicacion` (commit `ba0031b`), aún
-  sin mergear a `main`, y sigue listada en `docs/PLAN.md`. Partes 36-40
-  (sucursal estable y rechazos visibles, seguridad pre-release, integridad
-  del backend, calidad menor y primer release productivo) pendientes, sin
-  claves de Jira todavía; salen de la revisión pre-release de
-  `docs/review_code.md`. App corriendo en dispositivo físico contra backend
-  dockerizado en LAN.
+- **Estado a la fecha de este manual (2026-10-20)**: Partes 1-35
+  implementadas y mergeadas (la 35 en PR #45, merge `7c0bd94`), incluyendo el
+  motor de sincronización diferida (Parte 32), este propio manual (Parte 33),
+  la convergencia del inventario en el sync (Parte 34) y la de catálogo y
+  ubicación (Parte 35). La Parte 36 (sucursal estable y rechazos visibles del
+  sync; épica `POS-168`, historias `POS-169`..`POS-171`) está implementada y
+  verificada en dispositivo en la rama
+  `feature/POS-168-sucursal-estable-rechazos-sync` (commit `f03a5d6`), aún sin
+  mergear a `main`, y sigue listada en `docs/PLAN.md`. Partes 37-40
+  (seguridad pre-release, integridad del backend, calidad menor y primer
+  release productivo) pendientes, sin claves de Jira todavía; salen de la
+  revisión pre-release de `docs/review_code.md`. App corriendo en dispositivo
+  físico contra backend dockerizado en LAN.
 - **Fuentes de verdad vivas** (este manual las resume, no las reemplaza):
   - `CLAUDE.md` — arquitectura estable, convenciones, comandos.
   - `docs/api-contract.md` — contrato de endpoints REST.
   - `docs/schema-pos.json` — esquema de datos compartido (Room + Alembic).
-  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 35 implementada, Partes 36-40 + Backlog).
-  - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33 (la 34,
-    ya mergeada, sigue en `docs/PLAN.md` hasta archivarse).
+  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 36 implementada, Partes 37-40 + Backlog).
+  - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33 (la 34 y
+    la 35, ya mergeadas, siguen en `docs/PLAN.md` hasta archivarse).
   - `docs/review_code.md` — revisión pre-release del 2026-09-28/29 (origen de
     las Partes 34 y 36-40). La revisión anterior (2026-08-30, origen de las Partes
     21-30) se archivó como `docs/review_code_2026-09-28_1816.md`.
@@ -77,7 +77,7 @@ y actualizaciones asistidas.
 | **Devoluciones** | `DevolucionScreen` | Registro de devolución de cliente con líneas (motivo, condición). No toca inventario (gestión con proveedor). | `devoluciones`, `devolucion_detalle`. |
 | **Usuarios** | `UsuarioScreen` | CRUD de usuarios, asignación de rol, alta/cambio de contraseña (hash bcrypt calculado en el dispositivo). | `usuarios`. |
 | **Roles** | `RolScreen` | CRUD de roles personalizados; `modulos_permitidos` activa/desactiva pantallas completas. Dos roles de sistema no editables (`administrador`, `encargado_turno`). | `roles`. |
-| **Configuración** | `ConfiguracionScreen` | `BackendMode`, parámetros de conexión remota, sucursal seleccionada, activación y token del asistente de IA, prompt de sistema editable. En `LOCAL_CON_SINCRONIZACION`: sección "Sincronización" (última sync, pendientes, último error, botón "Sincronizar ahora") y confirmación de pendientes al cambiar de modo (Parte 32). | DataStore (preferencia de dispositivo); token cifrado con Android Keystore. |
+| **Configuración** | `ConfiguracionScreen` | `BackendMode`, parámetros de conexión remota, sucursal seleccionada, activación y token del asistente de IA, prompt de sistema editable. En `LOCAL_CON_SINCRONIZACION`: sección "Sincronización" (última sync, pendientes, último error, botón "Sincronizar ahora") la cuenta "Rechazadas por el backend: N (ver Conflictos)" (Parte 36) y confirmación de pendientes al cambiar de modo (Parte 32). Si la sucursal guardada no aparece en el catálogo emitido, la conserva y muestra un aviso para que el usuario elija (Parte 36). | DataStore (preferencia de dispositivo); token cifrado con Android Keystore. |
 | **Revisión de conflictos** | `RevisionConflictosScreen` | Panel **solo lectura** de `sync_conflicts`: lista los conflictos de sincronización detectados y su resolución automática. | `sync_conflicts`. |
 | **Asistente de IA + FAQ** | `AsistenteIaWidget` (overlay flotante) | Chat con LLM; responde consultas, ejecuta acciones (alta de artículo, corte parcial, retiro, devolución, exportar/consultar inventario) por los **mismos repositorios** que las pantallas manuales, con confirmación explícita y chequeo de permiso. FAQ curado con retrieval de 3 niveles y atajos sin conexión (`qN`, match de texto). | Reutiliza los repositorios de dominio; FAQ empaquetado (`faq.jsonl`). |
 | **Logs / Auditoría** | — (sin pantalla) | `AppLogger` escribe archivos `.txt` locales al dispositivo, una línea por evento con `[tipo][timestamp][sucursal][usuario] mensaje`. Categorías: `ERROR`, `WARN`, `INFO`, `DB_WRITE`, `SYNC_CONFLICT`, `AUTH`. Rotación a 5 MB, retención 30 días. | Sistema de archivos del dispositivo (`filesDir`). |
@@ -193,7 +193,7 @@ flowchart TD
         IA["ia/ChatViewModel · LlmClient\nEjecutorAccionesIa · FaqRepository"]
     end
 
-    ROOM[("Room\npdv.db (v9)")]
+    ROOM[("Room\npdv.db (v10)")]
     HTTP["OkHttp/Retrofit\nDynamicHostInterceptor + AuthInterceptor"]
 
     S --> VM --> RIF
@@ -359,15 +359,15 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
     delta con `with_for_update()`; `Inventario.updated_at` tiene `onupdate`,
     de modo que **todo** movimiento de stock (venta, entrada, ajuste) lo
     actualiza y el pull lo ve. Un artículo sin `remote_id` aplaza su ajuste
-    al siguiente ciclo; un 4xx no-401 lo descarta (política de errores abajo).
+    al siguiente ciclo; un 4xx no-401 lo rechaza (política de errores abajo).
   - *Pull*: `InventarioPuller` ya no usa `inventario.isSynced` como señal
     (toda escritura local lo deja en `false`); decide por
     `InventarioDao.getMovimientosPendientes(sucursal, artículo)`: sin
     movimientos pendientes la fila local se sobrescribe con la remota; con
     pendientes gana lo local y, si el valor remoto difiere, se registra el
     cruce en `sync_conflicts`. Esa consulta ignora los movimientos de ventas
-    ya sincronizadas o descartadas, y `VentaPusher` marca también los
-    movimientos de las ventas que descarta (`marcarMovimientosVentaSincronizados`)
+    ya sincronizadas o rechazadas, y `VentaPusher` marca también los
+    movimientos de las ventas que rechaza (`marcarMovimientosVentaSincronizados`)
     para que el inventario de ese artículo pueda converger.
   - *Reconciliación única* por sucursal: mientras la bandera
     `sync_inventario_reconciliado_v2_<sucursal>` (`SyncStateStore`) no esté
@@ -403,7 +403,7 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
     automáticamente. Si el usuario volvió a editar el artículo mientras la
     llamada estaba en vuelo (`articulos.updatedAt` distinto del valor
     enviado), la edición nueva sigue pendiente. Un artículo sin `remote_id`
-    se aplaza al siguiente ciclo; un 4xx no-401 descarta la edición.
+    se aplaza al siguiente ciclo; un 4xx no-401 rechaza la edición (la cierra y la marca con `syncRechazo`).
   - *Pull*: `InventarioPuller` mergea además los atributos del artículo y la
     `ubicacion`: sin edición pendiente (`InventarioDao.hayEdicionPendiente`,
     en cualquier sucursal, porque el catálogo es global) gana el remoto; con
@@ -420,11 +420,35 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
     `inventario.updated_at` o `articulos.updated_at`, y su `updated_at` es el
     mayor de ambos.
 - **Política de errores del push**: `IOException`/`5xx` reintentan el ciclo
-  completo; `401` corta el ciclo y marca la sesión expirada; un `4xx` no-401
-  en una fila puntual la descarta (`isSynced = true` sin `remote_id`, para no
-  reintentarla en cada ciclo) salvo que la causa sea un id local aún sin
-  resolver a remoto (ventas/devoluciones con líneas), en cuyo caso la fila se
-  **aplaza** al próximo ciclo en lugar de descartarse.
+  completo; `401` corta el ciclo (ver "Sesión y 401 del worker" abajo); un
+  `4xx` no-401 en una fila puntual la **rechaza** (Parte 36, A-6), salvo que
+  la causa sea un id local aún sin resolver a remoto (ventas/devoluciones con
+  líneas), en cuyo caso la fila se **aplaza** al próximo ciclo.
+  `RegistroRechazos.empujarFila` (`sync/push/RegistroRechazos.kt`, reemplaza a
+  la antigua función `empujarFila`) relanza `401` y `>= 500`; con cualquier
+  otro 4xx marca la fila con la columna `syncRechazo` (código HTTP), inserta un
+  `SyncConflictEntity` con política `rechazo_backend`, `valorRemoto`
+  "HTTP <código>", `valorResuelto` "rechazada, sin subir" y
+  `resueltoAutomaticamente = false`, y loguea `SYNC_CONFLICT`. Una fila
+  rechazada **no** pasa a `isSynced = true`: sigue en `isSynced = 0` pero deja
+  de ser pendiente. Pendiente = `isSynced = 0 AND syncRechazo IS NULL`
+  (también `InventarioDao.getMovimientosPendientes`, que excluye movimientos
+  rechazados y los de ventas rechazadas). La columna existe en `ventas`,
+  `devoluciones`, `cortes_caja`, `retiros_efectivo`, `movimientos` e
+  `inventario` (en esta última refleja el último push de la edición de
+  catálogo). `EntityPusher.contarRechazadas()` y
+  `SyncPendientesResumen.contarRechazadas()` alimentan el contador de
+  Configuración, y el panel de conflictos (Parte 19) muestra cada rechazo.
+  `rechazo_backend` es un valor solo local (`docs/schema-pos.json`): el
+  dispositivo no sube conflictos al backend (Backlog). Tampoco hay acción de
+  reintento de filas rechazadas (Backlog).
+- **Sesión y 401 del worker** (Parte 36, M-5): `AuthInterceptor` cierra la
+  sesión ante un 401 **solo en modo REMOTO** (cachea `backendMode` igual que
+  `DynamicHostInterceptor`). En `LOCAL_CON_SINCRONIZACION`,
+  `DefaultSyncOrchestrator` convierte un 401 en `SyncResultado.Fallo` con
+  `MOTIVO_RELOGIN` ("sync requiere re-login") o, si la sesión no tiene
+  `accessToken`, con `MOTIVO_SIN_TOKEN`; Configuración lo muestra como "Último
+  error" y no se expulsa al cajero.
 - **Autenticación del worker desatendido**: `SessionStore` persiste la sesión
   (incluido el `accessToken`) cifrada con `TokenCipher`/Android Keystore
   (mismo patrón que el token de IA, Parte 14) y siembra `SessionManager` al
@@ -437,8 +461,10 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
   inventario no converge entre terminales de una misma sucursal; la Parte 34
   lo corrige (mergeada) y la Parte 35 hace converger también catálogo y
   `ubicacion` (implementada y verificada en un Xiaomi 24030PN60G, ver
-  arriba). Quedan limitaciones conocidas: otros fallos silenciosos del sync
-  (Parte 36, pendiente) y que `InventarioPuller.resolverArticulo` no es
+  arriba), y la Parte 36 hace visibles los rechazos 4xx, estabiliza la
+  sucursal seleccionada y evita cerrar la sesión por un 401 del worker
+  (implementada y verificada en dispositivo). Queda como limitación conocida
+  que `InventarioPuller.resolverArticulo` no es
   atómico (ventana de milisegundos entre `hayEdicionPendiente` y
   `updateArticulo`); ver
   [§11.3](#113-seguimiento-del-motor-de-sync-parte-32).
@@ -639,11 +665,13 @@ erDiagram
   específicos que los dos del diccionario del esquema: `evento_aditivo_delta`,
   `last_write_wins_local_gana`, `last_write_wins_remoto_gana` (edición de
   catálogo local que perdió, Parte 35) y `reconciliacion_inicial_backend_gana`
-  (Parte 34).
+  (Parte 34) y `rechazo_backend` (Parte 36). Son valores solo locales del
+  dispositivo: no están en el `Literal` del backend porque los conflictos no
+  se suben (Backlog).
 
 ### 3.4 Room (dispositivo)
 
-- Base `pdv.db`, `@Database(version = 9, exportSchema = true)`, 13 entidades,
+- Base `pdv.db`, `@Database(version = 10, exportSchema = true)`, 13 entidades,
   10 DAOs (`PdvDatabase`). Esquemas exportados en `android/app/schemas/`.
 - `Converters` (TypeConverters): `BigDecimal <-> String` (`toPlainString`),
   `List<modulo> <-> String` con separador U+001F (Unit Separator).
@@ -656,8 +684,18 @@ erDiagram
   falta subirlos (Parte 35, migración Room `MIGRATION_8_9`). Es columna solo
   de cliente, sin contraparte en el backend (`docs/schema-pos.json`, notas de
   `inventario`).
+- `syncRechazo` (INTEGER nullable) en `ventas`, `devoluciones`, `cortes_caja`,
+  `retiros_efectivo`, `movimientos` e `inventario`: código HTTP con que el
+  backend rechazó la fila en el push; `0` = desconocido; nulo = no rechazada
+  (Parte 36, migración Room `MIGRATION_9_10`). Columna solo de cliente
+  (`sync_rechazo_field` en `docs/schema-pos.json`), sin contraparte en el
+  backend ni en Alembic. La migración devuelve a `isSynced = 0` con
+  `syncRechazo = 0` y registra en `sync_conflicts` las filas que el push había
+  descartado antes (`isSynced = 1` sin `remoteId`), solo en `ventas`,
+  `devoluciones`, `cortes_caja`, `retiros_efectivo` y `movimientos` de tipo
+  `entrada`/`ajuste`.
 - Migraciones registradas en `DatabaseModule`
-  (`addMigrations(MIGRATION_7_8, MIGRATION_8_9)`); la v7 es la línea base con
+  (`addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)`); la v7 es la línea base con
   `exportSchema` (Parte 24).
 
 ---
@@ -1100,6 +1138,10 @@ Parámetros fijos en código (`app/security.py`): `JWT_ALGORITHM = "HS256"`,
 | `puerto` | String | Puerto del backend remoto. |
 | `sucursal_id_seleccionada` | String? | Sucursal activa del dispositivo. |
 
+`ConfiguracionViewModel` empareja la sucursal guardada por `id` o `remoteId`
+(`Sucursal.remoteId`, Parte 36) y solo persiste la primera del catálogo cuando
+no hay ninguna guardada.
+
 Otras preferencias: `IaPreferences` (activo, proveedor, modelo, token cifrado),
 `PromptIaPreferences` (prompt de sistema editable), `SyncStateStore` (Parte
 32: `lastSuccessAtMillis`, `lastError`, cursor `updated_since` del pull por
@@ -1132,7 +1174,7 @@ deja pasar la request con el `BASE_URL` por defecto
 | **Tokens** | JWT `HS256`, `sub` = `usuario.id`, expiración 24 h, firmado con `JWT_SECRET_KEY`. Sin `refresh_token` (diferido, ratificado en la Parte 32: se mantiene el JWT de 24 h + re-login al recibir 401, aunque `SessionStore` persista la sesión para el worker de sync). |
 | **Enforcement backend** | `Depends(usuario_actual)` en el router `protected`: valida firma/expiración y que el `sub` corresponda a un usuario existente, activo y no borrado. `401 {"detail": "token invalido o expirado"}` genérico. `health` y `auth` exentos. |
 | **Autorización por módulo** | `verificar_modulo` gatea **solo escrituras** (`POST`/`PATCH`/`DELETE`) según `(método, ruta)` -> módulo requerido (mapa en `app/permissions.py`). Los `GET` solo exigen token válido. `403 {"detail": "el rol no tiene permiso para el modulo: X"}`. |
-| **Reacción del cliente a 401** | `AuthInterceptor` cierra la sesión y vuelve a `LoginScreen` **solo si** la request llevaba token (`token != null`) y no era `/auth/login`. Un 401 a una request sin token (esperado en LOCAL / LOCAL_CON_SINCRONIZACION contra un backend con enforcement) lo maneja el repositorio que llamó. |
+| **Reacción del cliente a 401** | `AuthInterceptor` cierra la sesión y vuelve a `LoginScreen` **solo si** la request llevaba token (`token != null`), no era `/auth/login` y el modo es `REMOTO` (Parte 36, M-5). Un 401 a una request sin token (esperado en LOCAL / LOCAL_CON_SINCRONIZACION contra un backend con enforcement) lo maneja el repositorio que llamó; un 401 con token en `LOCAL_CON_SINCRONIZACION` lo registra el orquestador de sync ("sync requiere re-login") sin cerrar la sesión. |
 | **No enumeración de usuarios** | `/auth/login` devuelve el mismo 401 para usuario inexistente, inactivo, sin hash o contraseña incorrecta. |
 | **Token de IA** | Cifrado AES-256 con clave respaldada por Android Keystore; solo ciphertext + IV en DataStore. El token viaja únicamente en el header del request al proveedor, nunca se loguea. |
 | **Autorización de acciones de IA** | El módulo a autorizar se deriva del `tipo` de acción (mapa fijo), nunca del campo `modulo` de la salida del LLM. Confirmación explícita del usuario para las 4 acciones de escritura. |
@@ -1245,6 +1287,8 @@ python -c "import sqlite3;c=sqlite3.connect('pdv.db');print(c.execute('select na
 | App en modo REMOTO no alcanza el backend por Wi-Fi | Firewall de Windows bloquea inbound TCP 8000 / IP LAN cambió por DHCP / router con client isolation. | Regla `New-NetFirewallRule` (§5.4); reservar IP o fijarla estática; desactivar AP isolation. |
 | Modo REMOTO funcionó y dejó de funcionar tras reconectar el USB | `adb reverse` no persiste entre reconexiones/reinicios/`adb kill-server`. | Rehacer `adb reverse tcp:8000 tcp:8000` o pasar a Wi-Fi. |
 | En `LOCAL_CON_SINCRONIZACION`: crash o logout al vender / entrar a Configuración | Latente desde la Parte 21: `GET /sucursales` responde 401 sin JWT (login local no tiene token); la `HttpException` subía sin manejar y `AuthInterceptor` cerraba sesión ante cualquier 401. | **Corregido en la Parte 31**: `ModeAwareSucursalRepository` degrada al catálogo local (`.catch`); `AuthInterceptor` solo cierra sesión si la request llevaba token. Si reaparece, revisar que esas dos guardas sigan en su lugar. |
+| Configuración muestra "Rechazadas por el backend: N (ver Conflictos)" | El backend respondió 4xx (no 401) al subir esas filas (ej. 403: el rol del backend no tiene el módulo). Quedan con `syncRechazo` y no se reintentan (Parte 36). | Abrir Conflictos para ver la entidad y el código HTTP; corregir la causa (ej. dar el módulo al rol). Aún no hay acción de reintento (Backlog). |
+| Configuración muestra "Último error: sync requiere re-login" | El backend respondió 401 al `SyncWorker`: JWT vencido, o la sesión no tiene token (login con el backend inalcanzable). | Cerrar sesión y entrar de nuevo con el backend alcanzable. |
 | Asistente de IA: "El proveedor no devolvió ninguna respuesta" intermitente | DeepSeek `deepseek-chat` con `response_format=json_object` devuelve `content` vacío de forma intermitente (`finish_reason` / `usage` en el log de `LlmClient` lo distinguen). | Conocido (Backlog). Reintentar el mensaje; evaluar `max_tokens` explícito / reintento único. |
 | Asistente de IA: "La IA devolvió una respuesta con formato inválido" | El proveedor no respetó el JSON de `RespuestaIaDto`. `FORMATO_SALIDA_ACCIONES` + `instruccionFaq` se concatenan al prompt para mitigarlo. | Revisar el log `LlmClient` (contenido truncado + `finish_reason`). Verificar el prompt de sistema editable. |
 | Test de backend verde pero el device falla contra el backend dockerizado | pytest corre contra el host; la imagen puede estar desactualizada. | Rebuild de la imagen antes de verificar en device. |
@@ -1294,7 +1338,7 @@ sincronizados vía `docs/api-contract.md`.
 | Lado | Comando | Estado de referencia |
 |---|---|---|
 | Backend | `uv run pytest` | 15 archivos `test_*.py` más `conftest.py`, **185 passed** (verificado 2026-10-17, tras la Parte 35). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
-| Android | `./gradlew testDebugUnitTest` | 92 archivos `*Test.kt` (la Parte 35 sumó `ArticuloEdicionPusherTest` y `ArticuloEntityTest`); última corrida completa (2026-10-17, tras la Parte 35): **458 / 0 fallos / 0 errores**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
+| Android | `./gradlew testDebugUnitTest` | 92 archivos `*Test.kt` (la Parte 35 sumó `ArticuloEdicionPusherTest` y `ArticuloEntityTest`); última corrida completa (2026-10-20, `--rerun`, tras la Parte 36): **463 / 0 fallos / 0 errores / 0 omitidos**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
 
 Ningún PR/feature se considera terminado sin tests unitarios en el lado
 modificado (`CLAUDE.md` §6). "Compilar" no es evidencia suficiente para cerrar
@@ -1318,8 +1362,8 @@ Verificación: `uv run alembic check` (drift modelo/migración) y
 
 Estado actual: **13 migraciones Alembic** (`0001`..`0013`, la última agrega
 `UNIQUE(local_id)` a `devoluciones` para la idempotencia del push de la Parte
-32; las Partes 34 y 35 no agregaron migraciones), Room en **v9** (línea base v7 con `exportSchema`, más `MIGRATION_7_8`
-para `cantidadNum` y `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35; la Parte 32 no agregó columnas nuevas).
+32; las Partes 34 y 35 no agregaron migraciones), Room en **v10** (línea base v7 con `exportSchema`, más `MIGRATION_7_8`
+para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35, y `MIGRATION_9_10` para `syncRechazo`, Parte 36; la Parte 36 no agregó migraciones Alembic).
 
 ### 10.5 Añadir o cambiar un endpoint
 
@@ -1385,15 +1429,16 @@ para `cantidadNum` y `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 3
 ### 11.1 Estado del plan (`docs/PLAN.md`)
 
 Las Partes 1-33 están implementadas y mergeadas (su detalle se archivó en
-`docs/PLAN-historico.md`); `docs/PLAN.md` conserva la Parte 34 (mergeada,
-PR #44, merge `11e0427`, aún sin archivar), la Parte 35 (implementada en la
-rama `feature/POS-162-convergencia-catalogo-ubicacion`, pendiente de merge) y
-las Partes pendientes 36-40. La 34 y las 36-40 salen de la revisión
+`docs/PLAN-historico.md`); `docs/PLAN.md` conserva las Partes 34 y 35
+(mergeadas, PR #44 merge `11e0427` y PR #45 merge `7c0bd94`, aún sin
+archivar), la Parte 36 (implementada y verificada en dispositivo en la rama
+`feature/POS-168-sucursal-estable-rechazos-sync`, pendiente de merge) y las
+Partes pendientes 37-40. La 34 y las 36-40 salen de la revisión
 pre-release del 2026-09-28/29 (`docs/review_code.md`, hallazgos A-n / M-n /
-B-n con reproducción); la 35 salió de la ejecución de la 34 (2026-10-12). Solo
-la 34 y la 35 tienen claves de Jira (épica `POS-157`, historias
-`POS-158`..`POS-161`; épica `POS-162`, historias `POS-163`..`POS-167`); las
-36-40 no. El checklist completo — criterios de cierre,
+B-n con reproducción); la 35 salió de la ejecución de la 34 (2026-10-12). Las
+Partes 34, 35 y 36 tienen claves de Jira (épica `POS-157`, historias
+`POS-158`..`POS-161`; épica `POS-162`, historias `POS-163`..`POS-167`; épica
+`POS-168`, historias `POS-169`..`POS-171`); las 37-40 no. El checklist completo — criterios de cierre,
 etiquetas de verificación y decisiones abiertas — vive en `docs/PLAN.md`; esta
 sección solo resume el alcance, no lo duplica.
 
@@ -1418,7 +1463,7 @@ sección solo resume el alcance, no lo duplica.
   ítems del checklist figuran marcados en `docs/PLAN.md`, incluida la
   verificación `needs-device` en el Xiaomi.
 - **Parte 35 — convergencia de catálogo y ubicación en el sync**
-  (implementada y verificada en dispositivo, sin mergear; épica `POS-162`,
+  (mergeada, PR #45; épica `POS-162`,
   historias `POS-163`..`POS-167`; sale de un hallazgo del `code-reviewer`
   durante la Parte 34, no de `docs/review_code.md`; delegada a
   `feature-dev`): `PATCH /articulos/{articulo_id}` (contrato 7.5,
@@ -1432,11 +1477,17 @@ sección solo resume el alcance, no lo duplica.
   [§2.4](#24-motor-de-sincronización)). Verificada el 2026-10-16 en un Xiaomi
   24030PN60G (el M2102J20SG dejó de estar disponible). Sin cubrir en JVM: la
   carrera del DAO (`cerrarEdicionSubida`) y la migración 8 a 9.
-- **Parte 36 — sucursal estable y rechazos visibles del sync** (pendiente;
-  A-8, A-6, M-5): la sucursal seleccionada no cambia sola al pasar a
-  `LOCAL_CON_SINCRONIZACION`; las filas rechazadas con 4xx quedan en un estado
-  propio, registradas en `sync_conflicts` y contadas en Configuración; un 401
-  del `SyncWorker` no cierra la sesión interactiva.
+- **Parte 36 — sucursal estable y rechazos visibles del sync** (implementada
+  y verificada en dispositivo, sin mergear; épica `POS-168`, historias
+  `POS-169`..`POS-171`; A-8, A-6, M-5): `ConfiguracionViewModel` ya no
+  persiste un fallback de sucursal, empareja por `id` o `remoteId` y avisa con
+  `sucursalNoEncontrada`; columna `syncRechazo`, `MIGRATION_9_10` (Room v10),
+  `RegistroRechazos` y política `rechazo_backend` en `sync_conflicts`, con
+  contador "Rechazadas por el backend" en Configuración; `AuthInterceptor`
+  solo cierra sesión ante 401 en modo REMOTO y el orquestador informa
+  "sync requiere re-login" (detalle en [§2.4](#24-motor-de-sincronización)).
+  Fuera de alcance, en el Backlog: subir conflictos al backend y reintentar
+  filas rechazadas.
 - **Parte 37 — endurecimiento de seguridad pre-release** (pendiente; A-3,
   A-4, A-5, M-4, M-6, M-10): credenciales de arranque, `JWT_SECRET_KEY`
   obligatoria, límite de intentos y `/docs` en producción, borrado de roles,
@@ -1499,7 +1550,7 @@ pull con `updated_since`, `SessionStore` cifrado; ver §2.4).
 La revisión pre-release (`docs/review_code.md`) encontró, sin embargo, que el
 inventario no converge entre terminales de la misma sucursal y que el sync
 tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
-(§11.1): la 34 está mergeada, la 35 implementada y la 36 pendiente:
+(§11.1): la 34 y la 35 están mergeadas y la 36 implementada, pendiente de merge:
 
 - **Inventario que no converge** (Parte 34, A-1/A-2/M-3, **resuelto**): el
   backend no actualizaba `inventario.updated_at` en ventas/entradas, en
@@ -1518,9 +1569,13 @@ tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
   corrige como se describe en [§2.4](#24-motor-de-sincronización). Queda como
   limitación menor que `InventarioPuller.resolverArticulo` no es atómico
   (ventana de milisegundos entre `hayEdicionPendiente` y `updateArticulo`).
-- **Sucursal que cambia sola** (Parte 36, A-8) y **filas rechazadas por 4xx
-  que se descartan en silencio** (Parte 36, A-6, ver política de errores en
-  §2.4). Un 401 del `SyncWorker` hoy cierra la sesión interactiva (M-5).
+- **Sucursal que cambia sola** (Parte 36, A-8, **resuelto**) y **filas
+  rechazadas por 4xx que se descartaban en silencio** (Parte 36, A-6,
+  **resuelto**; ver política de errores en §2.4): ahora quedan marcadas con
+  `syncRechazo`, visibles en Conflictos y contadas en Configuración. Un 401 del
+  `SyncWorker` ya no cierra la sesión interactiva (M-5). Siguen en el Backlog
+  la acción de reintento de filas rechazadas y la subida de conflictos al
+  backend.
 - **Pull limitado a `inventario` / `cortes-caja` / `retiros-efectivo`** (D3.3):
   `GET /ventas` y `GET /entradas` no tienen filtro `updated_since` todavía; el
   catálogo consolidado de `GET /inventario` cubre el caso de uso principal.
@@ -1534,6 +1589,12 @@ tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
 
 ### 11.4 Backlog (`docs/PLAN.md`)
 
+- **Subida de conflictos al backend** (hallazgo Parte 36): los conflictos de
+  `sync_conflicts` viven solo en Room; `subirConflicto`
+  (`RemoteSyncConflictRepository`) no tiene llamadores y los valores de
+  `politica_aplicada` del dispositivo no están en el `Literal` del backend.
+- **Reintentar filas rechazadas por el sync** (Parte 36): las filas con
+  `syncRechazo` no tienen acción de reintento en la app tras corregir la causa.
 - **Robustez ante `content` vacío del proveedor de IA** (hallazgo Parte 20):
   reintento único ante `content` vacío y/o `max_tokens` explícito en
   `ChatCompletionRequestDto`. Afecta el camino compartido de IA, no solo el FAQ.
@@ -1583,6 +1644,7 @@ evidencia directa de dispositivo y base de datos, no solo de logs — ver
 | **`deleted_at`** | Soft-delete: fila inactiva sin borrado físico. |
 | **Ajuste por delta** | Ajuste de existencia que viaja como diferencia con signo (`POST /ajustes-inventario`, idempotente por `local_id`) en vez de la cantidad absoluta; permite que varias terminales converjan sin pisarse (Parte 34). |
 | **`edicionPendiente`** | Columna de `inventario` (Room v9, solo cliente) que marca una edición local de catálogo o `ubicacion` aún sin subir con `PATCH /articulos/{articulo_id}` (Parte 35). |
+| **`syncRechazo`** | Columna de cliente (Room v10) con el código HTTP con que el backend rechazó una fila en el push (`0` = desconocido); la fila deja de ser pendiente y se registra en `sync_conflicts` con política `rechazo_backend` (Parte 36). |
 | **Ventana de solape** | Margen de 2 minutos que el cliente resta al cursor del pull (`SyncStateStore.pullDesde`) para no saltar filas confirmadas tarde en el backend. |
 | **Evento aditivo** | Política de sync para cantidades: se combinan deltas con signo (`base + deltaLocal + deltaRemoto`), nunca se sobrescribe el valor. |
 | **`last_write_wins`** | Política de sync para entidades sin ambigüedad de cantidad: gana el `updated_at` más reciente. |
