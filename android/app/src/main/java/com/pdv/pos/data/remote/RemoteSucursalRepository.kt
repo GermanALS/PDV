@@ -26,4 +26,5 @@ private fun SucursalDto.toDomain() = Sucursal(
     nombre = nombre,
     direccion = direccion,
     activa = activa,
+    remoteId = id,
 )

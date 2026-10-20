@@ -39,7 +39,7 @@ class RemoteSucursalRepositoryTest {
         val result = repository.observeSucursales().first()
 
         assertEquals(
-            listOf(Sucursal(id = "abc", nombre = "Sucursal Centro", direccion = "Av. Siempre Viva 123", activa = true)),
+            listOf(Sucursal(id = "abc", nombre = "Sucursal Centro", direccion = "Av. Siempre Viva 123", activa = true, remoteId = "abc")),
             result,
         )
     }

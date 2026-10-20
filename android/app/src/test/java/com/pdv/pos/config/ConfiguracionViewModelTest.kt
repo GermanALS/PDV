@@ -207,27 +207,73 @@ class ConfiguracionViewModelTest {
         assertEquals("192.168.1.50", viewModel.uiState.value.ip)
     }
 
+    private fun viewModelConCatalogo(
+        dataStore: DataStore<Preferences>,
+        preferences: ConfiguracionPreferences,
+        catalogo: Flow<List<Sucursal>>,
+    ): ConfiguracionViewModel = ConfiguracionViewModel(
+        mockk(relaxed = true),
+        preferences,
+        object : SucursalRepository {
+            override fun observeSucursales(): Flow<List<Sucursal>> = catalogo
+        },
+        fakeIaPreferences(dataStore),
+        mockk(relaxed = true),
+        PromptIaPreferences(dataStore),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+    )
+
+    // Secuencia de A-8 (PLAN.md Parte 36): en LOCAL_CON_SINCRONIZACION el
+    // catalogo emite primero la lista local (fallback sin JWT) y luego la
+    // remota, que trae otra sucursal alfabeticamente anterior.
     @Test
-    fun `in a non-LOCAL mode a saved sucursal absent from the catalog is reconciled to the fallback`(@TempDir tempDir: File) = runTest(dispatcher) {
+    fun `a catalog emitting the local list and then the remote one does not change the saved sucursal`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val preferences = ConfiguracionPreferences(dataStore)
+        preferences.setSucursalSeleccionada("remota-principal")
+        preferences.setBackendMode(BackendMode.LOCAL_CON_SINCRONIZACION)
+        val catalogo = MutableStateFlow(
+            listOf(Sucursal(id = "local-principal", nombre = "Sucursal principal", remoteId = "remota-principal")),
+        )
+        val viewModel = viewModelConCatalogo(dataStore, preferences, catalogo)
+
+        assertEquals("local-principal", viewModel.uiState.value.sucursalSeleccionada?.id)
+        catalogo.value = listOf(
+            Sucursal(id = "remota-a", nombre = "A otra sucursal", remoteId = "remota-a"),
+            Sucursal(id = "remota-principal", nombre = "Sucursal principal", remoteId = "remota-principal"),
+        )
+
+        assertEquals("remota-principal", preferences.deviceConfig.first().sucursalIdSeleccionada)
+        assertEquals("remota-principal", viewModel.uiState.value.sucursalSeleccionada?.id)
+        assertEquals(false, viewModel.uiState.value.sucursalNoEncontrada)
+    }
+
+    @Test
+    fun `a saved sucursal absent from the catalog is kept and flagged instead of replaced`(@TempDir tempDir: File) = runTest(dispatcher) {
         val dataStore = dataStore(tempDir)
         val preferences = ConfiguracionPreferences(dataStore)
         preferences.setSucursalSeleccionada("sucursal-local-vieja")
         preferences.setBackendMode(BackendMode.REMOTO)
 
-        ConfiguracionViewModel(
-            mockk(relaxed = true),
-            preferences,
-            fakeSucursalRepository,
-            fakeIaPreferences(dataStore),
-            mockk(relaxed = true),
-            PromptIaPreferences(dataStore),
-            mockk(relaxed = true),
-            mockk(relaxed = true),
-            mockk(relaxed = true),
-            mockk(relaxed = true),
-            mockk(relaxed = true),
-            mockk(relaxed = true),
-        )
+        val viewModel = viewModelConCatalogo(dataStore, preferences, fakeSucursalRepository.observeSucursales())
+
+        assertEquals("sucursal-local-vieja", preferences.deviceConfig.first().sucursalIdSeleccionada)
+        assertEquals(null, viewModel.uiState.value.sucursalSeleccionada)
+        assertEquals(true, viewModel.uiState.value.sucursalNoEncontrada)
+    }
+
+    @Test
+    fun `in a non-LOCAL mode with no saved sucursal the first one is persisted as the initial choice`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val preferences = ConfiguracionPreferences(dataStore)
+        preferences.setBackendMode(BackendMode.REMOTO)
+
+        viewModelConCatalogo(dataStore, preferences, fakeSucursalRepository.observeSucursales())
 
         assertEquals("s1", preferences.deviceConfig.first().sucursalIdSeleccionada)
     }
@@ -459,7 +505,7 @@ class ConfiguracionViewModelTest {
 
     @Test
     fun `selecting a mode with nothing pending applies it immediately, no dialog`(@TempDir tempDir: File) = runTest(dispatcher) {
-        val resumen = mockk<SyncPendientesResumen>()
+        val resumen = mockk<SyncPendientesResumen> { coEvery { contarRechazadas() } returns 0 }
         coEvery { resumen.calcular() } returns ResumenPendientes(emptyList())
         val viewModel = viewModel(tempDir, syncPendientesResumen = resumen)
 
@@ -472,7 +518,7 @@ class ConfiguracionViewModelTest {
     @Test
     fun `selecting a mode with pending rows opens the confirmation dialog instead of applying it`(@TempDir tempDir: File) =
         runTest(dispatcher) {
-            val resumen = mockk<SyncPendientesResumen>()
+            val resumen = mockk<SyncPendientesResumen> { coEvery { contarRechazadas() } returns 0 }
             coEvery { resumen.calcular() } returns ResumenPendientes(listOf("ventas" to 2))
             val viewModel = viewModel(tempDir, syncPendientesResumen = resumen)
 
@@ -484,7 +530,7 @@ class ConfiguracionViewModelTest {
 
     @Test
     fun `confirming the mode change applies it and closes the dialog`(@TempDir tempDir: File) = runTest(dispatcher) {
-        val resumen = mockk<SyncPendientesResumen>()
+        val resumen = mockk<SyncPendientesResumen> { coEvery { contarRechazadas() } returns 0 }
         coEvery { resumen.calcular() } returns ResumenPendientes(listOf("ventas" to 2))
         val viewModel = viewModel(tempDir, syncPendientesResumen = resumen)
         viewModel.onModoSelected(BackendMode.REMOTO)
@@ -497,7 +543,7 @@ class ConfiguracionViewModelTest {
 
     @Test
     fun `cancelling the mode change closes the dialog without changing the mode`(@TempDir tempDir: File) = runTest(dispatcher) {
-        val resumen = mockk<SyncPendientesResumen>()
+        val resumen = mockk<SyncPendientesResumen> { coEvery { contarRechazadas() } returns 0 }
         coEvery { resumen.calcular() } returns ResumenPendientes(listOf("ventas" to 2))
         val viewModel = viewModel(tempDir, syncPendientesResumen = resumen)
         viewModel.onModoSelected(BackendMode.REMOTO)
@@ -509,18 +555,20 @@ class ConfiguracionViewModelTest {
     }
 
     @Test
-    fun `sync section reflects SyncStateStore and the pending total`(@TempDir tempDir: File) = runTest(dispatcher) {
+    fun `sync section reflects SyncStateStore, the pending total and the rejected rows`(@TempDir tempDir: File) = runTest(dispatcher) {
         val syncStateStore = mockk<SyncStateStore>()
         every { syncStateStore.state } returns
             flowOf(SyncState(lastSuccessAtMillis = 1_700_000_000_000L, lastError = "timeout"))
-        val resumen = mockk<SyncPendientesResumen>()
+        val resumen = mockk<SyncPendientesResumen> { coEvery { contarRechazadas() } returns 0 }
         coEvery { resumen.calcular() } returns ResumenPendientes(listOf("ventas" to 2, "entradas" to 1))
+        coEvery { resumen.contarRechazadas() } returns 1
 
         val viewModel = viewModel(tempDir, syncStateStore = syncStateStore, syncPendientesResumen = resumen)
 
         assertEquals(1_700_000_000_000L, viewModel.uiState.value.syncUltimoExitoMillis)
         assertEquals("timeout", viewModel.uiState.value.syncUltimoError)
         assertEquals(3, viewModel.uiState.value.syncPendientesTotal)
+        assertEquals(1, viewModel.uiState.value.syncRechazadasTotal)
     }
 
     @Test
@@ -540,7 +588,7 @@ class ConfiguracionViewModelTest {
         val trabajoInmediato = MutableStateFlow<WorkInfo.State?>(null)
         val syncScheduler = mockk<SyncScheduler>(relaxed = true)
         every { syncScheduler.observarTrabajoInmediato() } returns trabajoInmediato
-        val resumen = mockk<SyncPendientesResumen>()
+        val resumen = mockk<SyncPendientesResumen> { coEvery { contarRechazadas() } returns 0 }
         coEvery { resumen.calcular() } returns ResumenPendientes(emptyList())
         val viewModel = viewModel(tempDir, syncScheduler = syncScheduler, syncPendientesResumen = resumen)
 

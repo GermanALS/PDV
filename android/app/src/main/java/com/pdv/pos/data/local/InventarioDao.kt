@@ -135,10 +135,10 @@ interface InventarioDao {
     // "ajuste"; cada uno se envia como delta a POST /ajustes-inventario
     // (Parte 34). Un articulo sin remoteId todavia (entrada aun sin
     // sincronizar) se salta este ciclo.
-    @Query("SELECT * FROM movimientos WHERE tipo = 'ajuste' AND isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT * FROM movimientos WHERE tipo = 'ajuste' AND isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun getMovimientosAjustePendientes(): List<MovimientoEntity>
 
-    @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'ajuste' AND isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'ajuste' AND isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun contarAjustesPendientes(): Int
 
     // Pull de inventario (PLAN.md Parte 34, A-1(b)): la fila local solo "gana"
@@ -151,8 +151,9 @@ interface InventarioDao {
     // movimientos en isSynced = 0 para siempre.
     @Query(
         "SELECT * FROM movimientos WHERE sucursalId = :sucursalId AND articuloId = :articuloId " +
-            "AND isSynced = 0 AND deletedAt IS NULL " +
-            "AND NOT (referenciaTipo = 'venta' AND referenciaId IN (SELECT localId FROM ventas WHERE isSynced = 1))",
+            "AND isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL " +
+            "AND NOT (referenciaTipo = 'venta' AND referenciaId IN " +
+            "(SELECT localId FROM ventas WHERE isSynced = 1 OR syncRechazo IS NOT NULL))",
     )
     suspend fun getMovimientosPendientes(sucursalId: String, articuloId: String): List<MovimientoEntity>
 
@@ -207,8 +208,20 @@ interface InventarioDao {
     @Query("UPDATE movimientos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
     suspend fun marcarMovimientoSincronizado(localId: String, remoteId: String)
 
-    @Query("UPDATE movimientos SET isSynced = 1 WHERE localId = :localId")
-    suspend fun marcarMovimientoSincronizadoSinRemoto(localId: String)
+    // Rechazo del backend (ver VentaDao.marcarVentaRechazada).
+    @Query("UPDATE movimientos SET syncRechazo = :codigo WHERE localId = :localId")
+    suspend fun marcarMovimientoRechazado(localId: String, codigo: Int)
+
+    @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'ajuste' AND syncRechazo IS NOT NULL AND deletedAt IS NULL")
+    suspend fun contarAjustesRechazados(): Int
+
+    // Ultimo resultado del push de la edicion de catalogo de esta fila: el
+    // codigo del rechazo, o null si se subio (PLAN.md Parte 36).
+    @Query("UPDATE inventario SET syncRechazo = :codigo WHERE localId = :localId")
+    suspend fun marcarRechazoEdicion(localId: String, codigo: Int?)
+
+    @Query("SELECT COUNT(*) FROM inventario WHERE syncRechazo IS NOT NULL AND deletedAt IS NULL")
+    suspend fun contarEdicionesRechazadas(): Int
 
     @Query("UPDATE articulos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
     suspend fun marcarArticuloSincronizado(localId: String, remoteId: String)

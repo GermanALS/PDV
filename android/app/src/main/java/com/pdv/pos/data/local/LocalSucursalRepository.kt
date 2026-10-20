@@ -45,4 +45,5 @@ private fun SucursalEntity.toDomain() = Sucursal(
     nombre = nombre,
     direccion = direccion,
     activa = activa,
+    remoteId = remoteId,
 )

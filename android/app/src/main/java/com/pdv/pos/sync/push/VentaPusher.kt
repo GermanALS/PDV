@@ -2,7 +2,6 @@ package com.pdv.pos.sync.push
 
 import com.pdv.pos.data.local.VentaDao
 import com.pdv.pos.data.remote.VentaApiService
-import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.sync.toCreateRequestDto
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,12 +10,14 @@ import javax.inject.Singleton
 class VentaPusher @Inject constructor(
     private val dao: VentaDao,
     private val api: VentaApiService,
-    private val appLogger: AppLogger,
+    private val registroRechazos: RegistroRechazos,
 ) : EntityPusher {
 
     override val nombre = "ventas"
 
     override suspend fun contarPendientes() = dao.contarVentasPendientes()
+
+    override suspend fun contarRechazadas() = dao.contarVentasRechazadas()
 
     override suspend fun empujarPendientes(): PushResultado {
         var subidas = 0
@@ -35,16 +36,20 @@ class VentaPusher @Inject constructor(
                 continue
             }
 
-            val dto = empujarFila(appLogger, "venta ${venta.folio}") {
+            val fila = FilaSync("venta", venta.localId, venta.sucursalId, "venta ${venta.folio}")
+            val dto = registroRechazos.empujarFila(
+                fila,
+                marcarRechazada = { codigo ->
+                    // Sus movimientos tambien se marcan: si quedaran
+                    // pendientes, el pull de inventario no convergeria nunca
+                    // para ese articulo (PLAN.md Parte 34).
+                    dao.marcarVentaRechazada(venta.localId, codigo)
+                    dao.marcarMovimientosVentaSincronizados(venta.localId)
+                },
+            ) {
                 api.createVenta(venta.toCreateRequestDto(detalles) { local -> articulosRemotos.getValue(local)!! })
             }
             if (dto == null) {
-                // Irrecuperable (4xx no-401): se descarta para no
-                // reintentarla en cada ciclo. Sus movimientos tambien se
-                // marcan: si quedaran pendientes, el pull de inventario no
-                // convergeria nunca para ese articulo (PLAN.md Parte 34).
-                dao.marcarVentaDescartada(venta.localId)
-                dao.marcarMovimientosVentaSincronizados(venta.localId)
                 saltadas++
                 continue
             }

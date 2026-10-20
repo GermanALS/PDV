@@ -31,10 +31,10 @@ interface EntradaDao {
     // creado en la misma entrada). El local_id que el backend usa como clave
     // de idempotencia es el referenciaId del movimiento (el id de dominio de
     // la entrada), no el localId del movimiento.
-    @Query("SELECT * FROM movimientos WHERE tipo = 'entrada' AND isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT * FROM movimientos WHERE tipo = 'entrada' AND isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun getMovimientosEntradaPendientes(): List<MovimientoEntity>
 
-    @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'entrada' AND isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'entrada' AND isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun contarEntradasPendientes(): Int
 
     @Query("SELECT * FROM articulos WHERE localId = :localId LIMIT 1")
@@ -46,9 +46,12 @@ interface EntradaDao {
     @Query("UPDATE articulos SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
     suspend fun marcarArticuloSincronizado(localId: String, remoteId: String)
 
-    // Descarta una entrada irrecuperable (ver VentaDao.marcarVentaDescartada).
-    @Query("UPDATE movimientos SET isSynced = 1 WHERE localId = :localId")
-    suspend fun marcarMovimientoDescartado(localId: String)
+    // Rechazo del backend (ver VentaDao.marcarVentaRechazada).
+    @Query("UPDATE movimientos SET syncRechazo = :codigo WHERE localId = :localId")
+    suspend fun marcarMovimientoRechazado(localId: String, codigo: Int)
+
+    @Query("SELECT COUNT(*) FROM movimientos WHERE tipo = 'entrada' AND syncRechazo IS NOT NULL AND deletedAt IS NULL")
+    suspend fun contarEntradasRechazadas(): Int
 
     // Articulo (si es nuevo) + upsert de inventario, aplicando el delta con
     // signo via EventoAditivoCombiner en vez de un UPDATE cantidad = X

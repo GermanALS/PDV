@@ -24,4 +24,7 @@ class SyncPendientesResumen @Inject constructor(
             .map { it.nombre to it.contarPendientes() }
             .filter { it.second > 0 },
     )
+
+    // Filas que el backend rechazo (PLAN.md Parte 36, A-6).
+    suspend fun contarRechazadas(): Int = pushers.sumOf { it.contarRechazadas() }
 }

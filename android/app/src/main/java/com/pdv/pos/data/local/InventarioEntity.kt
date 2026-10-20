@@ -39,6 +39,9 @@ data class InventarioEntity(
     val isSynced: Boolean,
     val deletedAt: Long?,
     @ColumnInfo(defaultValue = "0") val edicionPendiente: Boolean = false,
+    // Codigo HTTP con que el backend rechazo la ultima edicion de catalogo de
+    // esta fila; null = no rechazada (PLAN.md Parte 36).
+    val syncRechazo: Int? = null,
 )
 
 // Fila nueva de inventario con cantidadNum ya derivada de cantidad.

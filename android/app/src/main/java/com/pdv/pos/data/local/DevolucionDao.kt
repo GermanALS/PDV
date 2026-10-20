@@ -25,10 +25,10 @@ interface DevolucionDao {
     }
 
     // Push diferido (PLAN.md Parte 32, Grupo 2): devoluciones creadas offline.
-    @Query("SELECT * FROM devoluciones WHERE isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT * FROM devoluciones WHERE isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun getDevolucionesPendientes(): List<DevolucionEntity>
 
-    @Query("SELECT COUNT(*) FROM devoluciones WHERE isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT COUNT(*) FROM devoluciones WHERE isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun contarDevolucionesPendientes(): Int
 
     @Query("SELECT * FROM devolucion_detalle WHERE devolucionId = :devolucionLocalId AND deletedAt IS NULL")
@@ -37,9 +37,12 @@ interface DevolucionDao {
     @Query("UPDATE devoluciones SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
     suspend fun marcarDevolucionSincronizada(localId: String, remoteId: String)
 
-    // Descarta una devolucion irrecuperable (ver VentaDao.marcarVentaDescartada).
-    @Query("UPDATE devoluciones SET isSynced = 1 WHERE localId = :localId")
-    suspend fun marcarDevolucionDescartada(localId: String)
+    // Rechazo del backend (ver VentaDao.marcarVentaRechazada).
+    @Query("UPDATE devoluciones SET syncRechazo = :codigo WHERE localId = :localId")
+    suspend fun marcarDevolucionRechazada(localId: String, codigo: Int)
+
+    @Query("SELECT COUNT(*) FROM devoluciones WHERE syncRechazo IS NOT NULL AND deletedAt IS NULL")
+    suspend fun contarDevolucionesRechazadas(): Int
 
     // Push diferido (PLAN.md Parte 32, Grupo 2): resuelve el articulo_id
     // remoto de cada linea, y el venta_id remoto si la devolucion referencia

@@ -25,11 +25,14 @@ class InventarioAjustePusher @Inject constructor(
     private val dao: InventarioDao,
     private val api: InventarioApiService,
     private val appLogger: AppLogger,
+    private val registroRechazos: RegistroRechazos,
 ) : EntityPusher {
 
     override val nombre = "ajustes de inventario"
 
     override suspend fun contarPendientes() = dao.contarAjustesPendientes()
+
+    override suspend fun contarRechazadas() = dao.contarAjustesRechazados()
 
     override suspend fun empujarPendientes(): PushResultado {
         var subidas = 0
@@ -48,7 +51,8 @@ class InventarioAjustePusher @Inject constructor(
                 continue
             }
 
-            val dto = empujarFila(appLogger, "ajuste ${mov.localId}") {
+            val fila = FilaSync("movimiento", mov.localId, mov.sucursalId, "ajuste ${mov.localId}")
+            val dto = registroRechazos.empujarFila(fila, { codigo -> dao.marcarMovimientoRechazado(mov.localId, codigo) }) {
                 api.ajustarPorDelta(
                     AjusteDeltaRequestDto(
                         localId = mov.localId,
@@ -61,12 +65,9 @@ class InventarioAjustePusher @Inject constructor(
                 )
             }
             if (dto == null) {
-                // Evita reintentar un ajuste irrecuperable en cada ciclo
-                // (PLAN.md Parte 32, hallazgo de verificacion en
-                // dispositivo) - a diferencia del salto de arriba (articulo
-                // aun sin remoteId), que es temporal y se reintenta a
-                // proposito.
-                dao.marcarMovimientoSincronizadoSinRemoto(mov.localId)
+                // Rechazado: no se reintenta - a diferencia del salto de
+                // arriba (articulo aun sin remoteId), que es temporal y se
+                // reintenta a proposito.
                 saltadas++
                 continue
             }

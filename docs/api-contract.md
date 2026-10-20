@@ -1420,8 +1420,8 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   HTTP/1.1 401 Unauthorized
   { "detail": "token invalido o expirado" }
   ```
-  El cliente Android trata cualquier `401` en una llamada que no sea
-  `/auth/login` como sesión terminada: cierra la sesión y vuelve a
+  El cliente Android, en modo REMOTO, trata cualquier `401` en una llamada
+  que no sea `/auth/login` como sesión terminada: cierra la sesión y vuelve a
   `LoginScreen` ("Tu sesión expiró, inicia sesión de nuevo"). No se
   distingue "expirado" de "manipulado" — el remedio es el mismo.
 - **`403 Forbidden`** — token válido, pero el rol del usuario autenticado
@@ -1462,9 +1462,10 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   El token sale del login: se valida contra la base local y, si el backend
   es alcanzable, también contra `POST /auth/login` para obtener el JWT;
   la sesión con el JWT cifrado se persiste en el dispositivo
-  (`SessionStore`) para que el worker sincronice tras un reinicio. Sin JWT
-  (login solo local), las llamadas reciben `401` y el sync se detiene sin
-  cerrar la sesión local.
+  (`SessionStore`) para que el worker sincronice tras un reinicio. Un `401`
+  (JWT vencido, o sesión sin JWT por un login solo local) detiene el sync
+  sin cerrar la sesión local; Configuración muestra "sync requiere
+  re-login" o que la sesión no tiene token del backend (PLAN.md Parte 36).
 
 ## 13. Pendiente de definir
 

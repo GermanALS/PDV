@@ -29,10 +29,10 @@ interface VentaDao {
     suspend fun getArticulo(articuloId: String): ArticuloEntity?
 
     // Push diferido (PLAN.md Parte 32, Grupo 2): ventas creadas offline.
-    @Query("SELECT * FROM ventas WHERE isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT * FROM ventas WHERE isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun getVentasPendientes(): List<VentaEntity>
 
-    @Query("SELECT COUNT(*) FROM ventas WHERE isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT COUNT(*) FROM ventas WHERE isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun contarVentasPendientes(): Int
 
     @Query("SELECT * FROM venta_detalle WHERE ventaId = :ventaLocalId AND deletedAt IS NULL")
@@ -41,14 +41,16 @@ interface VentaDao {
     @Query("UPDATE ventas SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
     suspend fun marcarVentaSincronizada(localId: String, remoteId: String)
 
-    // Descarta una venta que el backend rechazo con un error no recuperable
-    // (4xx que no es 401, ej. sucursal_id de un backend distinto al actual -
-    // PLAN.md Parte 32, hallazgo de verificacion en dispositivo: sin esto,
-    // una fila irrecuperable se reintentaba en cada ciclo para siempre,
-    // generando miles de requests identicos). remoteId queda null: nunca
-    // llego al backend, a diferencia de marcarVentaSincronizada.
-    @Query("UPDATE ventas SET isSynced = 1 WHERE localId = :localId")
-    suspend fun marcarVentaDescartada(localId: String)
+    // Marca una venta que el backend rechazo con un error no recuperable
+    // (4xx que no es 401, ej. 403 por rol sin modulo venta). Sigue con
+    // isSynced = 0 y sin remoteId, pero deja de ser pendiente: no se
+    // reintenta en cada ciclo (PLAN.md Parte 32, hallazgo de verificacion en
+    // dispositivo) y queda visible como rechazada (PLAN.md Parte 36, A-6).
+    @Query("UPDATE ventas SET syncRechazo = :codigo WHERE localId = :localId")
+    suspend fun marcarVentaRechazada(localId: String, codigo: Int)
+
+    @Query("SELECT COUNT(*) FROM ventas WHERE syncRechazo IS NOT NULL AND deletedAt IS NULL")
+    suspend fun contarVentasRechazadas(): Int
 
     @Query("UPDATE venta_detalle SET isSynced = 1 WHERE ventaId = :ventaLocalId")
     suspend fun marcarDetallesVentaSincronizados(ventaLocalId: String)

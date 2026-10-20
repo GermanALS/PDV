@@ -95,6 +95,7 @@ fun ConfiguracionScreen(
                     ultimoExitoMillis = uiState.syncUltimoExitoMillis,
                     ultimoError = uiState.syncUltimoError,
                     pendientesTotal = uiState.syncPendientesTotal,
+                    rechazadasTotal = uiState.syncRechazadasTotal,
                     sincronizando = uiState.syncSincronizando,
                     onSincronizarAhora = viewModel::onSincronizarAhora,
                 )
@@ -115,6 +116,7 @@ fun ConfiguracionScreen(
                 SucursalSection(
                     sucursales = uiState.sucursales,
                     seleccionada = uiState.sucursalSeleccionada,
+                    noEncontrada = uiState.sucursalNoEncontrada,
                     onSucursalSelected = viewModel::onSucursalSelected,
                 )
             }
@@ -204,11 +206,19 @@ private fun ConexionSection(
 private fun SucursalSection(
     sucursales: List<Sucursal>,
     seleccionada: Sucursal?,
+    noEncontrada: Boolean,
     onSucursalSelected: (Sucursal) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Sucursal", style = MaterialTheme.typography.titleMedium)
+        if (noEncontrada) {
+            Text(
+                "La sucursal guardada no aparece en el catálogo actual. Elige la sucursal de trabajo.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
             OutlinedTextField(
                 value = seleccionada?.nombre.orEmpty(),
@@ -270,6 +280,7 @@ private fun SincronizacionSection(
     ultimoExitoMillis: Long?,
     ultimoError: String?,
     pendientesTotal: Int,
+    rechazadasTotal: Int,
     sincronizando: Boolean,
     onSincronizarAhora: () -> Unit,
 ) {
@@ -283,6 +294,9 @@ private fun SincronizacionSection(
             },
         )
         Text(if (pendientesTotal > 0) "Pendientes por subir: $pendientesTotal" else "Sin pendientes")
+        if (rechazadasTotal > 0) {
+            Text("Rechazadas por el backend: $rechazadasTotal (ver Conflictos)", color = MaterialTheme.colorScheme.error)
+        }
         if (ultimoError != null) {
             Text("Último error: $ultimoError", color = MaterialTheme.colorScheme.error)
         }

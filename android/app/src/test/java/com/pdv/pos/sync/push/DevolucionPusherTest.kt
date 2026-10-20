@@ -7,7 +7,6 @@ import com.pdv.pos.data.local.DevolucionEntity
 import com.pdv.pos.data.remote.DevolucionApiService
 import com.pdv.pos.data.remote.dto.DevolucionCreateRequestDto
 import com.pdv.pos.data.remote.dto.DevolucionDto
-import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -26,8 +25,7 @@ class DevolucionPusherTest {
 
     private val dao = mockk<DevolucionDao>(relaxUnitFun = true)
     private val api = mockk<DevolucionApiService>()
-    private val appLogger = mockk<AppLogger>(relaxed = true)
-    private val pusher = DevolucionPusher(dao, api, appLogger)
+    private val pusher = DevolucionPusher(dao, api, registroRechazos())
 
     private fun devolucion(ventaId: String?) = DevolucionEntity(
         localId = "dev-1", remoteId = null, sucursalId = "suc-1", usuarioId = "u-1", ventaId = ventaId,
@@ -77,7 +75,7 @@ class DevolucionPusherTest {
 
         assertEquals(PushResultado(subidas = 0, saltadas = 1), resultado)
         coVerify(exactly = 0) { api.createDevolucion(any()) }
-        coVerify(exactly = 0) { dao.marcarDevolucionDescartada(any()) }
+        coVerify(exactly = 0) { dao.marcarDevolucionRechazada(any(), any()) }
     }
 
     @Test

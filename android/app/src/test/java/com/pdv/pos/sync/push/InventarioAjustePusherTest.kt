@@ -23,7 +23,7 @@ class InventarioAjustePusherTest {
     private val dao = mockk<InventarioDao>(relaxUnitFun = true)
     private val api = mockk<InventarioApiService>()
     private val appLogger = mockk<AppLogger>(relaxed = true)
-    private val pusher = InventarioAjustePusher(dao, api, appLogger)
+    private val pusher = InventarioAjustePusher(dao, api, appLogger, registroRechazos())
 
     private fun ajuste(localId: String, delta: String) = MovimientoEntity(
         localId = localId,
@@ -88,11 +88,11 @@ class InventarioAjustePusherTest {
         coVerify(exactly = 0) { api.ajustarPorDelta(any()) }
         // Temporal, no irrecuperable: se retoma cuando la entrada del
         // articulo sincronice y obtenga remoteId. No se descarta.
-        coVerify(exactly = 0) { dao.marcarMovimientoSincronizadoSinRemoto(any()) }
+        coVerify(exactly = 0) { dao.marcarMovimientoRechazado(any(), any()) }
     }
 
     @Test
-    fun `discards the ajuste when the backend rejects it with a non-recoverable error`() = runTest {
+    fun `marks the ajuste rejected when the backend rejects it with a non-recoverable error`() = runTest {
         coEvery { dao.getMovimientosAjustePendientes() } returns listOf(ajuste("mov-1", "-2"))
         coEvery { dao.getArticulo("art-local") } returns articulo(remoteId = "art-remoto")
         coEvery { api.ajustarPorDelta(any()) } throws httpException(404)
@@ -103,7 +103,7 @@ class InventarioAjustePusherTest {
         // Sin esto, un ajuste irrecuperable se reintentaria en cada ciclo
         // para siempre (PLAN.md Parte 32, hallazgo de verificacion en
         // dispositivo).
-        coVerify(exactly = 1) { dao.marcarMovimientoSincronizadoSinRemoto("mov-1") }
+        coVerify(exactly = 1) { dao.marcarMovimientoRechazado("mov-1", 404) }
         coVerify(exactly = 0) { dao.marcarMovimientoSincronizado(any(), any()) }
     }
 

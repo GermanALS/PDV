@@ -1,12 +1,13 @@
 package com.pdv.pos.sync.push
 
 import com.pdv.pos.data.local.ArticuloEntity
+import com.pdv.pos.data.local.SyncConflictDao
+import com.pdv.pos.data.local.SyncConflictEntity
 import com.pdv.pos.data.local.VentaDao
 import com.pdv.pos.data.local.VentaDetalleEntity
 import com.pdv.pos.data.local.VentaEntity
 import com.pdv.pos.data.remote.VentaApiService
 import com.pdv.pos.data.remote.dto.VentaDto
-import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -23,8 +24,8 @@ class VentaPusherTest {
 
     private val dao = mockk<VentaDao>(relaxUnitFun = true)
     private val api = mockk<VentaApiService>()
-    private val appLogger = mockk<AppLogger>(relaxed = true)
-    private val pusher = VentaPusher(dao, api, appLogger)
+    private val conflictDao = mockk<SyncConflictDao>(relaxUnitFun = true)
+    private val pusher = VentaPusher(dao, api, registroRechazos(conflictDao))
 
     private fun venta(localId: String) = VentaEntity(
         localId = localId,
@@ -76,7 +77,7 @@ class VentaPusherTest {
     }
 
     @Test
-    fun `a 403 on one venta discards it (no infinite retry) and keeps going with the rest`() = runTest {
+    fun `a 403 on one venta marks it rejected with the code, records a conflict and keeps going`() = runTest {
         coEvery { dao.getVentasPendientes() } returns listOf(venta("v-1"), venta("v-2"))
         coEvery { dao.getDetallesDeVenta(any()) } returns emptyList()
         coEvery { api.createVenta(match { it.localId == "v-1" }) } throws httpException(403)
@@ -86,12 +87,18 @@ class VentaPusherTest {
 
         assertEquals(PushResultado(subidas = 1, saltadas = 1), resultado)
         coVerify(exactly = 0) { dao.marcarVentaSincronizada("v-1", any()) }
-        // Descartada (isSynced = true, sin remoteId), no solo "saltada" en el
+        // Rechazada con su codigo (no isSynced), no solo "saltada" en el
         // contador: de lo contrario el proximo ciclo la reintenta desde cero
-        // (PLAN.md Parte 32, hallazgo de verificacion en dispositivo - 5000+
-        // requests identicos en 45 minutos contra el mismo dato irrecuperable).
-        coVerify(exactly = 1) { dao.marcarVentaDescartada("v-1") }
+        // (PLAN.md Parte 32) y nadie se entera de que no llego (Parte 36, A-6).
+        coVerify(exactly = 1) { dao.marcarVentaRechazada("v-1", 403) }
         coVerify(exactly = 1) { dao.marcarMovimientosVentaSincronizados("v-1") }
+        val conflicto = slot<SyncConflictEntity>()
+        coVerify(exactly = 1) { conflictDao.insert(capture(conflicto)) }
+        assertEquals("venta", conflicto.captured.entidad)
+        assertEquals("v-1", conflicto.captured.entidadLocalId)
+        assertEquals("HTTP 403", conflicto.captured.valorRemoto)
+        assertEquals(POLITICA_RECHAZO_BACKEND, conflicto.captured.politicaAplicada)
+        assertEquals(false, conflicto.captured.resueltoAutomaticamente)
         coVerify(exactly = 1) { dao.marcarVentaSincronizada("v-2", "remoto-2") }
     }
 
@@ -140,7 +147,7 @@ class VentaPusherTest {
         coVerify(exactly = 0) { api.createVenta(any()) }
         // Temporal, no irrecuperable: no se descarta, se reintenta cuando el
         // articulo tenga remoteId.
-        coVerify(exactly = 0) { dao.marcarVentaDescartada(any()) }
+        coVerify(exactly = 0) { dao.marcarVentaRechazada(any(), any()) }
     }
 
     @Test
@@ -159,5 +166,7 @@ class VentaPusherTest {
         coEvery { api.createVenta(any()) } throws httpException(401)
 
         assertFailsWith<HttpException> { pusher.empujarPendientes() }
+        coVerify(exactly = 0) { dao.marcarVentaRechazada(any(), any()) }
+        coVerify(exactly = 0) { conflictDao.insert(any()) }
     }
 }

@@ -12,9 +12,10 @@ import org.junit.jupiter.api.Test
 
 class SyncPendientesResumenTest {
 
-    private fun pusher(nombre: String, pendientes: Int) = mockk<EntityPusher> {
+    private fun pusher(nombre: String, pendientes: Int, rechazadas: Int = 0) = mockk<EntityPusher> {
         every { this@mockk.nombre } returns nombre
         coEvery { contarPendientes() } returns pendientes
+        coEvery { contarRechazadas() } returns rechazadas
     }
 
     @Test
@@ -34,5 +35,14 @@ class SyncPendientesResumenTest {
 
         assertEquals(emptyList<Pair<String, Int>>(), resumen.porEntidad)
         assertFalse(resumen.hayPendientes)
+    }
+
+    @Test
+    fun `sums the rejected rows of every pusher`() = runTest {
+        val resumen = SyncPendientesResumen(
+            listOf(pusher("ventas", 0, rechazadas = 2), pusher("entradas", 1, rechazadas = 1)),
+        )
+
+        assertEquals(3, resumen.contarRechazadas())
     }
 }

@@ -1,5 +1,7 @@
 package com.pdv.pos.sync
 
+import com.pdv.pos.auth.Session
+import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.config.DeviceConfig
 import com.pdv.pos.logging.AppLogger
@@ -42,6 +44,9 @@ class DefaultSyncOrchestratorTest {
 
     private val preferences = mockk<ConfiguracionPreferences>()
     private val appLogger = mockk<AppLogger>(relaxed = true)
+    private val sessionManager = SessionManager().apply {
+        iniciarSesion(Session("admin", "u1", "r1", accessToken = "jwt-123"))
+    }
 
     private fun orchestrator(sucursalId: String? = "suc-1"): DefaultSyncOrchestrator {
         every { preferences.deviceConfig } returns flowOf(DeviceConfig(sucursalIdSeleccionada = sucursalId))
@@ -49,6 +54,7 @@ class DefaultSyncOrchestratorTest {
             pushers = listOf(entrada, venta, ajuste, corte, retiro, devolucion),
             pullers = listOf<EntityPuller>(inventarioPuller, cortePuller, retiroPuller),
             preferences = preferences,
+            sessionManager = sessionManager,
             appLogger = appLogger,
         )
     }
@@ -106,11 +112,21 @@ class DefaultSyncOrchestratorTest {
     }
 
     @Test
-    fun `a 401 stops the cycle with Fallo`() = runTest {
+    fun `a 401 with a JWT stops the cycle asking for a re-login and keeps the session`() = runTest {
         allPushersReturn(PushResultado.VACIO)
         coEvery { corte.empujarPendientes() } throws httpException(401)
 
-        assertEquals(SyncResultado.Fallo("sesion expirada"), orchestrator().sincronizar())
+        assertEquals(SyncResultado.Fallo(MOTIVO_RELOGIN), orchestrator().sincronizar())
+        assertEquals("admin", sessionManager.session.value?.username)
+    }
+
+    @Test
+    fun `a 401 on a session that never had a JWT says so instead of session expired`() = runTest {
+        sessionManager.iniciarSesion(Session("admin", "u1", "r1", accessToken = null))
+        allPushersReturn(PushResultado.VACIO)
+        coEvery { corte.empujarPendientes() } throws httpException(401)
+
+        assertEquals(SyncResultado.Fallo(MOTIVO_SIN_TOKEN), orchestrator().sincronizar())
     }
 
     @Test

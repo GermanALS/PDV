@@ -8,7 +8,6 @@ import com.pdv.pos.data.remote.dto.ArticuloDto
 import com.pdv.pos.data.remote.dto.EntradaDto
 import com.pdv.pos.data.remote.dto.InventarioDto
 import com.pdv.pos.data.remote.dto.MovimientoDto
-import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -23,8 +22,7 @@ class EntradaPusherTest {
 
     private val dao = mockk<EntradaDao>(relaxUnitFun = true)
     private val api = mockk<EntradaApiService>()
-    private val appLogger = mockk<AppLogger>(relaxed = true)
-    private val pusher = EntradaPusher(dao, api, appLogger)
+    private val pusher = EntradaPusher(dao, api, registroRechazos())
 
     private fun movimiento() = MovimientoEntity(
         localId = "mov-1",
