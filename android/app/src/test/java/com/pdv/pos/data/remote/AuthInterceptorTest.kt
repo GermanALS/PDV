@@ -2,10 +2,14 @@ package com.pdv.pos.data.remote
 
 import com.pdv.pos.auth.Session
 import com.pdv.pos.auth.SessionManager
+import com.pdv.pos.config.ConfiguracionPreferences
+import com.pdv.pos.config.DeviceConfig
+import com.pdv.pos.domain.model.BackendMode
 import io.mockk.CapturingSlot
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.coroutines.flow.flowOf
 import okhttp3.Interceptor
 import okhttp3.Protocol
 import okhttp3.Request
@@ -43,6 +47,13 @@ class AuthInterceptorTest {
     private fun sessionManagerCon(session: Session?): SessionManager =
         SessionManager().apply { session?.let { iniciarSesion(it) } }
 
+    private fun interceptor(sessionManager: SessionManager, modo: BackendMode = BackendMode.REMOTO): AuthInterceptor {
+        val preferences = mockk<ConfiguracionPreferences> {
+            every { deviceConfig } returns flowOf(DeviceConfig(backendMode = modo))
+        }
+        return AuthInterceptor(sessionManager, preferences)
+    }
+
     @Test
     fun `adds the bearer header when the session has an access token`() {
         val sessionManager = sessionManagerCon(
@@ -50,7 +61,7 @@ class AuthInterceptorTest {
         )
         val enviado = slot<Request>()
 
-        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 200))
+        interceptor(sessionManager).intercept(chain(enviado, code = 200))
 
         assertEquals("Bearer jwt-123", enviado.captured.header("Authorization"))
     }
@@ -60,7 +71,7 @@ class AuthInterceptorTest {
         val sessionManager = sessionManagerCon(Session("admin", "u1", "r1", accessToken = null))
         val enviado = slot<Request>()
 
-        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 200))
+        interceptor(sessionManager).intercept(chain(enviado, code = 200))
 
         assertNull(enviado.captured.header("Authorization"))
     }
@@ -70,19 +81,19 @@ class AuthInterceptorTest {
         val sessionManager = sessionManagerCon(null)
         val enviado = slot<Request>()
 
-        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 200))
+        interceptor(sessionManager).intercept(chain(enviado, code = 200))
 
         assertNull(enviado.captured.header("Authorization"))
     }
 
     @Test
-    fun `clears the session on a 401 response`() {
+    fun `clears the session on a 401 response in REMOTO mode`() {
         val sessionManager = sessionManagerCon(
             Session("admin", "u1", "r1", accessToken = "jwt-123"),
         )
         val enviado = slot<Request>()
 
-        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 401))
+        interceptor(sessionManager).intercept(chain(enviado, code = 401))
 
         assertNull(sessionManager.session.value)
     }
@@ -95,7 +106,7 @@ class AuthInterceptorTest {
         val sessionManager = sessionManagerCon(Session("admin", "u1", "r1", accessToken = null))
         val enviado = slot<Request>()
 
-        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 401))
+        interceptor(sessionManager).intercept(chain(enviado, code = 401))
 
         assertNotNull(sessionManager.session.value)
     }
@@ -107,7 +118,7 @@ class AuthInterceptorTest {
         )
         val enviado = slot<Request>()
 
-        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 200))
+        interceptor(sessionManager).intercept(chain(enviado, code = 200))
 
         assertNotNull(sessionManager.session.value)
     }
@@ -117,7 +128,7 @@ class AuthInterceptorTest {
         val sessionManager = sessionManagerCon(null)
         val enviado = slot<Request>()
 
-        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 401))
+        interceptor(sessionManager).intercept(chain(enviado, code = 401))
 
         assertNull(sessionManager.session.value)
     }
@@ -131,8 +142,24 @@ class AuthInterceptorTest {
         )
         val enviado = slot<Request>()
 
-        AuthInterceptor(sessionManager).intercept(chain(enviado, code = 401, request = loginRequest))
+        interceptor(sessionManager).intercept(chain(enviado, code = 401, request = loginRequest))
 
+        assertNotNull(sessionManager.session.value)
+    }
+
+    @Test
+    fun `a 401 in LOCAL_CON_SINCRONIZACION does not clear the local session`() {
+        // El JWT vencido del SyncWorker no debe expulsar al cajero a mitad de
+        // turno (PLAN.md Parte 36, M-5): el orquestador lo registra como
+        // "sync requiere re-login".
+        val sessionManager = sessionManagerCon(
+            Session("admin", "u1", "r1", accessToken = "jwt-123"),
+        )
+        val enviado = slot<Request>()
+
+        interceptor(sessionManager, BackendMode.LOCAL_CON_SINCRONIZACION).intercept(chain(enviado, code = 401))
+
+        assertEquals("Bearer jwt-123", enviado.captured.header("Authorization"))
         assertNotNull(sessionManager.session.value)
     }
 }

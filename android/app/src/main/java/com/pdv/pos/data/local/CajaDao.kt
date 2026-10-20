@@ -28,18 +28,21 @@ interface CajaDao {
     suspend fun getCortesDelPeriodo(sucursalId: String, desde: Long, hasta: Long): List<CorteCajaEntity>
 
     // Push diferido (PLAN.md Parte 32, Grupo 2): cortes creados offline.
-    @Query("SELECT * FROM cortes_caja WHERE isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT * FROM cortes_caja WHERE isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun getCortesPendientes(): List<CorteCajaEntity>
 
-    @Query("SELECT COUNT(*) FROM cortes_caja WHERE isSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT COUNT(*) FROM cortes_caja WHERE isSynced = 0 AND syncRechazo IS NULL AND deletedAt IS NULL")
     suspend fun contarCortesPendientes(): Int
 
     @Query("UPDATE cortes_caja SET remoteId = :remoteId, isSynced = 1 WHERE localId = :localId")
     suspend fun marcarCorteSincronizado(localId: String, remoteId: String)
 
-    // Descarta un corte irrecuperable (ver VentaDao.marcarVentaDescartada).
-    @Query("UPDATE cortes_caja SET isSynced = 1 WHERE localId = :localId")
-    suspend fun marcarCorteDescartado(localId: String)
+    // Rechazo del backend (ver VentaDao.marcarVentaRechazada).
+    @Query("UPDATE cortes_caja SET syncRechazo = :codigo WHERE localId = :localId")
+    suspend fun marcarCorteRechazado(localId: String, codigo: Int)
+
+    @Query("SELECT COUNT(*) FROM cortes_caja WHERE syncRechazo IS NOT NULL AND deletedAt IS NULL")
+    suspend fun contarCortesRechazados(): Int
 
     // Pull diferido (PLAN.md Parte 32, Grupo 3): un corte es inmutable una vez
     // creado, el merge es insert-if-absent por localId.

@@ -27,11 +27,14 @@ class ArticuloEdicionPusher @Inject constructor(
     private val api: InventarioApiService,
     private val eventoAditivoSyncEngine: EventoAditivoSyncEngine,
     private val appLogger: AppLogger,
+    private val registroRechazos: RegistroRechazos,
 ) : EntityPusher {
 
     override val nombre = "ediciones de catalogo"
 
     override suspend fun contarPendientes() = dao.contarEdicionesPendientes()
+
+    override suspend fun contarRechazadas() = dao.contarEdicionesRechazadas()
 
     override suspend fun empujarPendientes(): PushResultado {
         var subidas = 0
@@ -51,15 +54,21 @@ class ArticuloEdicionPusher @Inject constructor(
                 continue
             }
 
-            val dto = empujarFila(appLogger, "edicion de catalogo ${articulo.localId}") {
+            val fila = FilaSync("articulo", articulo.localId, inventario.sucursalId, "edicion de catalogo ${articulo.nombre}")
+            val marcarRechazada: suspend (Int) -> Unit = { codigo ->
+                // Se cierra para no reintentarla en cada ciclo y para que el
+                // pull vuelva a converger al catalogo del backend.
+                dao.cerrarEdicionSubida(inventario.localId, articulo.localId, articulo.updatedAt, null, null)
+                dao.marcarRechazoEdicion(inventario.localId, codigo)
+            }
+            val dto = registroRechazos.empujarFila(fila, marcarRechazada) {
                 api.editarCatalogo(articuloRemotoId, solicitud(articulo, inventario))
             }
             if (dto == null) {
-                // Descarte de una edicion irrecuperable (4xx): no se reintenta.
-                dao.cerrarEdicionSubida(inventario.localId, articulo.localId, articulo.updatedAt, null, null)
                 saltadas++
                 continue
             }
+            dao.marcarRechazoEdicion(inventario.localId, null)
 
             if (dto.aplicado) {
                 dao.cerrarEdicionSubida(inventario.localId, articulo.localId, articulo.updatedAt, null, null)

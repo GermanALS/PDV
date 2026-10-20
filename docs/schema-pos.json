@@ -11,6 +11,11 @@
       { "name": "deleted_at", "type": "datetime", "nullable": true, "description": "soft-delete; nulo = fila activa. Nunca DELETE fisico" }
     ]
   },
+  "sync_rechazo_field": {
+    "description": "Columna solo de cliente (Room, sin contraparte en el backend ni en Alembic: el rechazo es un estado del dispositivo), PLAN.md Parte 36 (A-6). Codigo HTTP con que el backend rechazo la fila en el push (4xx distinto de 401); 0 = desconocido (filas descartadas antes de la Parte 36, migracion Room v9->v10); nulo = no rechazada. Una fila rechazada sigue con is_synced = false y deja de contarse como pendiente; cada rechazo se registra en sync_conflicts con politica_aplicada = rechazo_backend. En inventario se refiere a la ultima edicion de catalogo/ubicacion de la fila.",
+    "field": { "name": "sync_rechazo", "type": "int", "nullable": true },
+    "tables": ["ventas", "devoluciones", "cortes_caja", "retiros_efectivo", "movimientos", "inventario"]
+  },
   "sucursal_scoped_field": {
     "description": "Campo implicito en toda tabla con \"sucursal_scoped\": true.",
     "field": { "name": "sucursal_id", "type": "uuid", "nullable": false, "description": "FK a sucursales" }
@@ -210,7 +215,7 @@
         { "name": "valor_local", "type": "json", "nullable": false, "description": "snapshot del lado local al momento del conflicto" },
         { "name": "valor_remoto", "type": "json", "nullable": false, "description": "snapshot del lado remoto" },
         { "name": "valor_resuelto", "type": "json", "nullable": false, "description": "valor final aplicado" },
-        { "name": "politica_aplicada", "type": "string", "nullable": false, "description": "\"last_write_wins\" / \"evento_aditivo\"" },
+        { "name": "politica_aplicada", "type": "string", "nullable": false, "description": "backend: \"last_write_wins\" / \"evento_aditivo\". Los conflictos que registra el dispositivo (Room) usan valores propios: evento_aditivo_delta, last_write_wins_local_gana, last_write_wins_remoto_gana, reconciliacion_inicial_backend_gana y rechazo_backend (Parte 36); hoy no se suben al backend (ver Backlog de PLAN.md)." },
         { "name": "resuelto_automaticamente", "type": "bool", "nullable": false, "description": "false si quedo pendiente de revision manual" },
         { "name": "fecha_deteccion", "type": "datetime", "nullable": false }
       ]

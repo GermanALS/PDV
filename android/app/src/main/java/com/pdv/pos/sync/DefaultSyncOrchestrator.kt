@@ -1,5 +1,6 @@
 package com.pdv.pos.sync
 
+import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
@@ -23,6 +24,7 @@ class DefaultSyncOrchestrator @Inject constructor(
     private val pushers: List<@JvmSuppressWildcards EntityPusher>,
     private val pullers: List<@JvmSuppressWildcards EntityPuller>,
     private val preferences: ConfiguracionPreferences,
+    private val sessionManager: SessionManager,
     private val appLogger: AppLogger,
 ) : SyncOrchestrator {
 
@@ -49,6 +51,15 @@ class DefaultSyncOrchestrator @Inject constructor(
     } catch (e: IOException) {
         SyncResultado.Reintentar(e.message ?: "sin conexion")
     } catch (e: HttpException) {
-        if (e.code() == 401) SyncResultado.Fallo("sesion expirada") else SyncResultado.Reintentar("HTTP ${e.code()}")
+        if (e.code() == 401) SyncResultado.Fallo(motivoNoAutorizado()) else SyncResultado.Reintentar("HTTP ${e.code()}")
     }
+
+    // El 401 no cierra la sesion local (AuthInterceptor); el motivo distingue
+    // un JWT vencido de una sesion que nunca lo tuvo (login con el backend
+    // inalcanzable) - PLAN.md Parte 36, M-5.
+    private fun motivoNoAutorizado(): String =
+        if (sessionManager.session.value?.accessToken == null) MOTIVO_SIN_TOKEN else MOTIVO_RELOGIN
 }
+
+const val MOTIVO_RELOGIN = "sync requiere re-login"
+const val MOTIVO_SIN_TOKEN = "la sesion no tiene token del backend: inicia sesion con el backend alcanzable"

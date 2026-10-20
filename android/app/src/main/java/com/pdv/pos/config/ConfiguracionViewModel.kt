@@ -86,23 +86,26 @@ class ConfiguracionViewModel @Inject constructor(
             combine(preferences.deviceConfig, sucursalRepository.observeSucursales()) { config, sucursales ->
                 config to sucursales
             }.collect { (config, sucursales) ->
-                val seleccionada = sucursales.find { sucursal -> sucursal.id == config.sucursalIdSeleccionada }
-                    ?: sucursales.firstOrNull()
-                // Si la sucursal persistida no existe en el catalogo del modo
-                // actual (tipico al pasar de LOCAL a REMOTO sin tocar el
-                // dropdown), persiste el fallback: sin esto el estado en memoria
-                // muestra la sucursal correcta pero la primera escritura remota
-                // falla con ForeignKeyViolationError contra el id local viejo.
-                if (config.backendMode != BackendMode.LOCAL &&
-                    seleccionada != null &&
-                    seleccionada.id != config.sucursalIdSeleccionada
-                ) {
-                    preferences.setSucursalSeleccionada(seleccionada.id)
+                val persistida = config.sucursalIdSeleccionada
+                // La copia local y la remota de una sucursal tienen ids crudos
+                // distintos: se relacionan por remoteId (PLAN.md Parte 36, A-8).
+                val encontrada = persistida?.let { id ->
+                    sucursales.find { it.id == id || it.remoteId == id }
+                }
+                // Solo sin ninguna seleccion previa se toma la primera como
+                // valor inicial. Una sucursal guardada que no aparece en el
+                // catalogo emitido (que alterna entre local y remoto) se
+                // conserva y se avisa: nunca se reemplaza sin que el usuario
+                // elija.
+                val inicial = if (persistida == null) sucursales.firstOrNull() else null
+                if (config.backendMode != BackendMode.LOCAL && inicial != null) {
+                    preferences.setSucursalSeleccionada(inicial.id)
                 }
                 _uiState.update {
                     it.copy(
                         sucursales = sucursales,
-                        sucursalSeleccionada = seleccionada,
+                        sucursalSeleccionada = encontrada ?: inicial,
+                        sucursalNoEncontrada = persistida != null && encontrada == null,
                         modo = config.backendMode,
                     )
                 }
@@ -161,7 +164,9 @@ class ConfiguracionViewModel @Inject constructor(
 
     fun onRefrescarEstadoSync() {
         viewModelScope.launch {
-            _uiState.update { it.copy(syncPendientesTotal = syncPendientesResumen.calcular().total) }
+            val pendientes = syncPendientesResumen.calcular().total
+            val rechazadas = syncPendientesResumen.contarRechazadas()
+            _uiState.update { it.copy(syncPendientesTotal = pendientes, syncRechazadasTotal = rechazadas) }
         }
     }
 

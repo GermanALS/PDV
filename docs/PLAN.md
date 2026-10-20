@@ -227,7 +227,7 @@ pisar el stock ni perderse en el siguiente pull.
 
 ---
 
-## Parte 36: Sucursal estable y rechazos visibles del sync
+## Parte 36: Sucursal estable y rechazos visibles del sync  <!-- POS-168 -->
 
 *(Sale de los hallazgos A-8, A-6 y M-5 (2º punto) de `docs/review_code.md`.
 A-8, reproducido dos veces en el Xiaomi: al pasar a
@@ -244,52 +244,65 @@ cuyas entradas el backend rechazó con 4xx, se queda "pendiente" para siempre
 (contador "Pendientes por subir: 1") sin que nada lo vuelva visible ni
 recuperable.)*
 
-Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
+Claves de Jira: épica POS-168; historias POS-169 (grupo 1), POS-170 (grupo 2)
+y POS-171 (grupo 3), creadas por `/jira-sync` el 2026-10-20.
 
 Objetivo: que la sucursal de trabajo solo cambie por decisión del usuario, y
 que toda fila que el backend rechace quede visible y recuperable.
 
 ### Checklist
 
-**1. Selección de sucursal estable (A-8)**
-- [ ] `ConfiguracionViewModel` no persiste un fallback automático: si la
+**1. Selección de sucursal estable (A-8) (POS-169)**
+- [x] `ConfiguracionViewModel` no persiste un fallback automático: si la
   sucursal guardada no está en el catálogo emitido, conserva la selección y
   pide al usuario que elija (o bloquea las operaciones que la requieren).
   Sucursal local y remota se relacionan por `remoteId`, no por id crudo.
   `jvm-tests`: catálogo que emite primero la lista local y luego la remota
   → la selección persistida no cambia.
-- [ ] Verificación en el Xiaomi: repetir la secuencia de A-8 de
+- [x] Verificación en el Xiaomi: repetir la secuencia de A-8 de
   `review_code.md` (LOCAL → `LOCAL_CON_SINCRONIZACION` sin JWT, re-login
   con JWT, con una sucursal remota alfabéticamente anterior) y comprobar que
   la sucursal no cambia. `needs-device`.
 
-**2. Rechazos de sync visibles (A-6)**
-- [ ] Estado de rechazo propio (no `isSynced`) con el código HTTP, en la
+**2. Rechazos de sync visibles (A-6) (POS-170)**
+- [x] Estado de rechazo propio (no `isSynced`) con el código HTTP, en la
   forma que se decida; migración de Room + `docs/schema-pos.json` +
   (si aplica) backend alineados. `schema-parity`.
-- [ ] Cada rechazo se registra en `sync_conflicts` (visible en el panel de
+- [x] Cada rechazo se registra en `sync_conflicts` (visible en el panel de
   la Parte 19) y la sección Sincronización de Configuración muestra el
   número de filas rechazadas. `jvm-tests`: 403 en una venta → estado
   rechazado + conflicto registrado + contador > 0.
-- [ ] Verificación en el Xiaomi con el escenario preparado en la revisión
+- [x] Verificación en el Xiaomi con el escenario preparado en la revisión
   (usuario con rol local `caja` y rol backend sin `venta`): la venta
   rechazada aparece en el panel y en el contador. `needs-device`.
 
-**3. Sesión del worker (M-5, 2º punto)**
-- [ ] Un 401 recibido por el `SyncWorker` no cierra la sesión interactiva:
+**3. Sesión del worker (M-5, 2º punto) (POS-171)**
+- [x] Un 401 recibido por el `SyncWorker` no cierra la sesión interactiva:
   se registra como "sync requiere re-login" y se muestra en Configuración.
   Con una sesión que nunca tuvo JWT, el mensaje lo dice así (hoy muestra
   "sesion expirada"). `jvm-tests` sobre `AuthInterceptor`/orquestador.
 
 ### Decisiones abiertas
 
-- [ ] Forma del estado de rechazo: ¿columna en cada entidad transaccional
+- [x] Forma del estado de rechazo: ¿columna en cada entidad transaccional
   o tabla aparte de rechazos?
-- [ ] Filas ya descartadas en dispositivos existentes (marcadas
+  **Resuelta (2026-10-18)**: columna `syncRechazo` (código HTTP, nullable)
+  en cada entidad que se sube; pendiente = `isSynced = 0 AND syncRechazo IS NULL`.
+- [x] Filas ya descartadas en dispositivos existentes (marcadas
   `isSynced = true` sin `remoteId`): ¿se reintentan una vez tras la
   migración, se reportan como rechazadas, o se dejan como están?
-- [ ] Sucursal no encontrada en el catálogo: ¿bloquear operaciones hasta
+  **Resuelta (2026-10-18)**: se reportan como rechazadas (código
+  desconocido) y se registran en `sync_conflicts`, solo en las entidades
+  donde el sync siempre asigna `remoteId`.
+- [x] Sucursal no encontrada en el catálogo: ¿bloquear operaciones hasta
   que el usuario elija, o solo avisar?
+  **Resuelta (2026-10-18)**: solo avisar (aviso visible), sin bloquear: un
+  rol `caja` no tiene el módulo `configuracion` y quedaría atascado.
+- [x] Registro del rechazo en `sync_conflicts`: ¿valor nuevo en
+  `politica_aplicada`? **Resuelta (2026-10-18)**: sí, `rechazo_backend`.
+  **Revisada (2026-10-19)**: solo como valor local de Android, documentado
+  en `schema-pos.json`; ni el contrato ni el backend cambian, porque el
+  dispositivo nunca sube conflictos (ver Backlog).
 
 ---
 
@@ -632,6 +645,18 @@ desde fuera de la LAN.
   deployment Docker separado por franquicia (más simple, aislamiento
   total, sin migración de esquema). Reconsiderar solo si administrar N
   deployments se vuelve operativamente costoso.
+- **Subida de conflictos al backend** (hallazgo Parte 36, 2026-10-19): los
+  conflictos de `sync_conflicts` viven solo en Room; `subirConflicto`
+  (`RemoteSyncConflictRepository`) no tiene llamadores y el panel en REMOTO
+  lista solo lo que haya en el backend. Además, los valores de
+  `politica_aplicada` que usa el dispositivo (`evento_aditivo_delta`,
+  `last_write_wins_*`, `reconciliacion_inicial_backend_gana`,
+  `rechazo_backend`) no están en el `Literal` del backend (`last_write_wins`
+  / `evento_aditivo`). Subirlos exige alinear ese enum primero.
+- **Reintentar filas rechazadas por el sync** (Parte 36): las filas con
+  `syncRechazo` quedan intactas pero no hay acción en la app para
+  reintentarlas tras corregir la causa (ej. darle el módulo al rol en el
+  backend).
 
 ---
 

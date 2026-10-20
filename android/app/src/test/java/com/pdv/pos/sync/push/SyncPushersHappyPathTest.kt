@@ -12,7 +12,6 @@ import com.pdv.pos.data.remote.RetiroApiService
 import com.pdv.pos.data.remote.dto.CorteCajaDto
 import com.pdv.pos.data.remote.dto.DevolucionDto
 import com.pdv.pos.data.remote.dto.RetiroEfectivoDto
-import com.pdv.pos.logging.AppLogger
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -27,7 +26,6 @@ import java.math.BigDecimal
 // ejercita el helper compartido empujarFila).
 class SyncPushersHappyPathTest {
 
-    private val appLogger = mockk<AppLogger>(relaxed = true)
 
     @Test
     fun `CorteCajaPusher marks the corte synced with the remote id`() = runTest {
@@ -48,7 +46,7 @@ class SyncPushersHappyPathTest {
             updatedAt = "2023-11-14T22:13:20Z",
         )
 
-        val resultado = CorteCajaPusher(dao, api, appLogger).empujarPendientes()
+        val resultado = CorteCajaPusher(dao, api, registroRechazos()).empujarPendientes()
 
         assertEquals(PushResultado(subidas = 1, saltadas = 0), resultado)
         coVerify { dao.marcarCorteSincronizado("corte-1", "corte-remoto") }
@@ -69,7 +67,7 @@ class SyncPushersHappyPathTest {
             motivo = "gasto", fecha = "2023-11-14T22:13:20Z", updatedAt = "2023-11-14T22:13:20Z",
         )
 
-        val resultado = RetiroPusher(dao, api, appLogger).empujarPendientes()
+        val resultado = RetiroPusher(dao, api, registroRechazos()).empujarPendientes()
 
         assertEquals(PushResultado(subidas = 1, saltadas = 0), resultado)
         coVerify { dao.marcarRetiroSincronizado("retiro-1", "retiro-remoto") }
@@ -93,7 +91,7 @@ class SyncPushersHappyPathTest {
             updatedAt = "2023-11-14T22:13:20Z", lineas = emptyList(),
         )
 
-        val resultado = DevolucionPusher(dao, api, appLogger).empujarPendientes()
+        val resultado = DevolucionPusher(dao, api, registroRechazos()).empujarPendientes()
 
         assertEquals(PushResultado(subidas = 1, saltadas = 0), resultado)
         coVerify { dao.marcarDevolucionSincronizada("dev-1", "dev-remoto") }

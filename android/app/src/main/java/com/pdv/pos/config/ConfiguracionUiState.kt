@@ -12,6 +12,7 @@ data class ConfiguracionUiState(
     val puerto: String = "",
     val sucursales: List<Sucursal> = emptyList(),
     val sucursalSeleccionada: Sucursal? = null,
+    val sucursalNoEncontrada: Boolean = false,
     val modo: BackendMode = BackendMode.LOCAL,
     val iaActivo: Boolean = false,
     val iaProveedor: LlmProvider = LlmProvider.DEEP_SEEK,
@@ -27,6 +28,7 @@ data class ConfiguracionUiState(
     val syncUltimoExitoMillis: Long? = null,
     val syncUltimoError: String? = null,
     val syncPendientesTotal: Int = 0,
+    val syncRechazadasTotal: Int = 0,
     val syncSincronizando: Boolean = false,
     val dialogoCambioModo: DialogoCambioModo? = null,
 )

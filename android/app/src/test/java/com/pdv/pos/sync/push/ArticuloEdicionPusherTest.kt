@@ -25,7 +25,7 @@ class ArticuloEdicionPusherTest {
     private val api = mockk<InventarioApiService>()
     private val engine = mockk<EventoAditivoSyncEngine>(relaxed = true)
     private val appLogger = mockk<AppLogger>(relaxed = true)
-    private val pusher = ArticuloEdicionPusher(dao, api, engine, appLogger)
+    private val pusher = ArticuloEdicionPusher(dao, api, engine, appLogger, registroRechazos())
 
     private fun articulo(remoteId: String?) = ArticuloEntity(
         localId = "art-local", remoteId = remoteId, codigoBarras = null, sku = "SKU-1", nombre = "Cafe molido",
@@ -110,7 +110,7 @@ class ArticuloEdicionPusherTest {
     }
 
     @Test
-    fun `discards the edit when the backend rejects it with a non-recoverable error`() = runTest {
+    fun `closes the edit and marks it rejected when the backend rejects it with a non-recoverable error`() = runTest {
         coEvery { dao.getEdicionesPendientes() } returns listOf(inventario())
         coEvery { dao.getArticulo("art-local") } returns articulo("art-remoto")
         coEvery { api.editarCatalogo(any(), any()) } throws httpException(404)
@@ -119,5 +119,6 @@ class ArticuloEdicionPusherTest {
 
         assertEquals(PushResultado(subidas = 0, saltadas = 1), resultado)
         coVerify(exactly = 1) { dao.cerrarEdicionSubida("inv-local", "art-local", 1_700_000_000_000L, null, null) }
+        coVerify(exactly = 1) { dao.marcarRechazoEdicion("inv-local", 404) }
     }
 }

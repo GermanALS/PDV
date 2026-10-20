@@ -2,7 +2,6 @@ package com.pdv.pos.sync.push
 
 import com.pdv.pos.data.local.DevolucionDao
 import com.pdv.pos.data.remote.DevolucionApiService
-import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.sync.toCreateRequestDto
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,12 +10,14 @@ import javax.inject.Singleton
 class DevolucionPusher @Inject constructor(
     private val dao: DevolucionDao,
     private val api: DevolucionApiService,
-    private val appLogger: AppLogger,
+    private val registroRechazos: RegistroRechazos,
 ) : EntityPusher {
 
     override val nombre = "devoluciones"
 
     override suspend fun contarPendientes() = dao.contarDevolucionesPendientes()
+
+    override suspend fun contarRechazadas() = dao.contarDevolucionesRechazadas()
 
     override suspend fun empujarPendientes(): PushResultado {
         var subidas = 0
@@ -37,13 +38,14 @@ class DevolucionPusher @Inject constructor(
                 continue
             }
 
-            val dto = empujarFila(appLogger, "devolucion ${devolucion.folio}") {
+            val fila = FilaSync("devolucion", devolucion.localId, devolucion.sucursalId, "devolucion ${devolucion.folio}")
+            val marcarRechazada: suspend (Int) -> Unit = { codigo -> dao.marcarDevolucionRechazada(devolucion.localId, codigo) }
+            val dto = registroRechazos.empujarFila(fila, marcarRechazada) {
                 api.createDevolucion(
                     devolucion.toCreateRequestDto(detalles, ventaIdRemoto) { local -> articulosRemotos.getValue(local)!! },
                 )
             }
             if (dto == null) {
-                dao.marcarDevolucionDescartada(devolucion.localId)
                 saltadas++
                 continue
             }
