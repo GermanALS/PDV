@@ -2,6 +2,8 @@ import uuid
 from datetime import datetime, timezone
 
 from app.models.rol import Rol
+from app.models.usuario import Usuario
+from app.security import create_access_token
 
 
 async def _crear_rol(client_autenticado, nombre: str, modulos: list[str] | None = None):
@@ -131,3 +133,44 @@ async def test_delete_rol_de_sistema_returns_400(client_autenticado, session):
     response = await client_autenticado.delete(f"/api/v1/roles/{rol.id}")
 
     assert response.status_code == 400
+
+
+# PLAN.md Parte 37, M-6.
+
+
+async def test_delete_rol_con_usuarios_asignados_returns_409(client_autenticado):
+    rol = await _crear_rol(client_autenticado, "rol_con_usuarios")
+    rol_id = rol.json()["id"]
+    await client_autenticado.post(
+        "/api/v1/usuarios",
+        json={
+            "local_id": None,
+            "username": "usuario_del_rol",
+            "nombre_completo": "Usuario del rol",
+            "rol_id": rol_id,
+            "activo": True,
+        },
+    )
+
+    response = await client_autenticado.delete(f"/api/v1/roles/{rol_id}")
+
+    assert response.status_code == 409
+
+
+async def test_rol_borrado_no_otorga_modulos(client, session):
+    rol = Rol(nombre="rol_borrado_con_permisos", modulos_permitidos=["usuarios"])
+    session.add(rol)
+    await session.flush()
+    usuario = Usuario(username="usuario_rol_borrado", nombre_completo="Rol borrado", rol_id=rol.id)
+    session.add(usuario)
+    await session.flush()
+    rol.deleted_at = datetime.now(timezone.utc)
+    await session.flush()
+
+    response = await client.post(
+        "/api/v1/roles",
+        headers={"Authorization": f"Bearer {create_access_token(str(usuario.id))}"},
+        json={"local_id": None, "nombre": "rol_no_permitido", "modulos_permitidos": ["venta"]},
+    )
+
+    assert response.status_code == 403

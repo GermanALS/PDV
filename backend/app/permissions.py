@@ -29,6 +29,12 @@ _ESCRITURA_MODULO: dict[tuple[str, str], str] = {
 }
 
 
+def modulos_del_usuario(usuario: Usuario) -> list[str]:
+    """Modulos del rol del usuario; un rol borrado no otorga ninguno (PLAN.md
+    Parte 37, M-6)."""
+    return [] if usuario.rol.deleted_at is not None else usuario.rol.modulos_permitidos
+
+
 async def verificar_modulo(
     request: Request,
     usuario: Usuario = Depends(usuario_actual),
@@ -36,7 +42,7 @@ async def verificar_modulo(
     """Dependencia a nivel de router: si la ruta actual es una escritura con
     modulo requerido, exige que el rol del usuario lo tenga; `403` si no."""
     modulo = _ESCRITURA_MODULO.get((request.method, request.scope["route"].path))
-    if modulo is not None and modulo not in usuario.rol.modulos_permitidos:
+    if modulo is not None and modulo not in modulos_del_usuario(usuario):
         raise HTTPException(
             status_code=403,
             detail=f"el rol no tiene permiso para el modulo: {modulo}",

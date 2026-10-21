@@ -11,6 +11,7 @@ data class UsuarioDto(
     @SerialName("nombre_completo") val nombreCompleto: String,
     @SerialName("rol_id") val rolId: String,
     val activo: Boolean,
+    @SerialName("debe_cambiar_password") val debeCambiarPassword: Boolean = false,
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("is_synced") val isSynced: Boolean = true,
     @SerialName("deleted_at") val deletedAt: String? = null,

@@ -4,11 +4,10 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 
-# Valor de desarrollo por defecto: no hay destino de despliegue definido
-# todavia (CLAUDE.md sec. 7, "[TODO: definir destino final]"). Cambiar via
-# la variable de entorno JWT_SECRET_KEY antes de exponer el backend fuera
-# de la red local.
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-secret-key-cambiar-en-produccion")
+from app.config import cargar_jwt_secret_key
+
+# Sin default en codigo: el proceso no arranca si falta (PLAN.md Parte 37, A-4).
+JWT_SECRET_KEY = cargar_jwt_secret_key(os.environ)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRES_MINUTES = 60 * 24
 

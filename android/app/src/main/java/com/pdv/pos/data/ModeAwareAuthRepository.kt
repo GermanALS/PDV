@@ -41,11 +41,34 @@ class ModeAwareAuthRepository @Inject constructor(
         val localResultado = local.login(username, password)
         if (localResultado !is LoginResultado.Exitoso) return localResultado
 
-        val tokenRemoto = runCatching { remote.login(username, password) }
-            .getOrNull()
-            .let { it as? LoginResultado.Exitoso }
-            ?.accessToken
+        val remoto = runCatching { remote.login(username, password) }
+            .getOrNull() as? LoginResultado.Exitoso
+            ?: return localResultado
 
-        return if (tokenRemoto != null) localResultado.copy(accessToken = tokenRemoto) else localResultado
+        // Si el backend exige el cambio aunque el usuario local no, la sesion
+        // tambien lo exige: con la marca remota encendida el JWT recibe 403 en
+        // todas las rutas (PLAN.md Parte 37, A-3).
+        val debeCambiar = localResultado.usuario.debeCambiarPassword || remoto.usuario.debeCambiarPassword
+        return localResultado.copy(
+            usuario = localResultado.usuario.copy(debeCambiarPassword = debeCambiar),
+            accessToken = remoto.accessToken,
+        )
+    }
+
+    override suspend fun cambiarPassword(usuarioId: String, nuevaPassword: String) {
+        when (preferences.deviceConfig.first().backendMode) {
+            BackendMode.LOCAL -> local.cambiarPassword(usuarioId, nuevaPassword)
+            BackendMode.LOCAL_CON_SINCRONIZACION -> cambiarLocalYRemoto(usuarioId, nuevaPassword)
+            BackendMode.REMOTO -> remote.cambiarPassword(usuarioId, nuevaPassword)
+        }
+    }
+
+    // Mismo criterio que el login: la contrasena local es la que decide, y la
+    // remota se cambia best-effort para que el proximo login siga obteniendo
+    // el JWT del SyncWorker con la misma contrasena. Sin token en la sesion la
+    // llamada remota recibe 401 y se ignora.
+    private suspend fun cambiarLocalYRemoto(usuarioId: String, nuevaPassword: String) {
+        local.cambiarPassword(usuarioId, nuevaPassword)
+        runCatching { remote.cambiarPassword(usuarioId, nuevaPassword) }
     }
 }

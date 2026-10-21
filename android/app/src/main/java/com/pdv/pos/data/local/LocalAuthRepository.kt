@@ -1,5 +1,7 @@
 package com.pdv.pos.data.local
 
+import com.pdv.pos.auth.ADMIN_BOOTSTRAP_PASSWORD
+import com.pdv.pos.auth.ADMIN_BOOTSTRAP_USERNAME
 import com.pdv.pos.auth.PasswordHasher
 import com.pdv.pos.domain.model.Usuario
 import com.pdv.pos.domain.repository.AuthRepository
@@ -7,14 +9,6 @@ import com.pdv.pos.domain.repository.LoginResultado
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
-
-// Contrasena de bootstrap de desarrollo, mismo valor que
-// backend/alembic/versions/0009_seed_admin_usuario.py: un dispositivo en
-// modo LOCAL que nunca sincroniza con el backend necesita el mismo punto de
-// entrada, o nunca podria llegar a la pantalla de Usuarios para crear el
-// primer administrador real.
-private const val ADMIN_BOOTSTRAP_USERNAME = "admin"
-private const val ADMIN_BOOTSTRAP_PASSWORD = "admin123"
 
 @Singleton
 class LocalAuthRepository @Inject constructor(
@@ -33,6 +27,10 @@ class LocalAuthRepository @Inject constructor(
         return LoginResultado.Exitoso(entity.toDomainUsuario(), accessToken = null)
     }
 
+    override suspend fun cambiarPassword(usuarioId: String, nuevaPassword: String) {
+        usuarioDao.cambiarPassword(usuarioId, passwordHasher.hash(nuevaPassword), System.currentTimeMillis())
+    }
+
     private suspend fun ensureBootstrap() {
         rolDao.insertIfEmpty { rolesDeSistema(System.currentTimeMillis()) }
         usuarioDao.insertIfEmpty {
@@ -49,6 +47,7 @@ class LocalAuthRepository @Inject constructor(
                 updatedAt = System.currentTimeMillis(),
                 isSynced = false,
                 deletedAt = null,
+                debeCambiarPassword = true,
             )
         }
     }
@@ -60,4 +59,5 @@ private fun UsuarioEntity.toDomainUsuario() = Usuario(
     nombreCompleto = nombreCompleto,
     rolId = rolId,
     activo = activo,
+    debeCambiarPassword = debeCambiarPassword,
 )

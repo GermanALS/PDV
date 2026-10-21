@@ -2,11 +2,13 @@ package com.pdv.pos.auth
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.pdv.pos.config.TokenCipher
 import com.pdv.pos.config.TokenCifrado
 import kotlinx.coroutines.flow.first
+import java.security.GeneralSecurityException
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,6 +37,7 @@ private val KEY_USUARIO_ID = stringPreferencesKey("session_usuario_id")
 private val KEY_ROL_ID = stringPreferencesKey("session_rol_id")
 private val KEY_TOKEN_CIPHERTEXT = stringPreferencesKey("session_token_ciphertext")
 private val KEY_TOKEN_IV = stringPreferencesKey("session_token_iv")
+private val KEY_DEBE_CAMBIAR_PASSWORD = booleanPreferencesKey("session_debe_cambiar_password")
 
 // username/usuarioId/rolId van en claro (no son secretos); el accessToken se
 // cifra con TokenCipher (AES-GCM respaldado por Android Keystore en
@@ -52,12 +55,21 @@ class DataStoreSessionStore @Inject constructor(
         val ciphertext = prefs[KEY_TOKEN_CIPHERTEXT]
         val iv = prefs[KEY_TOKEN_IV]
         val accessToken = if (ciphertext != null && iv != null) {
-            tokenCipher.descifrar(
-                TokenCifrado(
-                    ciphertext = Base64.getDecoder().decode(ciphertext),
-                    iv = Base64.getDecoder().decode(iv),
-                ),
-            )
+            // Un fallo de descifrado es esperable: la clave de Android
+            // Keystore no viaja con los archivos (reinstalacion, restauracion).
+            // Se trata como "sin sesion" y se limpia, en vez de cerrar la app
+            // en cada arranque (PLAN.md Parte 37, A-5).
+            try {
+                tokenCipher.descifrar(
+                    TokenCifrado(
+                        ciphertext = Base64.getDecoder().decode(ciphertext),
+                        iv = Base64.getDecoder().decode(iv),
+                    ),
+                )
+            } catch (e: GeneralSecurityException) {
+                limpiar()
+                return null
+            }
         } else {
             null
         }
@@ -66,6 +78,7 @@ class DataStoreSessionStore @Inject constructor(
             usuarioId = prefs[KEY_USUARIO_ID].orEmpty(),
             rolId = prefs[KEY_ROL_ID].orEmpty(),
             accessToken = accessToken,
+            debeCambiarPassword = prefs[KEY_DEBE_CAMBIAR_PASSWORD] ?: false,
         )
     }
 
@@ -74,6 +87,7 @@ class DataStoreSessionStore @Inject constructor(
             prefs[KEY_USERNAME] = session.username
             prefs[KEY_USUARIO_ID] = session.usuarioId
             prefs[KEY_ROL_ID] = session.rolId
+            prefs[KEY_DEBE_CAMBIAR_PASSWORD] = session.debeCambiarPassword
             val token = session.accessToken
             if (token != null) {
                 val cifrado = tokenCipher.cifrar(token)
@@ -93,6 +107,7 @@ class DataStoreSessionStore @Inject constructor(
             prefs.remove(KEY_ROL_ID)
             prefs.remove(KEY_TOKEN_CIPHERTEXT)
             prefs.remove(KEY_TOKEN_IV)
+            prefs.remove(KEY_DEBE_CAMBIAR_PASSWORD)
         }
     }
 }

@@ -258,7 +258,7 @@ a mano.
 ```bash
 cd backend
 uv sync                                    # crea .venv e instala desde uv.lock (incluye grupo dev)
-uv run uvicorn app.main:app --reload        # levantar en local
+PDV_ENV=development JWT_SECRET_KEY=dev-secret-key-cambiar-en-produccion uv run uvicorn app.main:app --reload  # levantar en local
 uv run pytest                               # correr tests
 uv run alembic upgrade head                 # aplicar migraciones
 ```
@@ -292,8 +292,10 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
   `docker-compose.prod.yml` (gitignoreado, nunca versionado) con credenciales
   reales y levantar con
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
-  El override fija `JWT_SECRET_KEY` y credenciales de Postgres, y quita la
-  publicación del puerto `5432` al host. `DATABASE_URL` en `backend` debe
+  El override fija `JWT_SECRET_KEY`, `PDV_ENV=production` y credenciales de
+  Postgres, y quita la publicación del puerto `5432` al host. El backend no
+  arranca sin `JWT_SECRET_KEY`, ni con el valor de desarrollo fuera de
+  `PDV_ENV=development`, y sin ese entorno `/docs` no existe (Parte 37). `DATABASE_URL` en `backend` debe
   reflejar a mano las mismas credenciales que `db` — Compose no propaga
   variables entre servicios.
 - **Android**: por ahora, builds locales (`./gradlew assembleDebug`).

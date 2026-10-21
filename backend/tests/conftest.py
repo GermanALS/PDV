@@ -5,6 +5,10 @@ from pathlib import Path
 os.environ.setdefault(
     "DATABASE_URL", "postgresql+asyncpg://pdv:pdv@localhost:5432/pdv_test"
 )
+# Entorno de desarrollo para los tests (PLAN.md Parte 37, A-4): sin estas
+# variables app.security no arranca. El CI fija su propio JWT_SECRET_KEY.
+os.environ.setdefault("PDV_ENV", "development")
+os.environ.setdefault("JWT_SECRET_KEY", "dev-secret-key-cambiar-en-produccion")
 
 import asyncpg
 import pytest
@@ -15,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.database import DATABASE_URL, get_db
+from app.limite_login import LimiteIntentosLogin
 from app.main import app
 from app.models.rol import Rol
 from app.models.usuario import Usuario
@@ -68,6 +73,13 @@ def engine():
 # SAVEPOINT para el commit() que hace la ruta real, sin cerrar la
 # transaccion externa que se revierte al final (recipe de SQLAlchemy 2.0
 # para test suites).
+# El limite de intentos de login vive en memoria del proceso: cada test
+# arranca con un contador nuevo para no heredar bloqueos de otro.
+@pytest.fixture(autouse=True)
+def limite_login_nuevo(monkeypatch):
+    monkeypatch.setattr("app.routers.auth.limite_login", LimiteIntentosLogin())
+
+
 @pytest_asyncio.fixture
 async def session(engine):
     async with engine.connect() as conn:

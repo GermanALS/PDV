@@ -9,6 +9,7 @@ import com.pdv.pos.ia.LlmProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.security.GeneralSecurityException
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -51,9 +52,21 @@ class IaPreferences @Inject constructor(
         val prefs = dataStore.data.first()
         val ciphertext = prefs[KEY_IA_TOKEN_CIPHERTEXT] ?: return null
         val iv = prefs[KEY_IA_TOKEN_IV] ?: return null
-        return tokenCipher.descifrar(
-            TokenCifrado(ciphertext = Base64.getDecoder().decode(ciphertext), iv = Base64.getDecoder().decode(iv)),
-        )
+        // Mismo criterio que DataStoreSessionStore.cargar: un token que la
+        // clave de Keystore actual no descifra se trata como "sin token" y se
+        // borra, para que Configuracion pida cargarlo de nuevo (PLAN.md Parte
+        // 37, A-5).
+        return try {
+            tokenCipher.descifrar(
+                TokenCifrado(ciphertext = Base64.getDecoder().decode(ciphertext), iv = Base64.getDecoder().decode(iv)),
+            )
+        } catch (e: GeneralSecurityException) {
+            dataStore.edit {
+                it.remove(KEY_IA_TOKEN_CIPHERTEXT)
+                it.remove(KEY_IA_TOKEN_IV)
+            }
+            null
+        }
     }
 
     suspend fun setActivo(activo: Boolean) {

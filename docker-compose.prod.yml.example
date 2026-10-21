@@ -12,3 +12,4 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://cambiar-en-produccion:cambiar-en-produccion@db:5432/pdv
       JWT_SECRET_KEY: cambiar-en-produccion
+      PDV_ENV: production

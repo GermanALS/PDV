@@ -32,6 +32,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pdv}:${POSTGRES_PASSWORD:-pdv}@db:5432/${POSTGRES_DB:-pdv}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-cambiar-en-produccion}
+      # Solo local: habilita la clave de desarrollo de arriba y /docs (PLAN.md
+      # Parte 37, A-4/M-4). El override productivo fija production.
+      PDV_ENV: development
     depends_on:
       db:
         condition: service_healthy

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -21,6 +22,10 @@ class LocalAuthRepositoryTest {
         override suspend fun update(entity: UsuarioEntity) {
             entities.removeAll { it.localId == entity.localId }
             entities.add(entity)
+        }
+        override suspend fun cambiarPassword(usuarioId: String, passwordHash: String, updatedAt: Long) {
+            val existente = entities.first { it.localId == usuarioId }
+            update(existente.copy(passwordHash = passwordHash, debeCambiarPassword = false, updatedAt = updatedAt, isSynced = false))
         }
     }
 
@@ -160,5 +165,27 @@ class LocalAuthRepositoryTest {
         val resultado = repository.login("sin_password", "cualquiera")
 
         assertEquals(LoginResultado.CredencialesInvalidas, resultado)
+    }
+
+    @Test
+    fun `the bootstrap admin logs in flagged to change its public password`() = runTest {
+        val repository = LocalAuthRepository(FakeUsuarioDao(), FakeRolDao(), passwordHasher)
+
+        val resultado = repository.login("admin", "admin123") as LoginResultado.Exitoso
+
+        assertTrue(resultado.usuario.debeCambiarPassword)
+    }
+
+    @Test
+    fun `cambiarPassword replaces the hash and clears the flag`() = runTest {
+        val usuarioDao = FakeUsuarioDao()
+        val repository = LocalAuthRepository(usuarioDao, FakeRolDao(), passwordHasher)
+        val usuarioId = (repository.login("admin", "admin123") as LoginResultado.Exitoso).usuario.id
+
+        repository.cambiarPassword(usuarioId, "nueva-segura")
+
+        assertEquals(LoginResultado.CredencialesInvalidas, repository.login("admin", "admin123"))
+        val conLaNueva = repository.login("admin", "nueva-segura") as LoginResultado.Exitoso
+        assertFalse(conLaNueva.usuario.debeCambiarPassword)
     }
 }

@@ -136,4 +136,12 @@ class DefaultSyncOrchestratorTest {
 
         assertTrue(orchestrator().sincronizar() is SyncResultado.Reintentar)
     }
+
+    @Test
+    fun `a session with the bootstrap password pending does not push anything`() = runTest {
+        sessionManager.iniciarSesion(Session("admin", "u1", "r1", accessToken = "jwt-123", debeCambiarPassword = true))
+
+        assertEquals(SyncResultado.Fallo(MOTIVO_CAMBIAR_PASSWORD), orchestrator().sincronizar())
+        coVerify(exactly = 0) { entrada.empujarPendientes() }
+    }
 }

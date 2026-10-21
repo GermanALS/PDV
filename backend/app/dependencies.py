@@ -17,9 +17,10 @@ _bearer = HTTPBearer(auto_error=False)
 # sec. 12): no se distingue token ausente, firma invalida, expirado o
 # usuario inactivo, igual que el 401 de /auth/login no enumera usernames.
 _TOKEN_INVALIDO = HTTPException(status_code=401, detail="token invalido o expirado")
+_DEBE_CAMBIAR_PASSWORD = HTTPException(status_code=403, detail="debe cambiar la contrasena")
 
 
-async def usuario_actual(
+async def usuario_del_token(
     credenciales: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
 ) -> Usuario:
@@ -43,4 +44,12 @@ async def usuario_actual(
     )
     if usuario is None or not usuario.activo:
         raise _TOKEN_INVALIDO
+    return usuario
+
+
+async def usuario_actual(usuario: Usuario = Depends(usuario_del_token)) -> Usuario:
+    """Usuario del token para las rutas protegidas: `403` mientras tenga la
+    contrasena bootstrap pendiente de cambio (PLAN.md Parte 37, A-3)."""
+    if usuario.debe_cambiar_password:
+        raise _DEBE_CAMBIAR_PASSWORD
     return usuario

@@ -6,4 +6,5 @@ data class Usuario(
     val nombreCompleto: String,
     val rolId: String,
     val activo: Boolean = true,
+    val debeCambiarPassword: Boolean = false,
 )
