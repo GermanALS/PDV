@@ -88,7 +88,7 @@ class RemoteCajaRepositoryTest {
                 CorteCajaCreateRequestDto(
                     localId = "corte-1",
                     sucursalId = "suc-1",
-                    usuarioId = "german",
+                    usuarioDispositivo = "german",
                     tipo = "parcial",
                     fechaInicio = "2023-11-14T22:13:20Z",
                     fechaFin = "2023-11-14T23:13:20Z",

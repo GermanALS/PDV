@@ -105,7 +105,7 @@ class RemoteCajaRepository @Inject constructor(
 private fun CorteCajaDto.toDomain() = CorteCaja(
     id = localId ?: id,
     sucursalId = sucursalId,
-    usuarioId = usuarioId,
+    usuarioId = usuarioDispositivo ?: usuarioId,
     tipo = tipo,
     fechaInicio = Instant.parse(fechaInicio).toEpochMilli(),
     fechaFin = Instant.parse(fechaFin).toEpochMilli(),
@@ -121,7 +121,7 @@ private fun CorteCajaDto.toDomain() = CorteCaja(
 private fun CorteCaja.toCreateRequestDto() = CorteCajaCreateRequestDto(
     localId = id,
     sucursalId = sucursalId,
-    usuarioId = usuarioId,
+    usuarioDispositivo = usuarioId,
     tipo = tipo,
     fechaInicio = Instant.ofEpochMilli(fechaInicio).toString(),
     fechaFin = Instant.ofEpochMilli(fechaFin).toString(),

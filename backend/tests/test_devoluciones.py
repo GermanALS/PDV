@@ -16,7 +16,7 @@ async def _articulo_con_existencia(client_autenticado, sucursal_id: str, sku: st
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-20T12:00:00Z",
             "cantidad": cantidad,
             "articulo_nuevo": {
@@ -36,7 +36,7 @@ async def _venta_registrada(client_autenticado, sucursal_id: str, articulo_id: s
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": folio,
             "fecha": "2026-08-20T12:00:00Z",
             "subtotal": "50.00",
@@ -65,7 +65,7 @@ async def test_create_devolucion_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "venta_id": venta_id,
             "folio": "D-001",
             "fecha": "2026-08-20T13:00:00Z",
@@ -102,7 +102,7 @@ async def test_create_devolucion_sin_venta_original_happy_path(client_autenticad
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "D-002",
             "fecha": "2026-08-20T13:00:00Z",
             "lineas": [
@@ -129,7 +129,7 @@ async def test_create_devolucion_without_lineas_returns_422(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "D-003",
             "fecha": "2026-08-20T13:00:00Z",
             "lineas": [],
@@ -147,7 +147,7 @@ async def test_create_devolucion_articulo_id_inexistente_returns_404(client_aute
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "D-004",
             "fecha": "2026-08-20T13:00:00Z",
             "lineas": [
@@ -171,7 +171,7 @@ async def test_create_devolucion_venta_id_inexistente_returns_404(client_autenti
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "venta_id": str(uuid.uuid4()),
             "folio": "D-005",
             "fecha": "2026-08-20T13:00:00Z",
@@ -195,7 +195,7 @@ async def test_create_devolucion_sin_local_id_returns_422(client_autenticado):
         "/api/v1/devoluciones",
         json={
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "D-006",
             "fecha": "2026-08-20T13:00:00Z",
             "lineas": [{"articulo_id": articulo_id, "cantidad": "1"}],
@@ -212,7 +212,7 @@ async def test_create_devolucion_reintento_con_mismo_local_id_es_idempotente(cli
     payload = {
         "local_id": local_id,
         "sucursal_id": sucursal_id,
-        "usuario_id": "admin",
+        "usuario_dispositivo": "admin",
         "folio": "D-007",
         "fecha": "2026-08-20T13:00:00Z",
         "lineas": [{"articulo_id": articulo_id, "cantidad": "2", "condicion": "defectuoso"}],
@@ -241,7 +241,7 @@ async def test_create_devolucion_sucursal_id_inexistente_returns_404(client_aute
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": str(uuid.uuid4()),
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "D-404",
             "fecha": "2026-08-20T13:00:00Z",
             "lineas": [{"articulo_id": articulo_id, "cantidad": "1"}],
@@ -249,3 +249,63 @@ async def test_create_devolucion_sucursal_id_inexistente_returns_404(client_aute
     )
 
     assert response.status_code == 404
+
+
+def _devolucion_payload(sucursal_id: str, articulo_id: str, **cambios) -> dict:
+    payload = {
+        "local_id": str(uuid.uuid4()),
+        "sucursal_id": sucursal_id,
+        "usuario_dispositivo": "cajero-local",
+        "folio": "DEV-M",
+        "fecha": "2026-08-20T12:00:00Z",
+        "lineas": [{"articulo_id": articulo_id, "cantidad": "1", "condicion": "defectuoso"}],
+    }
+    payload.update(cambios)
+    return payload
+
+
+async def test_create_devolucion_usuario_sale_del_jwt(client_autenticado, usuario_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-M1", cantidad="5")
+
+    response = await client_autenticado.post(
+        "/api/v1/devoluciones",
+        json=_devolucion_payload(sucursal_id, articulo_id, usuario_id="otro-usuario-inventado"),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["usuario_id"] == str(usuario_autenticado.id)
+    assert response.json()["usuario_dispositivo"] == "cajero-local"
+
+
+async def test_create_devolucion_estado_fuera_de_los_valores_returns_422(client_autenticado):
+    # B-2 (docs/review_code.md): estado era str libre.
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-B2", cantidad="5")
+
+    response = await client_autenticado.post(
+        "/api/v1/devoluciones", json=_devolucion_payload(sucursal_id, articulo_id, estado="Registrada")
+    )
+
+    assert response.status_code == 422
+
+
+async def test_create_devolucion_varias_lineas_con_un_articulo_inexistente_returns_404(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="DEV-B2N", cantidad="5")
+    inexistente = str(uuid.uuid4())
+
+    response = await client_autenticado.post(
+        "/api/v1/devoluciones",
+        json=_devolucion_payload(
+            sucursal_id,
+            articulo_id,
+            lineas=[
+                {"articulo_id": articulo_id, "cantidad": "1"},
+                {"articulo_id": inexistente, "cantidad": "1"},
+            ],
+        ),
+    )
+
+    assert response.status_code == 404
+    assert inexistente in response.json()["detail"]

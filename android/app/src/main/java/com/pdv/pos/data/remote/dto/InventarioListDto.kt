@@ -30,7 +30,7 @@ data class InventarioListResponseDto(
 @Serializable
 data class ArticuloEdicionRequestDto(
     @SerialName("sucursal_id") val sucursalId: String,
-    @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String,
     val nombre: String,
     val descripcion: String? = null,
     val categoria: String? = null,
@@ -53,7 +53,7 @@ data class AjusteDeltaRequestDto(
     @SerialName("local_id") val localId: String,
     @SerialName("sucursal_id") val sucursalId: String,
     @SerialName("articulo_id") val articuloId: String,
-    @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String,
     val fecha: String,
     val delta: String,
 )
@@ -67,7 +67,6 @@ data class AjusteDeltaDto(
 @Serializable
 data class ArticuloCatalogoRequestDto(
     @SerialName("sucursal_id") val sucursalId: String,
-    @SerialName("usuario_id") val usuarioId: String,
     val nombre: String,
     val descripcion: String? = null,
     val categoria: String? = null,

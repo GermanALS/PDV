@@ -29,7 +29,7 @@ data class DevolucionDetalleDto(
 data class DevolucionCreateRequestDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
-    @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String,
     @SerialName("venta_id") val ventaId: String? = null,
     val folio: String,
     val fecha: String,
@@ -43,6 +43,7 @@ data class DevolucionDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
     @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String? = null,
     @SerialName("venta_id") val ventaId: String? = null,
     val folio: String,
     val fecha: String,

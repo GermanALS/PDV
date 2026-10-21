@@ -81,7 +81,7 @@ class RemoteRetiroEfectivoRepository @Inject constructor(
 private fun RetiroEfectivoDto.toDomain() = RetiroEfectivo(
     id = localId ?: id,
     sucursalId = sucursalId,
-    usuarioId = usuarioId,
+    usuarioId = usuarioDispositivo ?: usuarioId,
     monto = BigDecimal(monto),
     motivo = motivo,
     fecha = Instant.parse(fecha).toEpochMilli(),
@@ -90,7 +90,7 @@ private fun RetiroEfectivoDto.toDomain() = RetiroEfectivo(
 private fun RetiroEfectivo.toCreateRequestDto() = RetiroEfectivoCreateRequestDto(
     localId = id,
     sucursalId = sucursalId,
-    usuarioId = usuarioId,
+    usuarioDispositivo = usuarioId,
     monto = monto.toPlainString(),
     motivo = motivo,
     fecha = Instant.ofEpochMilli(fecha).toString(),

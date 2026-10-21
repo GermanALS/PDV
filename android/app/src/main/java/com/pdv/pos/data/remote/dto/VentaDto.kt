@@ -29,7 +29,7 @@ data class VentaDetalleDto(
 data class VentaCreateRequestDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
-    @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String,
     val folio: String,
     val fecha: String,
     val subtotal: String,
@@ -47,6 +47,7 @@ data class VentaDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
     @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String? = null,
     val folio: String,
     val fecha: String,
     val subtotal: String,

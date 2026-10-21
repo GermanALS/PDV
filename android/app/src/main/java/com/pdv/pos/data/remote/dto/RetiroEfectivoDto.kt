@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 data class RetiroEfectivoCreateRequestDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
-    @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String,
     val monto: String,
     val motivo: String? = null,
     val fecha: String,
@@ -19,6 +19,7 @@ data class RetiroEfectivoDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
     @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String? = null,
     val monto: String,
     val motivo: String? = null,
     val fecha: String,

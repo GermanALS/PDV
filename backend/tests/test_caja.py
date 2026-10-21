@@ -18,7 +18,7 @@ async def test_create_corte_caja_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "tipo": "parcial",
             "fecha_inicio": "2026-08-20T08:00:00Z",
             "fecha_fin": "2026-08-20T14:00:00Z",
@@ -49,7 +49,7 @@ async def test_create_corte_caja_tipo_invalido_returns_422(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "tipo": "semanal",
             "fecha_inicio": "2026-08-20T08:00:00Z",
             "fecha_fin": "2026-08-20T14:00:00Z",
@@ -71,7 +71,7 @@ async def test_create_retiro_efectivo_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "monto": "100.00",
             "motivo": "Pago a proveedor",
             "fecha": "2026-08-20T11:00:00Z",
@@ -94,7 +94,7 @@ async def test_create_retiro_efectivo_monto_invalido_returns_422(client_autentic
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "monto": "0.00",
             "fecha": "2026-08-20T11:00:00Z",
         },
@@ -115,7 +115,7 @@ async def test_get_totales_corte_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2099-01-01T07:00:00Z",
             "cantidad": "10",
             "articulo_nuevo": {
@@ -133,7 +133,7 @@ async def test_get_totales_corte_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "F-TOT-1",
             "fecha": "2099-01-01T09:00:00Z",
             "subtotal": "100.00",
@@ -154,7 +154,7 @@ async def test_get_totales_corte_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "monto": "50.00",
             "fecha": "2099-01-01T11:00:00Z",
         },
@@ -197,7 +197,7 @@ async def test_list_cortes_caja_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "tipo": "parcial",
             "fecha_inicio": "2026-08-21T08:00:00Z",
             "fecha_fin": "2026-08-21T14:00:00Z",
@@ -230,7 +230,7 @@ async def test_list_retiros_efectivo_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "monto": "25.00",
             "motivo": "Prueba de listado",
             "fecha": "2026-08-21T11:00:00Z",
@@ -259,7 +259,7 @@ async def test_list_cortes_caja_filtra_por_rango_de_fechas(client_autenticado):
             json={
                 "local_id": str(uuid.uuid4()),
                 "sucursal_id": sucursal_id,
-                "usuario_id": "admin",
+                "usuario_dispositivo": "admin",
                 "tipo": "parcial",
                 "fecha_inicio": "2026-01-01T08:00:00Z",
                 "fecha_fin": fecha_fin,
@@ -295,7 +295,7 @@ async def test_list_retiros_efectivo_filtra_por_rango_de_fechas(client_autentica
             json={
                 "local_id": str(uuid.uuid4()),
                 "sucursal_id": sucursal_id,
-                "usuario_id": "admin",
+                "usuario_dispositivo": "admin",
                 "monto": "25.00",
                 "motivo": motivo,
                 "fecha": fecha,
@@ -323,7 +323,7 @@ async def test_create_corte_caja_reintento_con_mismo_local_id_es_idempotente(cli
     payload = {
         "local_id": str(uuid.uuid4()),
         "sucursal_id": sucursal_id,
-        "usuario_id": "admin",
+        "usuario_dispositivo": "admin",
         "tipo": "parcial",
         "fecha_inicio": "2026-08-22T08:00:00Z",
         "fecha_fin": "2026-08-22T14:00:00Z",
@@ -354,7 +354,7 @@ async def test_create_retiro_efectivo_reintento_con_mismo_local_id_es_idempotent
     payload = {
         "local_id": str(uuid.uuid4()),
         "sucursal_id": sucursal_id,
-        "usuario_id": "admin",
+        "usuario_dispositivo": "admin",
         "monto": "40.00",
         "motivo": "Reintento de sync",
         "fecha": "2026-08-22T11:00:00Z",
@@ -382,7 +382,7 @@ async def test_list_cortes_caja_filtra_por_updated_since(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "tipo": "parcial",
             "fecha_inicio": "2026-01-01T08:00:00Z",
             "fecha_fin": "2026-01-01T14:00:00Z",
@@ -424,7 +424,7 @@ async def test_list_retiros_efectivo_filtra_por_updated_since(client_autenticado
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "monto": "9.00",
             "motivo": "updated_since",
             "fecha": "2026-01-01T11:00:00Z",
@@ -462,7 +462,7 @@ async def test_create_corte_caja_sucursal_id_inexistente_returns_404(client_aute
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": str(uuid.uuid4()),
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "tipo": "parcial",
             "fecha_inicio": "2026-08-21T08:00:00Z",
             "fecha_fin": "2026-08-21T14:00:00Z",
@@ -483,10 +483,111 @@ async def test_create_retiro_efectivo_sucursal_id_inexistente_returns_404(client
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": str(uuid.uuid4()),
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "monto": "10.00",
             "fecha": "2026-08-21T11:00:00Z",
         },
     )
 
     assert response.status_code == 404
+
+
+def _corte_payload(sucursal_id: str, **cambios) -> dict:
+    payload = {
+        "local_id": str(uuid.uuid4()),
+        "sucursal_id": sucursal_id,
+        "usuario_dispositivo": "cajero-local",
+        "tipo": "parcial",
+        "fecha_inicio": "2026-08-20T08:00:00Z",
+        "fecha_fin": "2026-08-20T14:00:00Z",
+        "total_ventas": "1500.00",
+        "total_efectivo": "900.00",
+        "total_tarjeta": "600.00",
+        "total_retiros": "100.00",
+        "monto_esperado": "800.00",
+        "monto_contado": "795.00",
+        "diferencia": "-5.00",
+    }
+    payload.update(cambios)
+    return payload
+
+
+async def test_create_corte_caja_usuario_sale_del_jwt(client_autenticado, usuario_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.post(
+        "/api/v1/cortes-caja", json=_corte_payload(sucursal_id, usuario_id="otro-usuario-inventado")
+    )
+
+    assert response.status_code == 201
+    assert response.json()["usuario_id"] == str(usuario_autenticado.id)
+    assert response.json()["usuario_dispositivo"] == "cajero-local"
+
+
+async def test_create_corte_caja_reproduccion_m2_returns_422(client_autenticado):
+    # M-2 (docs/review_code.md): fecha_fin en el 2000, total_efectivo 999 >
+    # total_ventas 1 y monto_esperado -5 -> 201.
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.post(
+        "/api/v1/cortes-caja",
+        json=_corte_payload(
+            sucursal_id,
+            fecha_fin="2000-01-01T00:00:00Z",
+            total_ventas="1.00",
+            total_efectivo="999.00",
+            total_tarjeta="0.00",
+            total_retiros="0.00",
+            monto_esperado="-5.00",
+            monto_contado=None,
+            diferencia=None,
+        ),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_create_corte_caja_inconsistente_returns_422(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    casos = {
+        "fechas invertidas": {"fecha_fin": "2026-08-20T07:00:00Z"},
+        "total_ventas": {"total_ventas": "1400.00"},
+        "monto_esperado": {"monto_esperado": "900.00", "diferencia": "-105.00"},
+        "diferencia": {"diferencia": "-6.00"},
+        "contado sin diferencia": {"diferencia": None},
+        "diferencia sin contado": {"monto_contado": None},
+    }
+
+    for nombre, cambios in casos.items():
+        response = await client_autenticado.post("/api/v1/cortes-caja", json=_corte_payload(sucursal_id, **cambios))
+        assert response.status_code == 422, nombre
+
+
+async def test_create_corte_caja_sin_contar_efectivo_returns_201(client_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.post(
+        "/api/v1/cortes-caja", json=_corte_payload(sucursal_id, monto_contado=None, diferencia=None)
+    )
+
+    assert response.status_code == 201
+
+
+async def test_create_retiro_efectivo_usuario_sale_del_jwt(client_autenticado, usuario_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.post(
+        "/api/v1/retiros-efectivo",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "otro-usuario-inventado",
+            "usuario_dispositivo": "cajero-local",
+            "monto": "50.00",
+            "fecha": "2026-08-20T11:00:00Z",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["usuario_id"] == str(usuario_autenticado.id)
+    assert response.json()["usuario_dispositivo"] == "cajero-local"

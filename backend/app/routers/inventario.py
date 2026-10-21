@@ -8,10 +8,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import usuario_actual
+from app.inventario_bloqueo import bloquear_inventario
 from app.models.articulo import Articulo
 from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
 from app.models.sucursal import Sucursal
+from app.models.usuario import Usuario
 from app.schemas.entrada import ArticuloResponseSchema, InventarioResponseSchema, MovimientoResponseSchema
 from app.schemas.inventario import (
     AjusteDeltaCreateSchema,
@@ -69,6 +72,7 @@ def _movimiento_to_response(movimiento: Movimiento) -> MovimientoResponseSchema:
         sucursal_id=movimiento.sucursal_id,
         articulo_id=movimiento.articulo_id,
         usuario_id=movimiento.usuario_id,
+        usuario_dispositivo=movimiento.usuario_dispositivo,
         tipo=movimiento.tipo,
         cantidad=movimiento.cantidad,
         ubicacion=movimiento.ubicacion,
@@ -147,6 +151,7 @@ async def ajustar_articulo(
     articulo_id: uuid.UUID,
     payload: ArticuloEdicionSchema,
     db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ) -> AjusteInventarioResponseSchema:
     articulo = await db.get(Articulo, articulo_id)
     if articulo is None:
@@ -190,7 +195,9 @@ async def ajustar_articulo(
         movimiento = Movimiento(
             sucursal_id=payload.sucursal_id,
             articulo_id=articulo_id,
-            usuario_id=payload.usuario_id,
+            # El usuario sale del JWT, nunca del body (PLAN.md Parte 38, M-1).
+            usuario_id=str(usuario.id),
+            usuario_dispositivo=payload.usuario_dispositivo,
             tipo=TIPO_MOVIMIENTO_AJUSTE,
             cantidad=delta,
             ubicacion=payload.ubicacion,
@@ -215,7 +222,10 @@ async def ajustar_articulo(
 
 @router.post("/ajustes-inventario", response_model=AjusteDeltaResponseSchema, status_code=201)
 async def create_ajuste_delta(
-    payload: AjusteDeltaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+    payload: AjusteDeltaCreateSchema,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ) -> AjusteDeltaResponseSchema:
     """Suma un delta a la existencia; idempotente por `local_id` del movimiento (PLAN.md Parte 34)."""
     if await db.get(Sucursal, payload.sucursal_id) is None:
@@ -224,26 +234,18 @@ async def create_ajuste_delta(
         raise HTTPException(status_code=404, detail="articulo no encontrado")
 
     try:
-        inventario = (
-            await db.execute(
-                select(Inventario)
-                .where(Inventario.sucursal_id == payload.sucursal_id, Inventario.articulo_id == payload.articulo_id)
-                .with_for_update()
-            )
-        ).scalar_one_or_none()
-        if inventario is None:
-            inventario = Inventario(
-                sucursal_id=payload.sucursal_id, articulo_id=payload.articulo_id, cantidad=payload.delta
-            )
-            db.add(inventario)
-        else:
-            inventario.cantidad = inventario.cantidad + payload.delta
+        # Bloqueada hasta el commit; la primera fila concurrente no choca
+        # (PLAN.md Parte 38, B-1).
+        inventario = await bloquear_inventario(db, payload.sucursal_id, payload.articulo_id)
+        inventario.cantidad = inventario.cantidad + payload.delta
 
         movimiento = Movimiento(
             local_id=payload.local_id,
             sucursal_id=payload.sucursal_id,
             articulo_id=payload.articulo_id,
-            usuario_id=payload.usuario_id,
+            # El usuario sale del JWT, nunca del body (PLAN.md Parte 38, M-1).
+            usuario_id=str(usuario.id),
+            usuario_dispositivo=payload.usuario_dispositivo,
             tipo=TIPO_MOVIMIENTO_AJUSTE,
             cantidad=payload.delta,
             referencia_tipo=REFERENCIA_AJUSTE_MANUAL,

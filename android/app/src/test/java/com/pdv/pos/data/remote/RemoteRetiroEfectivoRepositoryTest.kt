@@ -52,7 +52,7 @@ class RemoteRetiroEfectivoRepositoryTest {
                 RetiroEfectivoCreateRequestDto(
                     localId = "retiro-1",
                     sucursalId = "suc-1",
-                    usuarioId = "german",
+                    usuarioDispositivo = "german",
                     monto = "100.00",
                     motivo = "Pago a proveedor",
                     fecha = "2023-11-14T22:13:20Z",

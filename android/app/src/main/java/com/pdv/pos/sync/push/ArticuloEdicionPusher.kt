@@ -89,7 +89,6 @@ class ArticuloEdicionPusher @Inject constructor(
 
     private fun solicitud(articulo: ArticuloEntity, inventario: InventarioEntity) = ArticuloCatalogoRequestDto(
         sucursalId = inventario.sucursalId,
-        usuarioId = "system",
         nombre = articulo.nombre,
         descripcion = articulo.descripcion,
         categoria = articulo.categoria,

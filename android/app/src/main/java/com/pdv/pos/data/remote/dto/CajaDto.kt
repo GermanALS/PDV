@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 data class CorteCajaCreateRequestDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
-    @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String,
     val tipo: String,
     @SerialName("fecha_inicio") val fechaInicio: String,
     @SerialName("fecha_fin") val fechaFin: String,
@@ -29,6 +29,7 @@ data class CorteCajaDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
     @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String? = null,
     val tipo: String,
     @SerialName("fecha_inicio") val fechaInicio: String,
     @SerialName("fecha_fin") val fechaFin: String,

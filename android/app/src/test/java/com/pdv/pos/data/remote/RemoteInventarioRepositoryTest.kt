@@ -114,7 +114,7 @@ class RemoteInventarioRepositoryTest {
                 "art-1",
                 ArticuloEdicionRequestDto(
                     sucursalId = "suc-1",
-                    usuarioId = "german",
+                    usuarioDispositivo = "german",
                     nombre = "Refresco de cola 600ml",
                     descripcion = null,
                     categoria = "Bebidas",

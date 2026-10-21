@@ -74,7 +74,7 @@ class RemoteDevolucionRepositoryTest {
                 DevolucionCreateRequestDto(
                     localId = "devolucion-1",
                     sucursalId = "suc-1",
-                    usuarioId = "german",
+                    usuarioDispositivo = "german",
                     ventaId = "venta-1",
                     folio = "D-001",
                     fecha = "2023-11-14T22:13:20Z",

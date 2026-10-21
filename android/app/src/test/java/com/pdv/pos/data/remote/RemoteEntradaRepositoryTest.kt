@@ -90,7 +90,7 @@ class RemoteEntradaRepositoryTest {
                 EntradaCreateRequestDto(
                     localId = "entrada-1",
                     sucursalId = "suc-1",
-                    usuarioId = "german",
+                    usuarioDispositivo = "german",
                     fecha = "2023-11-14T22:13:20Z",
                     cantidad = "5",
                     ubicacion = "Estante A1",
@@ -125,7 +125,7 @@ class RemoteEntradaRepositoryTest {
                 EntradaCreateRequestDto(
                     localId = "entrada-2",
                     sucursalId = "suc-1",
-                    usuarioId = "german",
+                    usuarioDispositivo = "german",
                     fecha = "2023-11-14T22:13:20Z",
                     cantidad = "10",
                     ubicacion = "Estante B2",

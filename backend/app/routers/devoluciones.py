@@ -5,9 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
+from app.dependencies import usuario_actual
 from app.models.articulo import Articulo
 from app.models.devolucion import Devolucion, DevolucionDetalle
 from app.models.sucursal import Sucursal
+from app.models.usuario import Usuario
 from app.models.venta import Venta
 from app.schemas.devolucion import DevolucionCreateSchema, DevolucionDetalleResponseSchema, DevolucionResponseSchema
 
@@ -20,6 +22,7 @@ def _to_response(devolucion: Devolucion) -> DevolucionResponseSchema:
         local_id=devolucion.local_id,
         sucursal_id=devolucion.sucursal_id,
         usuario_id=devolucion.usuario_id,
+        usuario_dispositivo=devolucion.usuario_dispositivo,
         venta_id=devolucion.venta_id,
         folio=devolucion.folio,
         fecha=devolucion.fecha,
@@ -46,7 +49,10 @@ def _to_response(devolucion: Devolucion) -> DevolucionResponseSchema:
 # vendible (docs/api-contract.md seccion 9).
 @router.post("/devoluciones", response_model=DevolucionResponseSchema, status_code=201)
 async def create_devolucion(
-    payload: DevolucionCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+    payload: DevolucionCreateSchema,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ) -> DevolucionResponseSchema:
     # Valida sucursal_id antes de escribir (PLAN.md Parte 32): ver
     # create_venta.
@@ -56,14 +62,22 @@ async def create_devolucion(
     if payload.venta_id is not None and await db.get(Venta, payload.venta_id) is None:
         raise HTTPException(status_code=404, detail=f"venta no encontrada: {payload.venta_id}")
 
-    for linea in payload.lineas:
-        if await db.get(Articulo, linea.articulo_id) is None:
-            raise HTTPException(status_code=404, detail=f"articulo no encontrado: {linea.articulo_id}")
+    # Una sola query IN, mismo criterio que create_venta (PLAN.md Parte 38,
+    # B-2) en vez de un db.get() por linea.
+    articulo_ids = {linea.articulo_id for linea in payload.lineas}
+    ids_existentes = (
+        await db.execute(select(Articulo.id).where(Articulo.id.in_(articulo_ids)))
+    ).scalars().all()
+    ids_faltantes = articulo_ids - set(ids_existentes)
+    if ids_faltantes:
+        raise HTTPException(status_code=404, detail=f"articulo no encontrado: {ids_faltantes.pop()}")
 
     devolucion = Devolucion(
         local_id=payload.local_id,
         sucursal_id=payload.sucursal_id,
-        usuario_id=payload.usuario_id,
+        # El usuario sale del JWT, nunca del body (PLAN.md Parte 38, M-1).
+        usuario_id=str(usuario.id),
+        usuario_dispositivo=payload.usuario_dispositivo,
         venta_id=payload.venta_id,
         folio=payload.folio,
         fecha=payload.fecha,

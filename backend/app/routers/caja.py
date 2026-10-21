@@ -7,8 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import usuario_actual
 from app.models.caja import CorteCaja, RetiroEfectivo
 from app.models.sucursal import Sucursal
+from app.models.usuario import Usuario
 from app.models.venta import Venta
 from app.schemas.caja import (
     CorteCajaCreateSchema,
@@ -30,6 +32,7 @@ def _corte_to_response(corte: CorteCaja) -> CorteCajaResponseSchema:
         local_id=corte.local_id,
         sucursal_id=corte.sucursal_id,
         usuario_id=corte.usuario_id,
+        usuario_dispositivo=corte.usuario_dispositivo,
         tipo=corte.tipo,
         fecha_inicio=corte.fecha_inicio,
         fecha_fin=corte.fecha_fin,
@@ -51,6 +54,7 @@ def _retiro_to_response(retiro: RetiroEfectivo) -> RetiroEfectivoResponseSchema:
         local_id=retiro.local_id,
         sucursal_id=retiro.sucursal_id,
         usuario_id=retiro.usuario_id,
+        usuario_dispositivo=retiro.usuario_dispositivo,
         monto=retiro.monto,
         motivo=retiro.motivo,
         fecha=retiro.fecha,
@@ -60,12 +64,15 @@ def _retiro_to_response(retiro: RetiroEfectivo) -> RetiroEfectivoResponseSchema:
 
 
 # El dispositivo ya agrego ventas/retiros de su propio periodo
-# (LocalCajaRepository.calcularTotales, PLAN.md Parte 10); esta ruta solo
-# persiste el corte ya calculado, sin recalcular nada del lado del
-# servidor (mismo criterio que POST /sucursales).
+# (LocalCajaRepository.calcularTotales, PLAN.md Parte 10); esta ruta
+# persiste el corte ya calculado, tras validar solo su coherencia interna en
+# CorteCajaCreateSchema (PLAN.md Parte 38, M-2).
 @router.post("/cortes-caja", response_model=CorteCajaResponseSchema, status_code=201)
 async def create_corte_caja(
-    payload: CorteCajaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+    payload: CorteCajaCreateSchema,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ) -> CorteCajaResponseSchema:
     # Valida sucursal_id antes de escribir (PLAN.md Parte 32): ver
     # create_venta.
@@ -75,7 +82,9 @@ async def create_corte_caja(
     corte = CorteCaja(
         local_id=payload.local_id,
         sucursal_id=payload.sucursal_id,
-        usuario_id=payload.usuario_id,
+        # El usuario sale del JWT, nunca del body (PLAN.md Parte 38, M-1).
+        usuario_id=str(usuario.id),
+        usuario_dispositivo=payload.usuario_dispositivo,
         tipo=payload.tipo,
         fecha_inicio=payload.fecha_inicio,
         fecha_fin=payload.fecha_fin,
@@ -189,7 +198,10 @@ async def get_totales_corte(
 
 @router.post("/retiros-efectivo", response_model=RetiroEfectivoResponseSchema, status_code=201)
 async def create_retiro_efectivo(
-    payload: RetiroEfectivoCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+    payload: RetiroEfectivoCreateSchema,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ) -> RetiroEfectivoResponseSchema:
     # Valida sucursal_id antes de escribir (PLAN.md Parte 32): ver
     # create_venta.
@@ -199,7 +211,9 @@ async def create_retiro_efectivo(
     retiro = RetiroEfectivo(
         local_id=payload.local_id,
         sucursal_id=payload.sucursal_id,
-        usuario_id=payload.usuario_id,
+        # El usuario sale del JWT, nunca del body (PLAN.md Parte 38, M-1).
+        usuario_id=str(usuario.id),
+        usuario_dispositivo=payload.usuario_dispositivo,
         monto=payload.monto,
         motivo=payload.motivo,
         fecha=payload.fecha,

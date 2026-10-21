@@ -411,7 +411,7 @@ restauración y resistan los ataques básicos de login.
 
 ---
 
-## Parte 38: Integridad de datos del backend
+## Parte 38: Integridad de datos del backend  <!-- POS-177 -->
 
 *(Sale de los hallazgos M-1, M-2, B-1 y B-2 de `docs/review_code.md`,
 reproducidos contra el backend: `usuario_id` libre en todas las escrituras
@@ -420,43 +420,94 @@ subtotal 10 y total 0.01 → 201; corte con fechas invertidas → 201); primer
 insert concurrente de inventario → 500 (1 de 6); devoluciones con N+1 y
 `estado` libre.)*
 
-Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
+Claves de Jira: épica POS-177; historias POS-178 (grupo 1), POS-179 (grupo 2) y POS-180 (grupo 3).
 
 Objetivo: que el backend sea la fuente confiable de atribución y de montos,
 sin depender de que el cliente mande datos consistentes.
 
 ### Checklist
 
-**1. Contrato**
-- [ ] `docs/api-contract.md` §5/§6/§7/§8/§9: el usuario de cada escritura
+**1. Contrato (POS-178)**
+- [x] `docs/api-contract.md` §5/§6/§7/§8/§9: el usuario de cada escritura
   sale del JWT; nuevos `422` por montos inconsistentes y por
   `fecha_fin < fecha_inicio`; `estado` de devolución con valores cerrados.
   Contrato primero (skill `sync-api-contract`). `needs-approval`.
+  *(Aprobado por el usuario el 2026-10-21. `usuario_id` sale del request y
+  lo fija el servidor con el `id` del JWT; el cliente manda
+  `usuario_dispositivo` (informativo), que vuelve en las responses de
+  §5.1, §6.1, §7.2, §7.4, §8.1-8.5 y §9.1. §7.5 deja de recibir usuario.
+  Consistencia de montos de venta en §5.1 y de corte en §8.1 (incluye
+  `fecha_fin >= fecha_inicio`); `estado` de devolución cerrado a tres
+  valores en §9.1; regla general en §12. La columna `usuario_dispositivo`
+  (Alembic + `schema-pos.json`) va con el grupo 2.)*
 
-**2. Backend**
-- [ ] M-1: `usuario_id` derivado de `usuario_actual` en ventas, entradas,
+**2. Backend (POS-179)**
+- [x] M-1: `usuario_id` derivado de `usuario_actual` en ventas, entradas,
   cortes, retiros, devoluciones y ajustes. Tests happy path + error.
-- [ ] M-2: validadores de montos con `Decimal` a 2 decimales
+  *(2026-10-21: también en `PATCH /inventario` (7.2). Columna
+  `usuario_dispositivo` en `ventas`/`movimientos`/`cortes_caja`/
+  `retiros_efectivo`/`devoluciones` (Alembic 0015 + `schema-pos.json`;
+  Room sin cambio, su `usuarioId` ya es el del dispositivo;
+  `test_schema_parity` en verde). Un test por ruta manda
+  `usuario_id = "otro-usuario-inventado"` y comprueba que se guarda el `id`
+  del JWT; `usuario_dispositivo` de 121 caracteres → `422`. Contra el
+  contenedor reconstruido: venta con ese `usuario_id` → `201` con el `id`
+  de `admin`.)*
+- [x] M-2: validadores de montos con `Decimal` a 2 decimales
   (`Σ lineas.subtotal == subtotal`, `cantidad * precio_unitario ==
   linea.subtotal`, `total == subtotal - descuento + impuestos`) y de cortes
   (fechas, totales). Criterio: los payloads de la reproducción de
   `review_code.md` dan `422`.
-- [ ] B-1: el primer insert concurrente de inventario no da `500`
+  *(2026-10-21: `model_validator` en `VentaCreateSchema` y
+  `CorteCajaCreateSchema`, helper `a_centavos` en `schemas/comunes.py`. El
+  corte también exige `total_ventas == efectivo + tarjeta`,
+  `monto_esperado == efectivo - retiros` y `diferencia == contado -
+  esperado`. Contra el contenedor: venta con total 0.01 → `422`; corte con
+  `fecha_fin` en el 2000, efectivo 999 y esperado −5 → `422`. Auditoría
+  única de solo lectura (decisión 2) sobre las 20 ventas del backend de
+  desarrollo: 1 inconsistente, `REV-V-d521bc`, la propia reproducción de
+  `review_code.md` del 2026-09-29.)*
+- [x] B-1: el primer insert concurrente de inventario no da `500`
   (`INSERT ... ON CONFLICT` + `FOR UPDATE`). Criterio: test con ventas
   concurrentes sin fila previa → todas `201`.
-- [ ] B-2: `create_devolucion` valida artículos con una sola query y
+  *(2026-10-21: `app/inventario_bloqueo.py`, usado por ventas, entradas y
+  `POST /ajustes-inventario`. El test con 6 ventas concurrentes da
+  `[201] * 6` y existencia −6; con la lógica anterior el mismo test dio
+  `[500, 201, 500, 500, 500, 201]`. Contra el contenedor: 6 ventas
+  concurrentes → seis `201`, existencia −7 tras una venta más, sin
+  `UniqueViolation` en el log.)*
+- [x] B-2: `create_devolucion` valida artículos con una sola query y
   `estado` como `Literal`. `uv run pytest` en verde.
+  *(2026-10-21: query `IN` como en ventas; `estado` fuera de los tres
+  valores → `422` (test y contenedor). `uv run pytest`: 226 passed.)*
 
-**3. Cliente Android**
-- [ ] Ajustes del cliente y de los pushers si el contrato cambia (ej. dejar
+**3. Cliente Android (POS-180)**
+- [x] Ajustes del cliente y de los pushers si el contrato cambia (ej. dejar
   de enviar `usuario_id`). `jvm-tests`.
+  *(2026-10-21: los DTOs de request de venta, entrada, corte, retiro,
+  devolución, `PATCH /inventario` y ajuste por delta mandan el `usuarioId`
+  local como `usuario_dispositivo`; `ArticuloCatalogoRequestDto` ya no
+  lleva usuario (antes `"system"`). Los DTOs de response suman
+  `usuarioDispositivo` opcional, y el pull y el modo REMOTO de cortes y
+  retiros guardan `usuario_dispositivo ?: usuario_id`. Room sin cambios.
+  `UsuarioDispositivoMappersTest` cubre el JSON de salida y el fallback del
+  pull. `./gradlew testDebugUnitTest`: 486 tests, 0 fallos, 0 errores, 0
+  omitidos.)*
 
 ### Decisiones abiertas
 
-- [ ] `usuario_id` del dispositivo: ¿se deja de enviar, o se guarda aparte
+- [x] `usuario_id` del dispositivo: ¿se deja de enviar, o se guarda aparte
   como dato informativo (ej. "usuario local") junto al usuario del JWT?
-- [ ] Ventas históricas ya guardadas con montos inconsistentes: ¿se
+  *(Resuelta (2026-10-21): se guarda aparte. `usuario_id` = usuario del
+  JWT; el valor del dispositivo viaja como `usuario_dispositivo` y se
+  guarda en una columna nueva, informativa. Conserva quién operó cuando el
+  sync sube pendientes de un turno anterior con la sesión de otro
+  usuario.)*
+- [x] Ventas históricas ya guardadas con montos inconsistentes: ¿se
   auditan con una consulta única o se ignoran?
+  *(Resuelta (2026-10-21): se auditan una vez con una consulta de solo
+  lectura contra el backend de desarrollo; se reporta el resultado, sin
+  modificar datos ni agregar código.)*
 
 ---
 

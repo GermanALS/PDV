@@ -44,7 +44,7 @@ class RemoteVentaRepository @Inject constructor(
 private fun Venta.toCreateRequestDto() = VentaCreateRequestDto(
     localId = id,
     sucursalId = sucursalId,
-    usuarioId = usuarioId,
+    usuarioDispositivo = usuarioId,
     folio = folio,
     fecha = Instant.ofEpochMilli(fecha).toString(),
     subtotal = subtotal.toPlainString(),

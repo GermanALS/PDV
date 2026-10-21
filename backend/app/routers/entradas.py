@@ -4,10 +4,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import usuario_actual
+from app.inventario_bloqueo import bloquear_inventario
 from app.models.articulo import Articulo
 from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
 from app.models.sucursal import Sucursal
+from app.models.usuario import Usuario
 from app.schemas.entrada import (
     ArticuloResponseSchema,
     EntradaCreateSchema,
@@ -60,6 +63,7 @@ def _movimiento_to_response(movimiento: Movimiento) -> MovimientoResponseSchema:
         sucursal_id=movimiento.sucursal_id,
         articulo_id=movimiento.articulo_id,
         usuario_id=movimiento.usuario_id,
+        usuario_dispositivo=movimiento.usuario_dispositivo,
         tipo=movimiento.tipo,
         cantidad=movimiento.cantidad,
         ubicacion=movimiento.ubicacion,
@@ -95,7 +99,10 @@ async def _entrada_existente_response(
 
 @router.post("/entradas", response_model=EntradaResponseSchema, status_code=201)
 async def create_entrada(
-    payload: EntradaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+    payload: EntradaCreateSchema,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ) -> EntradaResponseSchema:
     # Valida sucursal_id antes de abrir la transaccion de escritura, mismo
     # criterio que la validacion de articulo_id de mas abajo (y de POST
@@ -127,39 +134,21 @@ async def create_entrada(
             if existente is None:
                 raise HTTPException(status_code=404, detail="articulo no encontrado")
 
-        # with_for_update(): mismo principio que POST /ventas (PLAN.md Parte
-        # 25, hallazgo M-1) - bloquea la fila hasta el commit para que dos
-        # entradas concurrentes del mismo articulo no pierdan un incremento.
-        resultado_inventario = await db.execute(
-            select(Inventario)
-            .where(
-                Inventario.sucursal_id == payload.sucursal_id,
-                Inventario.articulo_id == articulo_id,
-            )
-            .with_for_update()
-        )
-        inventario = resultado_inventario.scalar_one_or_none()
-        if inventario is None:
-            inventario = Inventario(
-                sucursal_id=payload.sucursal_id,
-                articulo_id=articulo_id,
-                cantidad=payload.cantidad,
-                ubicacion=payload.ubicacion,
-            )
-            db.add(inventario)
-        else:
-            # Delta con signo, nunca un UPDATE cantidad = X directo (mismo
-            # principio que EventoAditivoCombiner del lado Android, PLAN.md
-            # Parte 6).
-            inventario.cantidad = inventario.cantidad + payload.cantidad
-            if payload.ubicacion is not None:
-                inventario.ubicacion = payload.ubicacion
+        # Fila bloqueada hasta el commit, mismo principio que POST /ventas
+        # (PLAN.md Parte 25, M-1; Parte 38, B-1). Delta con signo, nunca un
+        # UPDATE cantidad = X directo (EventoAditivoCombiner, Parte 6).
+        inventario = await bloquear_inventario(db, payload.sucursal_id, articulo_id)
+        inventario.cantidad = inventario.cantidad + payload.cantidad
+        if payload.ubicacion is not None:
+            inventario.ubicacion = payload.ubicacion
 
         movimiento = Movimiento(
             local_id=payload.local_id,
             sucursal_id=payload.sucursal_id,
             articulo_id=articulo_id,
-            usuario_id=payload.usuario_id,
+            # El usuario sale del JWT, nunca del body (PLAN.md Parte 38, M-1).
+            usuario_id=str(usuario.id),
+            usuario_dispositivo=payload.usuario_dispositivo,
             tipo=TIPO_MOVIMIENTO_ENTRADA,
             cantidad=payload.cantidad,
             ubicacion=payload.ubicacion,

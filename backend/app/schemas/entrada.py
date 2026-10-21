@@ -5,6 +5,8 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.schemas.comunes import UsuarioDispositivo
+
 
 class ArticuloNuevoSchema(BaseModel):
     local_id: uuid.UUID | None = None
@@ -53,6 +55,7 @@ class MovimientoResponseSchema(BaseModel):
     sucursal_id: uuid.UUID
     articulo_id: uuid.UUID
     usuario_id: str
+    usuario_dispositivo: str | None
     tipo: str
     cantidad: Decimal
     ubicacion: str | None
@@ -67,7 +70,7 @@ class MovimientoResponseSchema(BaseModel):
 class EntradaCreateSchema(BaseModel):
     local_id: uuid.UUID
     sucursal_id: uuid.UUID
-    usuario_id: str = Field(min_length=1, max_length=120)
+    usuario_dispositivo: UsuarioDispositivo = None
     fecha: datetime
     cantidad: Decimal = Field(gt=0)
     ubicacion: str | None = None
