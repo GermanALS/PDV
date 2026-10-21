@@ -1,5 +1,6 @@
 package com.pdv.pos.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -22,4 +23,7 @@ data class UsuarioEntity(
     val updatedAt: Long,
     val isSynced: Boolean,
     val deletedAt: Long?,
+    // Solo el admin bootstrap (contrasena publica) nace en true; solo el
+    // cambio de contrasena obligatorio lo apaga (PLAN.md Parte 37, A-3).
+    @ColumnInfo(defaultValue = "0") val debeCambiarPassword: Boolean = false,
 )

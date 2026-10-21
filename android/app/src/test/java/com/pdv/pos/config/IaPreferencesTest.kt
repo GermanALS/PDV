@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
@@ -53,4 +54,14 @@ class IaPreferencesTest {
 
         assertNull(preferences.getToken())
     }
+
+    @Test
+    fun `a token the current Keystore key cannot decrypt reads as no token and is removed`(@TempDir tempDir: File) =
+        runTest(dispatcher) {
+            val preferences = IaPreferences(dataStore(tempDir), ClaveAjenaTokenCipher())
+            preferences.setToken("token-de-otra-instalacion")
+
+            assertNull(preferences.getToken())
+            assertFalse(preferences.config.first().tieneToken)
+        }
 }

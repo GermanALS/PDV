@@ -19,6 +19,12 @@ interface UsuarioDao {
     @Query("SELECT * FROM usuarios WHERE username = :username AND deletedAt IS NULL")
     suspend fun getByUsername(username: String): UsuarioEntity?
 
+    @Query(
+        "UPDATE usuarios SET passwordHash = :passwordHash, debeCambiarPassword = 0, " +
+            "updatedAt = :updatedAt, isSynced = 0 WHERE localId = :usuarioId",
+    )
+    suspend fun cambiarPassword(usuarioId: String, passwordHash: String, updatedAt: Long)
+
     @Query("SELECT COUNT(*) FROM usuarios")
     suspend fun count(): Int
 

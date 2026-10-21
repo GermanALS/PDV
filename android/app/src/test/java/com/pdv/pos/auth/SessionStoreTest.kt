@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.pdv.pos.config.ClaveAjenaTokenCipher
 import com.pdv.pos.config.FakeTokenCipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -14,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -78,4 +80,26 @@ class SessionStoreTest {
 
         assertNull(store.cargar())
     }
+
+    @Test
+    fun `round-trips the pending password change so a restart does not skip it`(@TempDir tempDir: File) =
+        runTest(dispatcher) {
+            val store = store(tempDir)
+            val session = Session("admin", "usuario-1", "rol-1", accessToken = null, debeCambiarPassword = true)
+
+            store.guardar(session)
+
+            assertEquals(session, store.cargar())
+        }
+
+    @Test
+    fun `a session token the current Keystore key cannot decrypt reads as no session and is cleared`(@TempDir tempDir: File) =
+        runTest(dispatcher) {
+            val ds = dataStore(tempDir)
+            val store = DataStoreSessionStore(ds, ClaveAjenaTokenCipher())
+            store.guardar(Session("admin", "usuario-1", "rol-1", accessToken = "jwt-de-otra-instalacion"))
+
+            assertNull(store.cargar())
+            assertTrue(ds.data.first().asMap().isEmpty())
+        }
 }

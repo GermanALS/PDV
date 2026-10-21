@@ -13,6 +13,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.pdv.pos.auth.CambiarPasswordScreen
 import com.pdv.pos.auth.LoginScreen
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.caja.CajaScreen
@@ -48,6 +49,10 @@ class MainActivity : ComponentActivity() {
                 val session by sessionManager.session.collectAsState()
                 if (session == null) {
                     LoginScreen()
+                } else if (session?.debeCambiarPassword == true) {
+                    // Sin acceso a ningun modulo hasta cambiar la contrasena
+                    // bootstrap (PLAN.md Parte 37, A-3).
+                    CambiarPasswordScreen()
                 } else {
                     val navController = rememberNavController()
                     // Box en vez de renderizar cada pantalla suelta: el widget de

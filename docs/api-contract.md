@@ -46,10 +46,12 @@ sección 13.
 **Usuario de bootstrap**: el backend recién levantado no tiene forma de
 autenticarse sin al menos un usuario existente. La migración
 `0009_seed_admin_usuario` crea `admin` / `admin123` (rol Administrador) —
-contraseña de desarrollo, se espera cambiarla desde la pantalla de Usuarios
-tras el primer login. En modo LOCAL (Android sin backend), el mismo
-usuario se siembra de forma perezosa en Room la primera vez que se abre el
-login, con la misma contraseña, por el mismo motivo.
+contraseña pública, marcada con `debe_cambiar_password = true`: el
+login responde `200` con el token, pero toda ruta protegida responde `403`
+hasta cambiarla con `POST /auth/cambiar-password` (sección 2.2; PLAN.md
+Parte 37, A-3). En modo LOCAL (Android sin backend), el mismo usuario se
+siembra de forma perezosa en Room la primera vez que se abre el login, con
+la misma contraseña y la misma marca, por el mismo motivo.
 
 ### 2.1 Login
 
@@ -75,19 +77,59 @@ Response `200 OK`
     "nombre_completo": "string",
     "rol_id": "uuid",
     "activo": true,
+    "debe_cambiar_password": false,
     "updated_at": "2026-08-21T12:00:00Z",
     "is_synced": true,
     "deleted_at": null
   }
 }
 ```
+Con `usuario.debe_cambiar_password = true` el cliente no da acceso a ningún
+módulo y lleva al usuario a cambiar la contraseña (sección 2.2).
 
 Response `401 Unauthorized` — credenciales inválidas. Un único detalle
 genérico (`{"detail": "credenciales invalidas"}`) sin distinguir causa
 (usuario inexistente, inactivo, sin contraseña asignada, o contraseña
 incorrecta) — evita que la respuesta permita enumerar usernames válidos.
+El tiempo de respuesta tampoco distingue la causa: con un usuario
+inexistente se verifica igual un hash bcrypt ficticio (PLAN.md Parte 37,
+M-4).
+
+Response `429 Too Many Requests` — 5 intentos fallidos seguidos para el
+mismo `username` en 15 minutos bloquean ese `username` durante el resto de
+la ventana, aunque la contraseña siguiente sea correcta:
+`{"detail": "demasiados intentos fallidos, intenta mas tarde"}`. El
+contador vive en memoria de cada proceso del backend (por worker, se
+pierde al reiniciar) y un login exitoso lo reinicia (PLAN.md Parte 37,
+M-4).
 
 Response `422 Unprocessable Entity` — falta `username`/`password`.
+
+### 2.2 Cambiar la contraseña propia
+
+**POST** `/auth/cambiar-password`
+
+Exige `Authorization: Bearer <access_token>` (a diferencia de 2.1), y es
+la única ruta que acepta el token de un usuario con
+`debe_cambiar_password = true` (PLAN.md Parte 37, A-3). Cambia la
+contraseña del usuario del token y apaga la marca.
+
+Request body
+```json
+{
+  "password_hash": "string (bcrypt, prefijo $2)"
+}
+```
+Igual que en 11.2/11.3, el hash llega calculado del lado que tuvo el texto
+plano (Android); esta ruta nunca recibe la contraseña en claro.
+
+Response `204 No Content`
+
+Response `401 Unauthorized` — token ausente, inválido o expirado (mismo
+detalle que la sección 12).
+
+Response `422 Unprocessable Entity` — falta `password_hash` o no tiene
+formato bcrypt.
 
 ---
 
@@ -1254,6 +1296,11 @@ Response `400 Bad Request` — el rol es de sistema (`es_sistema: true`).
 
 Response `404 Not Found` — no existe un rol con ese `id`.
 
+Response `409 Conflict` — el rol tiene usuarios asignados (no borrados):
+hay que reasignarlos antes de borrarlo (PLAN.md Parte 37, M-6). Un rol que
+ya estaba borrado antes de esta regla no otorga ningún módulo a los
+usuarios que todavía lo tengan (sección 12).
+
 ---
 
 ## 11. Usuarios
@@ -1285,6 +1332,7 @@ Response `200 OK`
       "nombre_completo": "string",
       "rol_id": "uuid",
       "activo": true,
+      "debe_cambiar_password": false,
       "updated_at": "2026-08-21T12:00:00Z",
       "is_synced": true,
       "deleted_at": null
@@ -1295,6 +1343,9 @@ Response `200 OK`
   "total": 1
 }
 ```
+`debe_cambiar_password` es de solo lectura: solo lo enciende la migración
+del usuario bootstrap y solo lo apaga `POST /auth/cambiar-password`
+(sección 2.2).
 
 ### 11.2 Crear usuario
 
@@ -1311,7 +1362,9 @@ Request body
   "password_hash": "string (bcrypt) o null"
 }
 ```
-`password_hash` es opcional; `null` (u omitido) crea el usuario sin
+`password_hash` es opcional; si viene, debe tener formato bcrypt (prefijo
+`$2`) o la respuesta es `422` — un hash inválido haría fallar después el
+login con `500` (PLAN.md Parte 37, M-4). `null` (u omitido) crea el usuario sin
 contraseña asignada — no puede iniciar sesión hasta que se le asigne una
 (mismo estado que los usuarios creados en la Parte 12, antes de esta
 Parte).
@@ -1336,7 +1389,8 @@ Request body
   "password_hash": "string (bcrypt) o null"
 }
 ```
-`password_hash` es opcional; `null` (u omitido) **no cambia** la contraseña
+`password_hash` es opcional (con el mismo formato bcrypt que 11.2, o
+`422`); `null` (u omitido) **no cambia** la contraseña
 existente (semántica PATCH) — para dejar a un usuario sin contraseña
 explícitamente no hay endpoint dedicado en esta Parte.
 
@@ -1345,7 +1399,10 @@ Response `200 OK` → mismo shape que un ítem de 11.1.
 Response `404 Not Found` — no existe un usuario con ese `id`, o `rol_id` no
 corresponde a ningún rol existente.
 
-Response `409 Conflict` — el `username` nuevo ya lo usa otro usuario.
+Response `409 Conflict` — el `username` nuevo ya lo usa otro usuario; o
+`activo: false` sobre el propio usuario del token o sobre el último
+usuario activo cuyo rol incluye el módulo `usuarios` (PLAN.md Parte 37,
+M-6: el backend no puede quedarse sin administrador).
 
 ### 11.4 Eliminar usuario
 
@@ -1356,6 +1413,10 @@ Soft-delete: fija `deleted_at`, no borra la fila (PLAN.md Parte 3).
 Response `204 No Content`
 
 Response `404 Not Found` — no existe un usuario con ese `id`.
+
+Response `409 Conflict` — el usuario es el propio usuario del token, o el
+último usuario activo cuyo rol incluye el módulo `usuarios` (PLAN.md Parte
+37, M-6).
 
 ---
 
@@ -1377,6 +1438,13 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   logueado a nivel `ERROR` del lado del servidor (CLAUDE.md sección 4). No
   reemplaza el manejo de `HTTPException`/`422` de validación, que siguen su
   propio shape ya documentado arriba.
+- **Entorno del backend** (PLAN.md Parte 37, A-4 y M-4): la variable
+  `PDV_ENV` vale `development` solo en el `docker-compose.yml` local y en
+  los tests; sin ella el backend se considera productivo. El proceso no
+  arranca si falta `JWT_SECRET_KEY`, ni si fuera de `development` tiene el
+  valor de desarrollo del `docker-compose.yml`. `/docs`, `/redoc` y
+  `/openapi.json` solo existen en `development`; en producción responden
+  `404`.
 - **CORS**: `CORSMiddleware` habilitado con orígenes `*` (no hay cliente web
   propio todavía, toda la app es Android nativo) — revisar esta política el
   día que exista un cliente web real. Los `500` del exception handler global
@@ -1433,6 +1501,14 @@ Response `404 Not Found` — no existe un usuario con ese `id`.
   HTTP/1.1 403 Forbidden
   { "detail": "el rol no tiene permiso para el modulo: usuarios" }
   ```
+- **`403 Forbidden` por contraseña pendiente** — token válido de un
+  usuario con `debe_cambiar_password = true`: toda ruta protegida, lectura
+  o escritura, responde `403` con
+  `{ "detail": "debe cambiar la contrasena" }` hasta usar
+  `POST /auth/cambiar-password` (sección 2.2; PLAN.md Parte 37, A-3).
+- **Rol borrado**: un usuario cuyo rol tiene `deleted_at` no tiene ningún
+  módulo, así que toda escritura con módulo requerido le responde `403`
+  (PLAN.md Parte 37, M-6).
 - **El chequeo de módulo aplica solo a las escrituras** (`POST` / `PATCH` /
   `DELETE`). Las **lecturas** (`GET`) solo exigen token válido: otros
   módulos las consumen de forma legítima (Venta y Entrada leen

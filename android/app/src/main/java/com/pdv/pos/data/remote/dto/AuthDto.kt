@@ -10,6 +10,11 @@ data class AuthLoginRequestDto(
 )
 
 @Serializable
+data class AuthCambiarPasswordRequestDto(
+    @SerialName("password_hash") val passwordHash: String,
+)
+
+@Serializable
 data class AuthLoginResponseDto(
     @SerialName("access_token") val accessToken: String,
     @SerialName("token_type") val tokenType: String,

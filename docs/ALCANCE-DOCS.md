@@ -67,4 +67,4 @@ donde aparecen (cuerpo, `manual-meta` y chips):
 - Anclas internas (`[§N](#...)`) que apunten a encabezados existentes.
 
 ## Última sincronización
-<!-- docs-sync: commit=f03a5d6 parte="36" fecha=2026-10-20 -->
+<!-- docs-sync: commit=0e50550 parte="37" fecha=2026-10-21 -->

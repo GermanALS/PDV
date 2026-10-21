@@ -2,11 +2,12 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import any_, func, literal, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import usuario_actual
 from app.models.rol import Rol
 from app.models.usuario import Usuario
 from app.schemas.usuario import (
@@ -27,9 +28,37 @@ def usuario_to_response(usuario: Usuario) -> UsuarioResponseSchema:
         nombre_completo=usuario.nombre_completo,
         rol_id=usuario.rol_id,
         activo=usuario.activo,
+        debe_cambiar_password=usuario.debe_cambiar_password,
         updated_at=usuario.updated_at,
         deleted_at=usuario.deleted_at,
     )
+
+
+async def es_ultimo_admin(usuario: Usuario, db: AsyncSession) -> bool:
+    """True si ningun otro usuario activo, no borrado y con rol vigente tiene
+    el modulo `usuarios` (PLAN.md Parte 37, M-6)."""
+    otros = await db.scalar(
+        select(func.count())
+        .select_from(Usuario)
+        .join(Rol, Usuario.rol_id == Rol.id)
+        .where(
+            Usuario.id != usuario.id,
+            Usuario.activo.is_(True),
+            Usuario.deleted_at.is_(None),
+            Rol.deleted_at.is_(None),
+            literal("usuarios") == any_(Rol.modulos_permitidos),
+        )
+    )
+    return otros == 0
+
+
+async def _validar_baja(usuario: Usuario, actor: Usuario, db: AsyncSession) -> None:
+    """409 si desactivar o borrar `usuario` deja al backend sin administrador
+    o es el propio usuario del token (api-contract.md sec. 11.3/11.4)."""
+    if usuario.id == actor.id:
+        raise HTTPException(status_code=409, detail="no puedes desactivar ni borrar tu propio usuario")
+    if await es_ultimo_admin(usuario, db):
+        raise HTTPException(status_code=409, detail="es el ultimo usuario con el modulo usuarios")
 
 
 async def _validar_rol_id(rol_id: uuid.UUID, db: AsyncSession) -> None:
@@ -74,12 +103,15 @@ async def create_usuario(payload: UsuarioCreateSchema, db: AsyncSession = Depend
 async def update_usuario(
     usuario_id: uuid.UUID,
     payload: UsuarioUpdateSchema,
+    actor: Usuario = Depends(usuario_actual),
     db: AsyncSession = Depends(get_db),
 ) -> UsuarioResponseSchema:
     usuario = await db.get(Usuario, usuario_id)
     if usuario is None or usuario.deleted_at is not None:
         raise HTTPException(status_code=404, detail="usuario no encontrado")
     await _validar_rol_id(payload.rol_id, db)
+    if usuario.activo and not payload.activo:
+        await _validar_baja(usuario, actor, db)
 
     usuario.username = payload.username
     usuario.nombre_completo = payload.nombre_completo
@@ -98,9 +130,14 @@ async def update_usuario(
 
 
 @router.delete("/usuarios/{usuario_id}", status_code=204)
-async def delete_usuario(usuario_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> None:
+async def delete_usuario(
+    usuario_id: uuid.UUID,
+    actor: Usuario = Depends(usuario_actual),
+    db: AsyncSession = Depends(get_db),
+) -> None:
     usuario = await db.get(Usuario, usuario_id)
     if usuario is None or usuario.deleted_at is not None:
         raise HTTPException(status_code=404, detail="usuario no encontrado")
+    await _validar_baja(usuario, actor, db)
     usuario.deleted_at = datetime.now(timezone.utc)
     await db.commit()

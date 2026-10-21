@@ -3,6 +3,16 @@ package com.pdv.pos.data.local
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+// v10 -> v11 (PLAN.md Parte 37, A-3): marca debeCambiarPassword en usuarios.
+// Se enciende para el admin bootstrap por username, sin verificar el hash: un
+// admin que ya habia cambiado admin123 la cambia una vez mas.
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE usuarios ADD COLUMN debeCambiarPassword INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE usuarios SET debeCambiarPassword = 1 WHERE username = 'admin' AND deletedAt IS NULL")
+    }
+}
+
 // v9 -> v10 (PLAN.md Parte 36, A-6): columna syncRechazo en las tablas que se
 // suben. Las filas que el push descarto antes de esta version quedaron con
 // isSynced = 1 sin remoteId: vuelven a no sincronizadas, se marcan rechazadas

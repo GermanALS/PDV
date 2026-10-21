@@ -38,6 +38,10 @@ class PermisosModuloIntegrationTest {
             entities.removeAll { it.localId == entity.localId }
             entities.add(entity)
         }
+        override suspend fun cambiarPassword(usuarioId: String, passwordHash: String, updatedAt: Long) {
+            val existente = entities.first { it.localId == usuarioId }
+            update(existente.copy(passwordHash = passwordHash, debeCambiarPassword = false, updatedAt = updatedAt, isSynced = false))
+        }
     }
 
     private class FakeRolDao(seed: List<RolEntity>) : RolDao {

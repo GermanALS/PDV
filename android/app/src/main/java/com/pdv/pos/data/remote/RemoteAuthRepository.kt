@@ -1,5 +1,7 @@
 package com.pdv.pos.data.remote
 
+import com.pdv.pos.auth.PasswordHasher
+import com.pdv.pos.data.remote.dto.AuthCambiarPasswordRequestDto
 import com.pdv.pos.data.remote.dto.AuthLoginRequestDto
 import com.pdv.pos.data.remote.dto.UsuarioDto
 import com.pdv.pos.domain.model.Usuario
@@ -12,6 +14,7 @@ import javax.inject.Singleton
 @Singleton
 class RemoteAuthRepository @Inject constructor(
     private val api: AuthApiService,
+    private val passwordHasher: PasswordHasher,
 ) : AuthRepository {
 
     // 401 es un resultado de negocio esperado (credenciales incorrectas),
@@ -28,6 +31,12 @@ class RemoteAuthRepository @Inject constructor(
         }
         return LoginResultado.Exitoso(response.usuario.toDomain(), accessToken = response.accessToken)
     }
+
+    // El hash se calcula aca, del lado que tiene el texto plano (PLAN.md
+    // Parte 13, Decision 2); el backend toma el usuario del token.
+    override suspend fun cambiarPassword(usuarioId: String, nuevaPassword: String) {
+        api.cambiarPassword(AuthCambiarPasswordRequestDto(passwordHash = passwordHasher.hash(nuevaPassword)))
+    }
 }
 
 private fun UsuarioDto.toDomain() = Usuario(
@@ -36,4 +45,5 @@ private fun UsuarioDto.toDomain() = Usuario(
     nombreCompleto = nombreCompleto,
     rolId = rolId,
     activo = activo,
+    debeCambiarPassword = debeCambiarPassword,
 )

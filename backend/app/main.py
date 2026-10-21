@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import ENTORNO, opciones_docs
 from app.dependencies import usuario_actual
 from app.permissions import verificar_modulo
 from app.routers import (
@@ -22,7 +23,7 @@ from app.routers import (
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="PDV API")
+app = FastAPI(title="PDV API", **opciones_docs(ENTORNO))
 
 # Sin cliente web propio todavia (toda la app es Android nativo); origenes
 # abiertos hasta que exista uno real (PLAN.md Parte 25, hallazgo M-5).

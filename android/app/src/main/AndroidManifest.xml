@@ -8,9 +8,16 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
+    <!-- Sin respaldo (PLAN.md Parte 37, A-5): allowBackup="false" cubre todo
+         hasta Android 11, y dataExtractionRules corta la nube y la
+         transferencia entre dispositivos desde Android 12. fullBackupContent
+         no hace falta con el respaldo desactivado, por eso se ignora el aviso
+         DataExtractionRules de lint. -->
     <application
         android:name=".PdvApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:ignore="DataExtractionRules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">

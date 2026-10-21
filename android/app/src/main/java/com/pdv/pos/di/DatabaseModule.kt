@@ -8,6 +8,7 @@ import com.pdv.pos.data.local.EntradaDao
 import com.pdv.pos.data.local.InventarioDao
 import com.pdv.pos.data.local.MIGRATION_7_8
 import com.pdv.pos.data.local.MIGRATION_8_9
+import com.pdv.pos.data.local.MIGRATION_10_11
 import com.pdv.pos.data.local.MIGRATION_9_10
 import com.pdv.pos.data.local.PdvDatabase
 import com.pdv.pos.data.local.RetiroDao
@@ -31,7 +32,7 @@ object DatabaseModule {
     @Singleton
     fun providePdvDatabase(@ApplicationContext context: Context): PdvDatabase =
         Room.databaseBuilder(context, PdvDatabase::class.java, "pdv.db")
-            .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+            .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             .build()
 
     @Provides

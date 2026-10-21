@@ -2,8 +2,8 @@
 manual-meta
 titulo: Manual técnico — PDV (Punto de Venta)
 lead: Descripción funcional, arquitectura, requerimientos de instalación, diagramas UML y de base de datos, y guías de diagnóstico, mantenimiento y evolución.
-actualizado: 2026-10-20
-chips: Partes 1-35 mergeadas | Parte 36 implementada | Partes 37-40 pendientes | Backend 185 tests | Android 463 tests | Alembic 0001-0013 | Room v10
+actualizado: 2026-10-21
+chips: Partes 1-36 mergeadas | Parte 37 implementada | Partes 38-40 pendientes | Backend 210 tests | Android 480 tests | Alembic 0001-0014 | Room v11
 -->
 # Manual técnico — PDV (Punto de Venta)
 
@@ -12,26 +12,26 @@ funcional, arquitectura, requerimientos de instalación, diagramas UML y de base
 de datos, y guías de diagnóstico, mantenimiento y evolución.
 
 - **Código de proyecto**: `POS` (Jira) / `PDV` (repo).
-- **Estado a la fecha de este manual (2026-10-20)**: Partes 1-35
-  implementadas y mergeadas (la 35 en PR #45, merge `7c0bd94`), incluyendo el
+- **Estado a la fecha de este manual (2026-10-21)**: Partes 1-36
+  implementadas y mergeadas (la 36 en PR #46, merge `679664e`), incluyendo el
   motor de sincronización diferida (Parte 32), este propio manual (Parte 33),
-  la convergencia del inventario en el sync (Parte 34) y la de catálogo y
-  ubicación (Parte 35). La Parte 36 (sucursal estable y rechazos visibles del
-  sync; épica `POS-168`, historias `POS-169`..`POS-171`) está implementada y
-  verificada en dispositivo en la rama
-  `feature/POS-168-sucursal-estable-rechazos-sync` (commit `f03a5d6`), aún sin
-  mergear a `main`, y sigue listada en `docs/PLAN.md`. Partes 37-40
-  (seguridad pre-release, integridad del backend, calidad menor y primer
-  release productivo) pendientes, sin claves de Jira todavía; salen de la
-  revisión pre-release de `docs/review_code.md`. App corriendo en dispositivo
-  físico contra backend dockerizado en LAN.
+  la convergencia del inventario en el sync (Parte 34), la de catálogo y
+  ubicación (Parte 35) y la de sucursal estable y rechazos visibles (Parte
+  36). La Parte 37 (endurecimiento de seguridad pre-release; épica `POS-172`,
+  historias `POS-173`..`POS-175`) está implementada y verificada en
+  dispositivo en la rama `feature/POS-172-endurecimiento-seguridad` (commit
+  `0e50550`), aún sin mergear a `main`, y sigue listada en `docs/PLAN.md`.
+  Partes 38-40 (integridad del backend, calidad menor y primer release
+  productivo) pendientes, sin claves de Jira todavía; salen de la revisión
+  pre-release de `docs/review_code.md`. App corriendo en dispositivo físico
+  contra backend dockerizado en LAN.
 - **Fuentes de verdad vivas** (este manual las resume, no las reemplaza):
   - `CLAUDE.md` — arquitectura estable, convenciones, comandos.
   - `docs/api-contract.md` — contrato de endpoints REST.
   - `docs/schema-pos.json` — esquema de datos compartido (Room + Alembic).
-  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 36 implementada, Partes 37-40 + Backlog).
-  - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33 (la 34 y
-    la 35, ya mergeadas, siguen en `docs/PLAN.md` hasta archivarse).
+  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 37 implementada, Partes 38-40 + Backlog).
+  - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33 (la 34, la
+    35 y la 36, ya mergeadas, siguen en `docs/PLAN.md` hasta archivarse).
   - `docs/review_code.md` — revisión pre-release del 2026-09-28/29 (origen de
     las Partes 34 y 36-40). La revisión anterior (2026-08-30, origen de las Partes
     21-30) se archivó como `docs/review_code_2026-09-28_1816.md`.
@@ -69,7 +69,7 @@ y actualizaciones asistidas.
 
 | Módulo | Pantalla(s) | Qué hace | Persistencia |
 |---|---|---|---|
-| **Login / Sesión** | `LoginScreen`, `PanelConexionBottomSheet` | Autenticación por usuario/contraseña; panel de conexión accesible sin sesión (cambiar modo LOCAL/REMOTO, esquema/host/puerto, "Probar conexión"). | Sesión en memoria (`SessionManager`); conexión en DataStore. |
+| **Login / Sesión** | `LoginScreen`, `PanelConexionBottomSheet`, `CambiarPasswordScreen` | Autenticación por usuario/contraseña; panel de conexión accesible sin sesión (cambiar modo LOCAL/REMOTO, esquema/host/puerto, "Probar conexión"). Si la sesión trae `debeCambiarPassword` (admin de arranque con `admin123`), `MainActivity` muestra `CambiarPasswordScreen` en lugar de la navegación hasta que se cambie la contraseña (Parte 37). | Sesión en memoria (`SessionManager`) más `SessionStore` cifrado; conexión en DataStore. |
 | **Venta de mostrador** | `VentaScreen` | Alta de venta con líneas, escaneo de código de barras (CameraX + ML Kit), método de pago efectivo/tarjeta, cálculo de cambio, ticket PDF e impresión. Decrementa inventario y genera movimiento de salida. | `ventas`, `venta_detalle`, `inventario`, `movimientos`. |
 | **Entrada de mercancía** | `EntradaScreen` | Recepción de mercancía de artículo existente o alta de artículo nuevo. Incrementa inventario (delta aditivo) y genera movimiento de entrada. | `movimientos` (tipo `entrada`), `articulos`, `inventario`. |
 | **Inventario** | `InventarioScreen`, `ImportarCatalogoScreen` | Consulta paginada con búsqueda (nombre/SKU/código de barras), ajuste de atributos de catálogo + existencia (genera movimiento de ajuste con delta), exportación CSV/Excel, importación de catálogo desde CSV. | `articulos`, `inventario`, `movimientos`. |
@@ -193,7 +193,7 @@ flowchart TD
         IA["ia/ChatViewModel · LlmClient\nEjecutorAccionesIa · FaqRepository"]
     end
 
-    ROOM[("Room\npdv.db (v10)")]
+    ROOM[("Room\npdv.db (v11)")]
     HTTP["OkHttp/Retrofit\nDynamicHostInterceptor + AuthInterceptor"]
 
     S --> VM --> RIF
@@ -265,7 +265,7 @@ flowchart TD
     subgraph APP["app/main.py"]
         CORS["CORSMiddleware (origins *)"]
         EXC["exception_handler(Exception)\n-> 500 {detail}"]
-        OPEN["Routers abiertos:\nhealth, auth"]
+        OPEN["Routers abiertos:\nhealth, auth (cambiar-password\nvalida su propio token)"]
         PROT["APIRouter 'protected'\ndependencies=[usuario_actual, verificar_modulo]"]
     end
     subgraph ROUTERS["app/routers/*"]
@@ -275,7 +275,7 @@ flowchart TD
     MODELS["app/models/* (SQLAlchemy 2.0 async)"]
     DBPY["app/database.py\ncreate_async_engine + async_sessionmaker"]
     PG[("PostgreSQL 16\n(asyncpg)")]
-    ALEMBIC["alembic/versions/*\n(13 migraciones)"]
+    ALEMBIC["alembic/versions/*\n(14 migraciones)"]
 
     CLIENT --> CORS --> OPEN
     CORS --> PROT --> R
@@ -287,8 +287,22 @@ flowchart TD
 - **Autenticación y autorización** se declaran **una sola vez** a nivel del
   router `protected` (`app/main.py`): `Depends(usuario_actual)` valida el JWT y
   carga el `Usuario` (con su `rol` vía `selectinload`); `Depends(verificar_modulo)`
-  aplica el chequeo de módulo a las escrituras.
-- `health` y `auth` quedan fuera del router protegido (rutas abiertas).
+  aplica el chequeo de módulo a las escrituras. Desde la Parte 37
+  (`app/dependencies.py`) `usuario_del_token` hace la validación del JWT y
+  `usuario_actual` la envuelve para devolver `403 {"detail": "debe cambiar la
+  contrasena"}` mientras `Usuario.debe_cambiar_password` esté encendida.
+- `health` y `auth` quedan fuera del router protegido (rutas abiertas):
+  `POST /auth/cambiar-password` usa directamente `usuario_del_token`, por lo
+  que es la única ruta que acepta el token de un usuario con la marca
+  encendida.
+- **Configuración y arranque** (`app/config.py`, Parte 37): `PDV_ENV` (sin
+  valor se asume `production`, falla cerrado) y `JWT_SECRET_KEY` obligatoria
+  (el proceso no arranca sin ella, ni con el valor de desarrollo fuera de
+  `PDV_ENV=development`). `opciones_docs` deja `/docs`, `/redoc` y
+  `/openapi.json` solo en `development`.
+- **Límite de intentos de login** (`app/limite_login.py`): contador en
+  memoria por `username`, 5 fallos en 15 minutos bloquean ese username con
+  `429` (por worker, se pierde al reiniciar).
 - El `exception_handler` global convierte cualquier excepción no prevista en
   `500 {"detail": "error interno del servidor"}` y la loguea a nivel `ERROR`
   (sin traceback al cliente). No intercepta `HTTPException` ni `422`.
@@ -460,10 +474,12 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
   con confirmación de pendientes). La revisión pre-release encontró que el
   inventario no converge entre terminales de una misma sucursal; la Parte 34
   lo corrige (mergeada) y la Parte 35 hace converger también catálogo y
-  `ubicacion` (implementada y verificada en un Xiaomi 24030PN60G, ver
+  `ubicacion` (mergeada, verificada en un Xiaomi 24030PN60G, ver
   arriba), y la Parte 36 hace visibles los rechazos 4xx, estabiliza la
   sucursal seleccionada y evita cerrar la sesión por un 401 del worker
-  (implementada y verificada en dispositivo). Queda como limitación conocida
+  (mergeada). La Parte 37 añade que el worker no sube mientras la sesión
+  tenga `debeCambiarPassword` (`MOTIVO_CAMBIAR_PASSWORD`, "cambia la
+  contrasena inicial antes de sincronizar"). Queda como limitación conocida
   que `InventarioPuller.resolverArticulo` no es
   atómico (ventana de milisegundos entre `hayEdicionPendiente` y
   `updateArticulo`); ver
@@ -548,6 +564,7 @@ erDiagram
         string password_hash "nullable, bcrypt cost 12"
         uuid rol_id FK
         bool activo
+        bool debe_cambiar_password "default false; true en el admin de arranque"
     }
     inventario {
         uuid local_id PK
@@ -660,7 +677,10 @@ erDiagram
   `NULL`). Las Partes 34 y 35 no agregaron migraciones Alembic:
   `Inventario.updated_at` pasó a tener `onupdate` en el modelo SQLAlchemy sin
   cambio de esquema, y `PATCH /articulos/{articulo_id}` (Parte 35) reutiliza
-  columnas existentes de `articulos` e `inventario`.
+  columnas existentes de `articulos` e `inventario`. La Parte 36 tampoco
+  agregó migraciones; la Parte 37 agrega la `0014`
+  (`usuarios.debe_cambiar_password`, `Boolean` no nulo con `server_default`
+  falso, marcada en `true` para el usuario `admin` existente al migrar).
 - `sync_conflicts.politica_aplicada` toma en la práctica valores más
   específicos que los dos del diccionario del esquema: `evento_aditivo_delta`,
   `last_write_wins_local_gana`, `last_write_wins_remoto_gana` (edición de
@@ -671,7 +691,7 @@ erDiagram
 
 ### 3.4 Room (dispositivo)
 
-- Base `pdv.db`, `@Database(version = 10, exportSchema = true)`, 13 entidades,
+- Base `pdv.db`, `@Database(version = 11, exportSchema = true)`, 13 entidades,
   10 DAOs (`PdvDatabase`). Esquemas exportados en `android/app/schemas/`.
 - `Converters` (TypeConverters): `BigDecimal <-> String` (`toPlainString`),
   `List<modulo> <-> String` con separador U+001F (Unit Separator).
@@ -694,8 +714,13 @@ erDiagram
   descartado antes (`isSynced = 1` sin `remoteId`), solo en `ventas`,
   `devoluciones`, `cortes_caja`, `retiros_efectivo` y `movimientos` de tipo
   `entrada`/`ajuste`.
+- `usuarios.debeCambiarPassword` (INTEGER NOT NULL DEFAULT 0, Parte 37,
+  migración Room `MIGRATION_10_11`): marca que el usuario debe cambiar la
+  contraseña de arranque. La migración la enciende para el usuario con
+  `username = 'admin'` y `deletedAt IS NULL`, sin verificar el hash. Existe
+  también en el backend (Alembic `0014`) y en `docs/schema-pos.json`.
 - Migraciones registradas en `DatabaseModule`
-  (`addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)`); la v7 es la línea base con
+  (`addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)`); la v7 es la línea base con
   `exportSchema` (Parte 24).
 
 ---
@@ -814,6 +839,15 @@ sequenceDiagram
         LVM->>LS: mensaje de error
     end
 ```
+
+Si el usuario devuelto trae `debe_cambiar_password = true`, la `Session`
+lleva `debeCambiarPassword` y `MainActivity` muestra `CambiarPasswordScreen`
+(`CambiarPasswordViewModel` -> `AuthRepository.cambiarPassword`, que en REMOTO
+llama a `POST /auth/cambiar-password` con el hash bcrypt calculado en el
+dispositivo) en vez del `NavHost`; al terminar, la sesión se reinicia con la
+marca apagada. En el backend, el login verifica contra `_HASH_FICTICIO` si el
+usuario no existe (mismo costo bcrypt) y responde `429` tras 5 fallos por
+`username`.
 
 En **modo LOCAL** la rama equivalente va a `LocalAuthRepository`, que valida
 contra `usuarios`/`roles` en Room (bcrypt en `Dispatchers.Default`); la sesión
@@ -1104,10 +1138,11 @@ de release bloquea cleartext por defecto (endurecimiento formal: Parte 40).
 ### 5.6 Secretos y despliegue no-local
 
 - `docker-compose.yml` usa defaults solo-local (`pdv`/`pdv`, `JWT_SECRET_KEY`
-  de desarrollo) vía `${VAR:-default}`.
+  de desarrollo) vía `${VAR:-default}` y fija `PDV_ENV: development`, que es lo
+  que habilita esa clave de desarrollo y `/docs` (Parte 37).
 - Para cualquier entorno no-local: copiar `docker-compose.prod.yml.example` a
-  `docker-compose.prod.yml` (gitignoreado) con `JWT_SECRET_KEY` fuerte y
-  credenciales reales de Postgres, y levantar con
+  `docker-compose.prod.yml` (gitignoreado) con `JWT_SECRET_KEY` fuerte,
+  `PDV_ENV: production` y credenciales reales de Postgres, y levantar con
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
 - El destino de despliegue productivo (Render / Fly.io / VPS / AWS) está
   **sin decidir** (`CLAUDE.md` §7 `[TODO]`; se resuelve en la Parte 40).
@@ -1121,10 +1156,12 @@ de release bloquea cleartext por defecto (endurecimiento formal: Parte 40).
 | Variable | Default | Uso |
 |---|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://pdv:pdv@db:5432/pdv` | Conexión async a Postgres (`app/database.py`, `alembic/env.py`). |
-| `JWT_SECRET_KEY` | `dev-secret-key-cambiar-en-produccion` | Firma HS256 de los JWT (`app/security.py`). **Cambiar antes de exponer fuera de la LAN.** |
+| `JWT_SECRET_KEY` | Sin default en código (el `docker-compose.yml` local inyecta `dev-secret-key-cambiar-en-produccion`) | Firma HS256 de los JWT (`app/security.py`, validada en `app/config.py`). **Obligatoria**: el proceso no arranca sin ella (`RuntimeError`), ni con el valor de desarrollo si `PDV_ENV` no es `development`. |
+| `PDV_ENV` | `production` si falta (el `docker-compose.yml` local fija `development`) | `development` habilita la clave JWT de desarrollo y `/docs`, `/redoc`, `/openapi.json`; cualquier otro valor los deshabilita (`app/config.py`). |
 
 Parámetros fijos en código (`app/security.py`): `JWT_ALGORITHM = "HS256"`,
-`JWT_EXPIRES_MINUTES = 60*24` (24 h), bcrypt `rounds=12`.
+`JWT_EXPIRES_MINUTES = 60*24` (24 h), bcrypt `rounds=12`; en
+`app/limite_login.py`: `MAX_FALLOS = 5`, `VENTANA_SEGUNDOS = 15*60`.
 
 ### 6.2 Android — DataStore (`configuracion`)
 
@@ -1148,7 +1185,11 @@ Otras preferencias: `IaPreferences` (activo, proveedor, modelo, token cifrado),
 `(entidad, sucursal)` desde la Parte 34, y banderas
 `sync_inventario_reconciliado_v2_<sucursal>` y, desde la Parte 35,
 `sync_catalogo_reconciliado_<sucursal>`), `SessionStore` (Parte 32: sesión del usuario para el `SyncWorker`
-desatendido, `accessToken` cifrado igual que el token de IA).
+desatendido, `accessToken` cifrado igual que el token de IA; desde la Parte 37
+guarda también `session_debe_cambiar_password`). `LimpiezaDataStore` (Parte
+37) borra al arrancar las claves obsoletas `ia_token` (API key en claro de un
+build previo al cifrado), `nombre_base_datos` y los cursores de pull sin
+sucursal.
 
 `DynamicHostInterceptor` cachea `DeviceConfig` en un campo `@Volatile` (sembrado
 una vez de forma bloqueante, mantenido por un colector) y reescribe
@@ -1170,39 +1211,48 @@ deja pasar la request con el `BASE_URL` por defecto
 
 | Aspecto | Implementación |
 |---|---|
-| **Contraseñas** | bcrypt cost 12 en ambos lados. El hash se calcula **siempre en el dispositivo Android** que recibe el texto plano; el endpoint de usuarios recibe `password_hash` ya calculado y nunca devuelve el hash. |
+| **Contraseñas** | bcrypt cost 12 en ambos lados. El hash se calcula **siempre en el dispositivo Android** que recibe el texto plano; el endpoint de usuarios recibe `password_hash` ya calculado y nunca devuelve el hash. Desde la Parte 37 el `password_hash` de entrada se valida con el prefijo bcrypt (`BCRYPT_PATTERN`, `422` si no lo cumple; antes un hash inválido hacía fallar el login con `500`). |
+| **Contraseña de arranque** | El admin sembrado por la migración `0009` (`admin/admin123`) queda con `debe_cambiar_password = true` (Alembic `0014`, Room `MIGRATION_10_11`). Mientras la marca siga encendida, el backend responde `403 "debe cambiar la contrasena"` en toda ruta protegida y solo `POST /auth/cambiar-password` acepta su token; la app fuerza `CambiarPasswordScreen` (rechaza la contraseña inicial como nueva) y `DefaultSyncOrchestrator` no sube nada (`MOTIVO_CAMBIAR_PASSWORD`). |
+| **Límite de intentos y tiempo constante** | `limite_login`: 5 fallos en 15 min por `username` -> `429` (incluso con la contraseña correcta mientras dure el bloqueo); contador en memoria por worker. El login verifica contra `_HASH_FICTICIO` cuando no hay hash real para igualar el tiempo de respuesta. |
+| **Secreto JWT y entorno** | `JWT_SECRET_KEY` obligatoria sin default en código; el valor de desarrollo solo se acepta con `PDV_ENV=development`; `/docs`, `/redoc` y `/openapi.json` solo existen en `development` (`app/config.py`). |
+| **Integridad de roles y administradores** | `DELETE /roles/{id}` con usuarios asignados -> `409`; un rol borrado no otorga módulos (`modulos_del_usuario` en `app/permissions.py`); desactivar o borrar al propio usuario o al último usuario activo con el módulo `usuarios` -> `409`. |
+| **Respaldo del dispositivo** | `allowBackup="false"` más `res/xml/data_extraction_rules.xml` (excluye nube y transferencia entre dispositivos): las claves de Android Keystore no viajan, así que sesión y token de IA cifrados quedarían ilegibles. |
 | **Tokens** | JWT `HS256`, `sub` = `usuario.id`, expiración 24 h, firmado con `JWT_SECRET_KEY`. Sin `refresh_token` (diferido, ratificado en la Parte 32: se mantiene el JWT de 24 h + re-login al recibir 401, aunque `SessionStore` persista la sesión para el worker de sync). |
 | **Enforcement backend** | `Depends(usuario_actual)` en el router `protected`: valida firma/expiración y que el `sub` corresponda a un usuario existente, activo y no borrado. `401 {"detail": "token invalido o expirado"}` genérico. `health` y `auth` exentos. |
 | **Autorización por módulo** | `verificar_modulo` gatea **solo escrituras** (`POST`/`PATCH`/`DELETE`) según `(método, ruta)` -> módulo requerido (mapa en `app/permissions.py`). Los `GET` solo exigen token válido. `403 {"detail": "el rol no tiene permiso para el modulo: X"}`. |
 | **Reacción del cliente a 401** | `AuthInterceptor` cierra la sesión y vuelve a `LoginScreen` **solo si** la request llevaba token (`token != null`), no era `/auth/login` y el modo es `REMOTO` (Parte 36, M-5). Un 401 a una request sin token (esperado en LOCAL / LOCAL_CON_SINCRONIZACION contra un backend con enforcement) lo maneja el repositorio que llamó; un 401 con token en `LOCAL_CON_SINCRONIZACION` lo registra el orquestador de sync ("sync requiere re-login") sin cerrar la sesión. |
 | **No enumeración de usuarios** | `/auth/login` devuelve el mismo 401 para usuario inexistente, inactivo, sin hash o contraseña incorrecta. |
-| **Token de IA** | Cifrado AES-256 con clave respaldada por Android Keystore; solo ciphertext + IV en DataStore. El token viaja únicamente en el header del request al proveedor, nunca se loguea. |
+| **Token de IA** | Cifrado AES-256 con clave respaldada por Android Keystore; solo ciphertext + IV en DataStore. El token viaja únicamente en el header del request al proveedor, nunca se loguea. Si el descifrado lanza `GeneralSecurityException` (clave de Keystore ausente tras reinstalar o restaurar), `IaPreferences` lo trata como "sin token" y borra las claves; `SessionStore` hace lo mismo con la sesión (Parte 37). |
 | **Autorización de acciones de IA** | El módulo a autorizar se deriva del `tipo` de acción (mapa fijo), nunca del campo `modulo` de la salida del LLM. Confirmación explícita del usuario para las 4 acciones de escritura. |
 | **CORS** | `CORSMiddleware` con `allow_origins=["*"]` (no hay cliente web; revisar el día que exista uno). Los `500` del handler global **no llevan headers CORS** (posición de `ServerErrorMiddleware` en el stack de Starlette). |
 | **Contenedor** | Corre como usuario no privilegiado `app` (`adduser --system` + `USER app` en el `Dockerfile`). |
 | **Logging de auditoría** | `AppLogger` (dispositivo): categoría `AUTH` para logins y rechazos de permiso de la IA; `SYNC_CONFLICT` para conflictos. Archivos `.txt` locales, nunca viajan por API. Backend: logging operativo a stdout/stderr, nivel `ERROR` en el handler global. |
 
-**Pendientes de seguridad para producción (Partes 37 y 40):** APK firmado (hoy
+**Pendientes de seguridad para producción (Parte 40):** APK firmado (hoy
 `assembleRelease` produce un APK sin firmar), `JWT_SECRET_KEY` fuerte en el
 entorno desplegado, backend por HTTPS, cleartext deshabilitado en release,
-R8/ofuscación (B-7, diferido). La Parte 37 (`docs/PLAN.md`, hallazgos de
-`docs/review_code.md`) cubre además el endurecimiento previo al release:
-cambio forzado de la contraseña `admin/admin123` de arranque, arranque del
-backend sin `JWT_SECRET_KEY` por defecto, límite de intentos de login,
-`/docs` deshabilitado en producción y `allowBackup`/respaldo de claves de
-Keystore. Todo pendiente, nada implementado.
+R8/ofuscación (B-7, diferido). La Parte 37 (`docs/PLAN.md`, hallazgos A-3,
+A-4, A-5, M-4, M-6 y M-10 de `docs/review_code.md`) quedó implementada y
+verificada en dispositivo, sin mergear: cambio forzado de la contraseña
+`admin/admin123`, `JWT_SECRET_KEY` obligatoria, límite de intentos de login,
+`/docs` deshabilitado fuera de desarrollo y `allowBackup`/limpieza de claves.
+Queda como tarea operativa, a cargo del usuario, rotar la API key del
+proveedor de IA del dispositivo de pruebas.
 
 ---
 
 ## 8. Referencia de API
 
 Base URL dev: `http://localhost:8000/api/v1`. Detalle completo (bodies,
-códigos de error, ejemplos): `docs/api-contract.md`.
+códigos de error, ejemplos): `docs/api-contract.md`. Con la contraseña de
+arranque pendiente de cambio, toda ruta protegida responde `403 {"detail":
+"debe cambiar la contrasena"}`.
 
 | Método | Ruta | Módulo (escritura) | Notas |
 |---|---|---|---|
 | GET | `/health` | — (exenta) | Liveness. |
-| POST | `/auth/login` | — (exenta) | Devuelve JWT + usuario. |
+| POST | `/auth/login` | — (exenta) | Devuelve JWT + usuario (con `debe_cambiar_password`). `429` tras 5 fallos por `username` en 15 min (Parte 37). |
+| POST | `/auth/cambiar-password` | — (exenta; exige Bearer) | Cambia la contraseña del usuario del token (body `password_hash` bcrypt) y apaga `debe_cambiar_password`; `204`. Única ruta que acepta el token de un usuario con la marca encendida (Parte 37). |
 | GET / POST | `/sucursales` | `configuracion` (POST) | Paginado. |
 | GET / POST | `/sync-conflicts` | — (infraestructura) | POST idempotente por `id` del dispositivo. |
 | POST | `/ventas` | `venta` | Idempotente por `local_id`. Decrementa inventario + movimiento. |
@@ -1217,8 +1267,8 @@ códigos de error, ejemplos): `docs/api-contract.md`.
 | GET | `/cortes-caja/totales` | — | Agrega ventas/retiros del periodo. |
 | POST / GET | `/retiros-efectivo` | `caja` (POST) | Idempotente por `local_id`. Filtros `desde`/`hasta`/`updated_since` (pull del sync diferido). |
 | POST | `/devoluciones` | `devoluciones` | Con líneas. No toca inventario. Idempotente por `local_id` (Parte 32). |
-| GET / POST / PATCH / DELETE | `/roles` | `usuarios` (escrituras) | Roles de sistema: `400` a PATCH/DELETE. DELETE = soft-delete. |
-| GET / POST / PATCH / DELETE | `/usuarios` | `usuarios` (escrituras) | Nunca devuelve `password_hash`. DELETE = soft-delete. |
+| GET / POST / PATCH / DELETE | `/roles` | `usuarios` (escrituras) | Roles de sistema: `400` a PATCH/DELETE. DELETE = soft-delete; `409` si el rol tiene usuarios asignados (Parte 37). |
+| GET / POST / PATCH / DELETE | `/usuarios` | `usuarios` (escrituras) | Nunca devuelve `password_hash`; el `password_hash` de entrada se valida como bcrypt (`422`). DELETE = soft-delete. `409` al desactivar (PATCH con `activo=false`) o borrar al propio usuario o al último con el módulo `usuarios` (Parte 37). |
 
 **Convenciones**: fechas ISO-8601 UTC; IDs UUID v4 (string); paginación
 `page` (1-indexed) + `page_size` (default 20, max 100); errores de negocio
@@ -1240,7 +1290,7 @@ para guiar el proceso.
 |---|---|
 | Backend vivo | `curl http://<host>:8000/api/v1/health` -> `{"status":"ok","version":"0.1.0"}`. |
 | Contenedores | `docker compose ps` (backend `healthy`, `migrate` `exited 0`). |
-| Migraciones aplicadas | `docker compose exec backend alembic current` (debe coincidir con el head del repo, hoy `0013`). |
+| Migraciones aplicadas | `docker compose exec backend alembic current` (debe coincidir con el head del repo, hoy `0014`). |
 | Prueba de conexión desde la app | Panel de conexión -> "Probar conexión" (`BackendHealthChecker`, OkHttp propio sin interceptores, contra la URL tecleada). |
 
 ### 9.2 Logs del backend
@@ -1292,6 +1342,11 @@ python -c "import sqlite3;c=sqlite3.connect('pdv.db');print(c.execute('select na
 | Asistente de IA: "El proveedor no devolvió ninguna respuesta" intermitente | DeepSeek `deepseek-chat` con `response_format=json_object` devuelve `content` vacío de forma intermitente (`finish_reason` / `usage` en el log de `LlmClient` lo distinguen). | Conocido (Backlog). Reintentar el mensaje; evaluar `max_tokens` explícito / reintento único. |
 | Asistente de IA: "La IA devolvió una respuesta con formato inválido" | El proveedor no respetó el JSON de `RespuestaIaDto`. `FORMATO_SALIDA_ACCIONES` + `instruccionFaq` se concatenan al prompt para mitigarlo. | Revisar el log `LlmClient` (contenido truncado + `finish_reason`). Verificar el prompt de sistema editable. |
 | Test de backend verde pero el device falla contra el backend dockerizado | pytest corre contra el host; la imagen puede estar desactualizada. | Rebuild de la imagen antes de verificar en device. |
+| Todas las rutas responden `403 "debe cambiar la contrasena"` | El usuario del token conserva `debe_cambiar_password = true` (admin de arranque tras la migración `0014`). | Cambiar la contraseña desde `CambiarPasswordScreen` o con `POST /auth/cambiar-password`. |
+| `POST /auth/login` responde `429` aun con la contraseña correcta | Bloqueo del `username` por 5 fallos en 15 min (`limite_login`, memoria del worker). | Esperar a que venza la ventana o reiniciar el backend; el contador no se persiste. |
+| El contenedor del backend termina con `RuntimeError: JWT_SECRET_KEY ...` | Falta `JWT_SECRET_KEY`, o tiene el valor de desarrollo con `PDV_ENV` distinto de `development`. | Definir una clave propia en el entorno del despliegue (`docker-compose.prod.yml`). En local, `PDV_ENV=development` (lo fija el `docker-compose.yml`). |
+| `/docs` devuelve `404` | Sin `PDV_ENV=development` el backend no expone `/docs`, `/redoc` ni `/openapi.json`. | Esperado fuera de desarrollo. |
+| Configuración muestra "Último error: cambia la contrasena inicial antes de sincronizar" | La sesión tiene `debeCambiarPassword`; el orquestador no sube hasta el cambio. | Cambiar la contraseña inicial. |
 | Carrera KSP debug/release al compilar Android | Hallazgo transitorio de la Parte 24 (a vigilar en la Parte 26 / CI). | `./gradlew clean` y recompilar; reportar si es reproducible. |
 | OpenRouter nunca probado en vivo | No hay token de OpenRouter en el entorno. | Cargar un token real para validar antes de recomendar ese proveedor a un comercio. |
 
@@ -1337,8 +1392,8 @@ sincronizados vía `docs/api-contract.md`.
 
 | Lado | Comando | Estado de referencia |
 |---|---|---|
-| Backend | `uv run pytest` | 15 archivos `test_*.py` más `conftest.py`, **185 passed** (verificado 2026-10-17, tras la Parte 35). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
-| Android | `./gradlew testDebugUnitTest` | 92 archivos `*Test.kt` (la Parte 35 sumó `ArticuloEdicionPusherTest` y `ArticuloEntityTest`); última corrida completa (2026-10-20, `--rerun`, tras la Parte 36): **463 / 0 fallos / 0 errores / 0 omitidos**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
+| Backend | `uv run pytest` | 17 archivos `test_*.py` más `conftest.py` (la Parte 37 sumó `test_config.py` y `test_limite_login.py`), **210 passed** (registrado en `docs/PLAN.md` el 2026-10-20, tras la Parte 37). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
+| Android | `./gradlew testDebugUnitTest` | 94 archivos `*Test.kt` (la Parte 37 sumó `CambiarPasswordViewModelTest` y `LimpiezaDataStoreTest`); última corrida registrada en `docs/PLAN.md` (2026-10-20, tras la Parte 37): **480 / 0 fallos / 0 errores / 0 omitidos**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
 
 Ningún PR/feature se considera terminado sin tests unitarios en el lado
 modificado (`CLAUDE.md` §6). "Compilar" no es evidencia suficiente para cerrar
@@ -1360,10 +1415,11 @@ Un cambio de esquema toca **tres artefactos** que deben quedar alineados
 Verificación: `uv run alembic check` (drift modelo/migración) y
 `backend/tests/test_schema_parity.py`.
 
-Estado actual: **13 migraciones Alembic** (`0001`..`0013`, la última agrega
+Estado actual: **14 migraciones Alembic** (`0001`..`0014`; la `0013` agrega
 `UNIQUE(local_id)` a `devoluciones` para la idempotencia del push de la Parte
-32; las Partes 34 y 35 no agregaron migraciones), Room en **v10** (línea base v7 con `exportSchema`, más `MIGRATION_7_8`
-para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35, y `MIGRATION_9_10` para `syncRechazo`, Parte 36; la Parte 36 no agregó migraciones Alembic).
+32 y la `0014` agrega `usuarios.debe_cambiar_password` en la Parte 37; las
+Partes 34, 35 y 36 no agregaron migraciones), Room en **v11** (línea base v7 con `exportSchema`, más `MIGRATION_7_8`
+para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35, `MIGRATION_9_10` para `syncRechazo`, Parte 36, y `MIGRATION_10_11` para `usuarios.debeCambiarPassword`, Parte 37).
 
 ### 10.5 Añadir o cambiar un endpoint
 
@@ -1429,16 +1485,17 @@ para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35
 ### 11.1 Estado del plan (`docs/PLAN.md`)
 
 Las Partes 1-33 están implementadas y mergeadas (su detalle se archivó en
-`docs/PLAN-historico.md`); `docs/PLAN.md` conserva las Partes 34 y 35
-(mergeadas, PR #44 merge `11e0427` y PR #45 merge `7c0bd94`, aún sin
-archivar), la Parte 36 (implementada y verificada en dispositivo en la rama
-`feature/POS-168-sucursal-estable-rechazos-sync`, pendiente de merge) y las
-Partes pendientes 37-40. La 34 y las 36-40 salen de la revisión
+`docs/PLAN-historico.md`); `docs/PLAN.md` conserva las Partes 34, 35 y 36
+(mergeadas, PR #44 merge `11e0427`, PR #45 merge `7c0bd94` y PR #46 merge
+`679664e`, aún sin archivar), la Parte 37 (implementada y verificada en
+dispositivo en la rama `feature/POS-172-endurecimiento-seguridad`, pendiente
+de merge) y las Partes pendientes 38-40. La 34 y las 36-40 salen de la revisión
 pre-release del 2026-09-28/29 (`docs/review_code.md`, hallazgos A-n / M-n /
 B-n con reproducción); la 35 salió de la ejecución de la 34 (2026-10-12). Las
-Partes 34, 35 y 36 tienen claves de Jira (épica `POS-157`, historias
+Partes 34, 35, 36 y 37 tienen claves de Jira (épica `POS-157`, historias
 `POS-158`..`POS-161`; épica `POS-162`, historias `POS-163`..`POS-167`; épica
-`POS-168`, historias `POS-169`..`POS-171`); las 37-40 no. El checklist completo — criterios de cierre,
+`POS-168`, historias `POS-169`..`POS-171`; épica `POS-172`, historias
+`POS-173`..`POS-175`); las 38-40 no. El checklist completo — criterios de cierre,
 etiquetas de verificación y decisiones abiertas — vive en `docs/PLAN.md`; esta
 sección solo resume el alcance, no lo duplica.
 
@@ -1477,8 +1534,8 @@ sección solo resume el alcance, no lo duplica.
   [§2.4](#24-motor-de-sincronización)). Verificada el 2026-10-16 en un Xiaomi
   24030PN60G (el M2102J20SG dejó de estar disponible). Sin cubrir en JVM: la
   carrera del DAO (`cerrarEdicionSubida`) y la migración 8 a 9.
-- **Parte 36 — sucursal estable y rechazos visibles del sync** (implementada
-  y verificada en dispositivo, sin mergear; épica `POS-168`, historias
+- **Parte 36 — sucursal estable y rechazos visibles del sync** (mergeada,
+  PR #46; épica `POS-168`, historias
   `POS-169`..`POS-171`; A-8, A-6, M-5): `ConfiguracionViewModel` ya no
   persiste un fallback de sucursal, empareja por `id` o `remoteId` y avisa con
   `sucursalNoEncontrada`; columna `syncRechazo`, `MIGRATION_9_10` (Room v10),
@@ -1488,10 +1545,21 @@ sección solo resume el alcance, no lo duplica.
   "sync requiere re-login" (detalle en [§2.4](#24-motor-de-sincronización)).
   Fuera de alcance, en el Backlog: subir conflictos al backend y reintentar
   filas rechazadas.
-- **Parte 37 — endurecimiento de seguridad pre-release** (pendiente; A-3,
-  A-4, A-5, M-4, M-6, M-10): credenciales de arranque, `JWT_SECRET_KEY`
-  obligatoria, límite de intentos y `/docs` en producción, borrado de roles,
-  `allowBackup` y limpieza de claves obsoletas del DataStore.
+- **Parte 37 — endurecimiento de seguridad pre-release** (implementada y
+  verificada en dispositivo, sin mergear; épica `POS-172`, historias
+  `POS-173`..`POS-175`; A-3, A-4, A-5, M-4, M-6, M-10): `debe_cambiar_password`
+  (Alembic `0014`, Room v11 con `MIGRATION_10_11`), `POST /auth/cambiar-password`,
+  `usuario_del_token` frente a `usuario_actual` (`403` mientras la marca esté
+  encendida), `CambiarPasswordScreen` forzada y orquestador de sync sin subir
+  en ese estado; `app/config.py` (`PDV_ENV`, `JWT_SECRET_KEY` obligatoria,
+  `/docs` solo en desarrollo), `limite_login.py` y login de tiempo constante,
+  `password_hash` validado como bcrypt, `409` al borrar un rol con usuarios o
+  dar de baja al propio usuario o al último administrador, rol borrado sin
+  módulos; `allowBackup="false"` con `data_extraction_rules.xml`,
+  `GeneralSecurityException` tratada como ausencia en `SessionStore`/
+  `IaPreferences` y `LimpiezaDataStore` (detalle en [§7](#7-seguridad)).
+  Pendiente a cargo del usuario: rotar la API key de IA del dispositivo de
+  pruebas.
 - **Parte 38 — integridad de datos del backend** (pendiente; M-1, M-2, B-1,
   B-2): `usuario_id` derivado del JWT, validación de montos y fechas, primer
   insert concurrente de inventario sin `500`, devoluciones sin N+1.
@@ -1550,7 +1618,7 @@ pull con `updated_since`, `SessionStore` cifrado; ver §2.4).
 La revisión pre-release (`docs/review_code.md`) encontró, sin embargo, que el
 inventario no converge entre terminales de la misma sucursal y que el sync
 tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
-(§11.1): la 34 y la 35 están mergeadas y la 36 implementada, pendiente de merge:
+(§11.1), las tres mergeadas:
 
 - **Inventario que no converge** (Parte 34, A-1/A-2/M-3, **resuelto**): el
   backend no actualizaba `inventario.updated_at` en ventas/entradas, en
@@ -1644,6 +1712,8 @@ evidencia directa de dispositivo y base de datos, no solo de logs — ver
 | **`deleted_at`** | Soft-delete: fila inactiva sin borrado físico. |
 | **Ajuste por delta** | Ajuste de existencia que viaja como diferencia con signo (`POST /ajustes-inventario`, idempotente por `local_id`) en vez de la cantidad absoluta; permite que varias terminales converjan sin pisarse (Parte 34). |
 | **`edicionPendiente`** | Columna de `inventario` (Room v9, solo cliente) que marca una edición local de catálogo o `ubicacion` aún sin subir con `PATCH /articulos/{articulo_id}` (Parte 35). |
+| **`debe_cambiar_password`** | Marca de `usuarios` (Alembic `0014`, Room v11 `debeCambiarPassword`) que deja al admin de arranque sin acceso a ningún módulo hasta cambiar la contraseña (`403` en el backend, `CambiarPasswordScreen` en la app) (Parte 37). |
+| **`PDV_ENV`** | Variable de entorno del backend: `development` habilita la clave JWT de desarrollo y `/docs`; cualquier otro valor (o su ausencia) se trata como producción (Parte 37). |
 | **`syncRechazo`** | Columna de cliente (Room v10) con el código HTTP con que el backend rechazó una fila en el push (`0` = desconocido); la fila deja de ser pendiente y se registra en `sync_conflicts` con política `rechazo_backend` (Parte 36). |
 | **Ventana de solape** | Margen de 2 minutos que el cliente resta al cursor del pull (`SyncStateStore.pullDesde`) para no saltar filas confirmadas tarde en el backend. |
 | **Evento aditivo** | Política de sync para cantidades: se combinan deltas con signo (`base + deltaLocal + deltaRemoto`), nunca se sobrescribe el valor. |

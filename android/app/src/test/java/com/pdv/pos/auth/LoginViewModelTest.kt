@@ -194,4 +194,19 @@ class LoginViewModelTest {
 
         coVerify { authRepository.login("admin", "admin123") }
     }
+
+    @Test
+    fun `login carries the pending password change into the session`() = runTest(dispatcher) {
+        val authRepository = mockk<AuthRepository>()
+        coEvery { authRepository.login("admin", "admin123") } returns
+            LoginResultado.Exitoso(usuarioDeEjemplo().copy(debeCambiarPassword = true), accessToken = null)
+        val sessionManager = SessionManager()
+        val viewModel = LoginViewModel(authRepository, sessionManager)
+        viewModel.onUsernameChange("admin")
+        viewModel.onPasswordChange("admin123")
+
+        viewModel.login()
+
+        assertTrue(sessionManager.session.value?.debeCambiarPassword == true)
+    }
 }

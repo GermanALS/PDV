@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
+import com.pdv.pos.config.LimpiezaDataStore
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
 import com.pdv.pos.sync.SyncScheduler
@@ -38,6 +39,9 @@ class PdvApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var sessionManager: SessionManager
 
+    @Inject
+    lateinit var limpiezaDataStore: LimpiezaDataStore
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -59,7 +63,12 @@ class PdvApplication : Application(), Configuration.Provider {
     // que termine la restauracion se ve un parpadeo breve de LoginScreen;
     // se revisa en el Grupo 5 si molesta.
     private fun restaurarSesionYProgramarSync() {
-        applicationScope.launch { sessionManager.restaurarSesion() }
+        applicationScope.launch {
+            // Antes de restaurar: borra claves obsoletas como ia_token en
+            // claro (PLAN.md Parte 37, M-10).
+            limpiezaDataStore.limpiarClavesObsoletas()
+            sessionManager.restaurarSesion()
+        }
         applicationScope.launch {
             configuracionPreferences.deviceConfig
                 .map { it.backendMode }

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.rol import Rol
+from app.models.usuario import Usuario
 from app.schemas.rol import (
     RolCreateSchema,
     RolListResponseSchema,
@@ -92,5 +93,12 @@ async def delete_rol(rol_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> N
         raise HTTPException(status_code=404, detail="rol no encontrado")
     if rol.es_sistema:
         raise HTTPException(status_code=400, detail="no se puede eliminar un rol de sistema")
+    asignados = await db.scalar(
+        select(func.count())
+        .select_from(Usuario)
+        .where(Usuario.rol_id == rol_id, Usuario.deleted_at.is_(None))
+    )
+    if asignados:
+        raise HTTPException(status_code=409, detail="el rol tiene usuarios asignados")
     rol.deleted_at = datetime.now(timezone.utc)
     await db.commit()

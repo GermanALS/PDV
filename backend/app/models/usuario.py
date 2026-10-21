@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -23,6 +23,9 @@ class Usuario(Base):
     # async.
     rol: Mapped[Rol] = relationship(lazy="raise")
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Solo el admin bootstrap (contrasena publica) nace en true; solo
+    # POST /auth/cambiar-password lo apaga (PLAN.md Parte 37, A-3).
+    debe_cambiar_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -132,4 +132,51 @@ class ModeAwareAuthRepositoryTest {
 
         coVerify(exactly = 0) { remote.login(any(), any()) }
     }
+
+    @Test
+    fun `local con sincronizacion flags the session when only the backend requires the change`(@TempDir tempDir: File) =
+        runTest {
+            val local = mockk<LocalAuthRepository>()
+            coEvery { local.login("admin", "admin123") } returns LoginResultado.Exitoso(usuario, accessToken = null)
+            val remote = mockk<RemoteAuthRepository>()
+            coEvery { remote.login("admin", "admin123") } returns
+                LoginResultado.Exitoso(usuario.copy(debeCambiarPassword = true), accessToken = "jwt-remoto")
+            val preferences = preferences(tempDir)
+            preferences.setBackendMode(BackendMode.LOCAL_CON_SINCRONIZACION)
+
+            val resultado = ModeAwareAuthRepository(local, remote, preferences).login("admin", "admin123")
+
+            assertEquals(
+                LoginResultado.Exitoso(usuario.copy(debeCambiarPassword = true), accessToken = "jwt-remoto"),
+                resultado,
+            )
+        }
+
+    @Test
+    fun `local con sincronizacion changes the local password even if the remote change fails`(@TempDir tempDir: File) =
+        runTest {
+            val local = mockk<LocalAuthRepository>(relaxed = true)
+            val remote = mockk<RemoteAuthRepository>()
+            coEvery { remote.cambiarPassword(any(), any()) } throws IOException("sin red")
+            val preferences = preferences(tempDir)
+            preferences.setBackendMode(BackendMode.LOCAL_CON_SINCRONIZACION)
+
+            ModeAwareAuthRepository(local, remote, preferences).cambiarPassword("usuario-1", "nueva-segura")
+
+            coVerify(exactly = 1) { local.cambiarPassword("usuario-1", "nueva-segura") }
+            coVerify(exactly = 1) { remote.cambiarPassword("usuario-1", "nueva-segura") }
+        }
+
+    @Test
+    fun `remoto changes the password only on the backend`(@TempDir tempDir: File) = runTest {
+        val local = mockk<LocalAuthRepository>()
+        val remote = mockk<RemoteAuthRepository>(relaxed = true)
+        val preferences = preferences(tempDir)
+        preferences.setBackendMode(BackendMode.REMOTO)
+
+        ModeAwareAuthRepository(local, remote, preferences).cambiarPassword("usuario-1", "nueva-segura")
+
+        coVerify(exactly = 1) { remote.cambiarPassword("usuario-1", "nueva-segura") }
+        coVerify(exactly = 0) { local.cambiarPassword(any(), any()) }
+    }
 }

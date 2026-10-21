@@ -14,4 +14,9 @@ sealed class LoginResultado {
 // negocio esperado, no una excepcion.
 interface AuthRepository {
     suspend fun login(username: String, password: String): LoginResultado
+
+    // Cambio de la contrasena propia, que apaga debeCambiarPassword (PLAN.md
+    // Parte 37, A-3). usuarioId es el de la sesion; en REMOTO el backend
+    // toma el usuario del token.
+    suspend fun cambiarPassword(usuarioId: String, nuevaPassword: String)
 }

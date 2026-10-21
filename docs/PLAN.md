@@ -306,7 +306,7 @@ que toda fila que el backend rechace quede visible y recuperable.
 
 ---
 
-## Parte 37: Endurecimiento de seguridad pre-release
+## Parte 37: Endurecimiento de seguridad pre-release  <!-- POS-172 -->
 
 *(Sale de los hallazgos A-3, A-4, A-5, M-4, M-6 y M-10 de
 `docs/review_code.md`, reproducidos contra el backend y en el Xiaomi:
@@ -318,7 +318,7 @@ respaldada); login sin límite de intentos y con enumeración por tiempo
 borrado que sigue otorgando permisos; API key de IA residual en texto plano
 en el dispositivo de pruebas.)*
 
-Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
+Claves de Jira: épica POS-172; historias POS-173 (grupo 1), POS-174 (grupo 2) y POS-175 (grupo 3).
 
 Objetivo: que un backend expuesto a internet y una app distribuida en Play
 Store no tengan credenciales ni secretos por defecto, no se caigan tras una
@@ -326,47 +326,88 @@ restauración y resistan los ataques básicos de login.
 
 ### Checklist
 
-**1. Credenciales de arranque (A-3)**
-- [ ] El administrador bootstrap (backend y dispositivo) debe cambiar su
+**1. Credenciales de arranque (A-3) (POS-173)**
+- [x] El administrador bootstrap (backend y dispositivo) debe cambiar su
   contraseña en el primer login, según la decisión abierta. Criterio:
   login con `admin/admin123` no da acceso a ningún módulo hasta cambiarla;
-  `jvm-tests` + test de backend.
+  `jvm-tests` + test de backend. *(2026-10-20: marca
+  `debe_cambiar_password` en Alembic 0014, Room v11 (`MIGRATION_10_11`) y
+  `schema-pos.json`; `POST /auth/cambiar-password` (contrato §2.2) y `403`
+  en toda ruta protegida mientras siga encendida; pantalla obligatoria en
+  la app y el `SyncWorker` no sube nada en ese estado. pytest 190/0,
+  Android 476/0/0.)*
 
-**2. Backend (A-4, M-4, M-6)**
-- [ ] A-4: el backend no arranca si falta `JWT_SECRET_KEY` (o si tiene el
+**2. Backend (A-4, M-4, M-6) (POS-174)**
+- [x] A-4: el backend no arranca si falta `JWT_SECRET_KEY` (o si tiene el
   valor de desarrollo fuera de dev). Criterio: test + arranque del
-  contenedor sin la variable falla con un mensaje claro.
-- [ ] M-4: límite de intentos de login, tiempo de respuesta constante para
+  contenedor sin la variable falla con un mensaje claro. *(2026-10-20:
+  `app/config.py` con `PDV_ENV`, que sin valor se asume productivo;
+  `development` solo en el `docker-compose.yml` local y en los tests.
+  `docker run` de la imagen sin la variable termina con
+  `RuntimeError: JWT_SECRET_KEY es obligatoria`, y con la clave de
+  desarrollo sin `PDV_ENV` con `... PDV_ENV no es development`.)*
+- [x] M-4: límite de intentos de login, tiempo de respuesta constante para
   usuario inexistente, `/docs`/`/openapi.json` deshabilitados en producción,
   `password_hash` validado (prefijo `$2`) → `422`. Criterio: tests por
   cada punto; repetir las mediciones de `review_code.md` (20 intentos,
-  tiempos, 500 por hash inválido) con resultado corregido.
-- [ ] M-6: `DELETE /roles/{id}` con usuarios asignados → `409`; un rol
+  tiempos, 500 por hash inválido) con resultado corregido. *(2026-10-20,
+  contra el contenedor reconstruido: 20 intentos contra `admin` → 5 × 401 y
+  15 × 429, y la contraseña correcta también recibe 429 mientras dura el
+  bloqueo; mediana de 5 intentos, usuario inexistente 568 ms frente a
+  existente con contraseña incorrecta 542 ms (antes 115 frente a 1056);
+  `POST /usuarios` con hash inválido → 422 (antes 201 y login 500);
+  `/docs`, `/redoc` y `/openapi.json` → 404 con `PDV_ENV` productivo. El
+  contador es por `username` y por worker.)*
+- [x] M-6: `DELETE /roles/{id}` con usuarios asignados → `409`; un rol
   borrado no otorga módulos; no se puede desactivar/borrar al último
   usuario con módulo `usuarios` ni a uno mismo. Contrato §10/§11
-  actualizado primero. Tests happy path + error.
+  actualizado primero. Tests happy path + error. *(2026-10-20: la
+  reproducción de `review_code.md` contra el contenedor da 409 en
+  `DELETE /roles` con un usuario asignado y 409 al borrarse a uno mismo.
+  pytest 210/0.)*
 
-**3. Android (A-5, M-10)**
-- [ ] A-5: `allowBackup="false"` o `dataExtractionRules` que excluyan
+**3. Android (A-5, M-10) (POS-175)**
+- [x] A-5: `allowBackup="false"` o `dataExtractionRules` que excluyan
   DataStore y la base; un fallo de descifrado en `SessionStore`/
   `IaPreferences` se trata como "sin sesión / sin token" y limpia las
-  claves. `jvm-tests` con un `TokenCipher` que lanza.
-- [ ] M-10: limpieza única de claves obsoletas del DataStore (incluida
+  claves. `jvm-tests` con un `TokenCipher` que lanza. *(2026-10-20:
+  `allowBackup="false"` más `dataExtractionRules` que excluyen todo, porque
+  desde Android 12 `allowBackup` ya no corta la transferencia entre
+  dispositivos; `GeneralSecurityException` al descifrar → sin sesión o sin
+  token, con las claves borradas; `ClaveAjenaTokenCipher` en los tests.
+  Android 480/0/0, lint sin avisos nuevos.)*
+- [x] M-10: limpieza única de claves obsoletas del DataStore (incluida
   `ia_token` en claro) al arrancar. `jvm-tests`. Tarea operativa aparte:
   rotar la API key del proveedor de IA del dispositivo de pruebas.
-- [ ] Verificación en el Xiaomi: repetir la reproducción de A-5 de
+  *(2026-10-20: `LimpiezaDataStore` borra `ia_token`, `nombre_base_datos`
+  y los cursores de pull sin sucursal antes de restaurar la sesión, y solo
+  escribe si alguna sigue presente. El Xiaomi 24030PN60G actual no tiene
+  `ia_token`, que estaba en el M2102J20SG anterior. La rotación de la key
+  queda a cargo del usuario.)*
+- [x] Verificación en el Xiaomi: repetir la reproducción de A-5 de
   `review_code.md` (instalación limpia + archivos de una sesión con JWT) →
-  la app abre en el login sin cerrarse. `needs-device`.
+  la app abre en el login sin cerrarse. `needs-device`. *(2026-10-21,
+  Xiaomi 24030PN60G: respaldo de `databases/` y `files/` con la sesión
+  `revcaja` y su JWT cifrado, desinstalación, instalación y reposición de
+  los archivos. Tres arranques en frío sin `FATAL EXCEPTION` (antes 3 de
+  3); el DataStore quedó sin claves `session_*` y con el resto intacto.
+  El usuario confirmó que la app abre en el login y que los datos siguen
+  ahí.)*
 
 ### Decisiones abiertas
 
-- [ ] Contraseña inicial del admin: ¿cambio forzado en el primer login, o
+- [x] Contraseña inicial del admin: ¿cambio forzado en el primer login, o
   contraseña provista por variable de entorno en el despliegue (backend) y
-  asistente inicial (dispositivo)?
-- [ ] Límite de intentos de login: ¿en la app (contador en base/memoria) o
+  asistente inicial (dispositivo)? **Resuelta (2026-10-20): cambio forzado
+  en el primer login**, con la marca `debe_cambiar_password` en `usuarios`
+  (backend, Room y `schema-pos.json`) y una pantalla obligatoria de cambio.
+- [x] Límite de intentos de login: ¿en la app (contador en base/memoria) o
   delegado al proxy/infraestructura del destino de despliegue (Parte 40)?
-- [ ] `allowBackup`: ¿desactivar por completo o mantener respaldo
-  excluyendo solo DataStore y la base?
+  **Resuelta (2026-10-20): en la app, contador en memoria del proceso**
+  (por worker; sin librerías nuevas).
+- [x] `allowBackup`: ¿desactivar por completo o mantener respaldo
+  excluyendo solo DataStore y la base? **Resuelta (2026-10-20): desactivar
+  por completo** (`android:allowBackup="false"`).
 
 ---
 
