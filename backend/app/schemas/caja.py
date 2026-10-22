@@ -1,15 +1,17 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.comunes import UsuarioDispositivo, a_centavos
 
 
 class CorteCajaCreateSchema(BaseModel):
     local_id: uuid.UUID
     sucursal_id: uuid.UUID
-    usuario_id: str = Field(min_length=1, max_length=120)
+    usuario_dispositivo: UsuarioDispositivo = None
     tipo: Literal["parcial", "final"]
     fecha_inicio: datetime
     fecha_fin: datetime
@@ -21,12 +23,33 @@ class CorteCajaCreateSchema(BaseModel):
     monto_contado: Decimal | None = None
     diferencia: Decimal | None = None
 
+    @model_validator(mode="after")
+    def _validar_consistencia(self) -> Self:
+        """Coherencia interna del corte con las formulas de
+        LocalCajaRepository.calcularTotales y CajaUiState (PLAN.md Parte 38,
+        M-2). No compara contra las ventas guardadas: con el sync diferido el
+        corte puede llegar antes que ellas."""
+        if self.fecha_fin < self.fecha_inicio:
+            raise ValueError("fecha_fin es anterior a fecha_inicio")
+        if a_centavos(self.total_efectivo + self.total_tarjeta) != a_centavos(self.total_ventas):
+            raise ValueError("total_ventas no es total_efectivo + total_tarjeta")
+        if a_centavos(self.total_efectivo - self.total_retiros) != a_centavos(self.monto_esperado):
+            raise ValueError("monto_esperado no es total_efectivo - total_retiros")
+        if (self.monto_contado is None) != (self.diferencia is None):
+            raise ValueError("monto_contado y diferencia van juntos o ninguno")
+        if self.monto_contado is not None and a_centavos(self.monto_contado - self.monto_esperado) != a_centavos(
+            self.diferencia
+        ):
+            raise ValueError("diferencia no es monto_contado - monto_esperado")
+        return self
+
 
 class CorteCajaResponseSchema(BaseModel):
     id: uuid.UUID
     local_id: uuid.UUID | None
     sucursal_id: uuid.UUID
     usuario_id: str
+    usuario_dispositivo: str | None
     tipo: str
     fecha_inicio: datetime
     fecha_fin: datetime
@@ -45,7 +68,7 @@ class CorteCajaResponseSchema(BaseModel):
 class RetiroEfectivoCreateSchema(BaseModel):
     local_id: uuid.UUID
     sucursal_id: uuid.UUID
-    usuario_id: str = Field(min_length=1, max_length=120)
+    usuario_dispositivo: UsuarioDispositivo = None
     monto: Decimal = Field(gt=0)
     motivo: str | None = Field(default=None, max_length=255)
     fecha: datetime
@@ -56,6 +79,7 @@ class RetiroEfectivoResponseSchema(BaseModel):
     local_id: uuid.UUID | None
     sucursal_id: uuid.UUID
     usuario_id: str
+    usuario_dispositivo: str | None
     monto: Decimal
     motivo: str | None
     fecha: datetime

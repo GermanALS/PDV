@@ -13,7 +13,7 @@ async def _articulo_con_existencia(client_autenticado, sucursal_id: str, sku: st
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": cantidad,
             "articulo_nuevo": {
@@ -71,7 +71,7 @@ async def test_ajustar_articulo_updates_attributes_and_applies_delta(client_aute
         f"/api/v1/inventario/{articulo_id}",
         json={
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "nombre": "Nombre editado",
             "categoria": "Abarrotes",
             "unidad_medida": "pieza",
@@ -99,7 +99,7 @@ async def test_ajustar_articulo_without_quantity_change_creates_no_movimiento(cl
         f"/api/v1/inventario/{articulo_id}",
         json={
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "nombre": "Articulo INV-003",
             "unidad_medida": "pieza",
             "precio_venta": "20.00",
@@ -118,7 +118,7 @@ async def test_ajustar_articulo_inexistente_returns_404(client_autenticado):
         f"/api/v1/inventario/{uuid.uuid4()}",
         json={
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "nombre": "No existe",
             "unidad_medida": "pieza",
             "precio_venta": "10.00",
@@ -178,7 +178,7 @@ async def test_venta_y_entrada_actualizan_updated_at_de_inventario(client_autent
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "F-INV-MOV",
             "fecha": "2026-08-19T12:00:00Z",
             "subtotal": "40.00",
@@ -195,7 +195,7 @@ async def test_venta_y_entrada_actualizan_updated_at_de_inventario(client_autent
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "5",
             "articulo_id": articulo_id,
@@ -215,7 +215,7 @@ def _ajuste_delta_payload(sucursal_id: str, articulo_id: str, delta: str, local_
         "local_id": local_id or str(uuid.uuid4()),
         "sucursal_id": sucursal_id,
         "articulo_id": articulo_id,
-        "usuario_id": "admin",
+        "usuario_dispositivo": "admin",
         "fecha": "2026-08-19T12:00:00Z",
         "delta": delta,
     }
@@ -229,7 +229,7 @@ async def test_ajuste_delta_no_borra_venta_de_otra_terminal(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "F-DELTA",
             "fecha": "2026-08-19T12:00:00Z",
             "subtotal": "60.00",
@@ -318,7 +318,7 @@ async def test_ajustar_articulo_sucursal_id_inexistente_returns_404(client_auten
         f"/api/v1/inventario/{articulo_id}",
         json={
             "sucursal_id": str(uuid.uuid4()),
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "nombre": "Articulo de prueba",
             "unidad_medida": "pieza",
             "precio_venta": "10.00",
@@ -332,7 +332,7 @@ async def test_ajustar_articulo_sucursal_id_inexistente_returns_404(client_auten
 def _edicion_catalogo_payload(sucursal_id: str, editado_en: str, **cambios) -> dict:
     payload = {
         "sucursal_id": sucursal_id,
-        "usuario_id": "admin",
+        "usuario_dispositivo": "admin",
         "nombre": "Nombre editado",
         "unidad_medida": "pieza",
         "precio_venta": "25.00",
@@ -367,7 +367,7 @@ async def test_editar_catalogo_no_pisa_venta_concurrente(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "folio": "F-CAT-VENTA",
             "fecha": "2026-08-19T12:00:00Z",
             "subtotal": "60.00",
@@ -464,3 +464,38 @@ async def test_editar_catalogo_perdedora_en_sucursal_sin_fila_no_crea_inventario
     assert response.json()["inventario"] is None
     lista = await client_autenticado.get("/api/v1/inventario", params={"sucursal_id": otra_id})
     assert lista.json()["total"] == 0
+
+
+async def test_ajustar_articulo_usuario_sale_del_jwt(client_autenticado, usuario_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-M1", cantidad="10")
+
+    response = await client_autenticado.patch(
+        f"/api/v1/inventario/{articulo_id}",
+        json={
+            "sucursal_id": sucursal_id,
+            "usuario_id": "otro-usuario-inventado",
+            "usuario_dispositivo": "encargado-local",
+            "nombre": "Articulo INV-M1",
+            "unidad_medida": "pieza",
+            "precio_venta": "20.00",
+            "cantidad": "12",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["movimiento"]["usuario_id"] == str(usuario_autenticado.id)
+    assert response.json()["movimiento"]["usuario_dispositivo"] == "encargado-local"
+
+
+async def test_ajuste_delta_usuario_sale_del_jwt(client_autenticado, usuario_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+    articulo_id = await _articulo_con_existencia(client_autenticado, sucursal_id, sku="INV-M1D", cantidad="10")
+    payload = _ajuste_delta_payload(sucursal_id, articulo_id, "-2")
+    payload["usuario_id"] = "otro-usuario-inventado"
+
+    response = await client_autenticado.post("/api/v1/ajustes-inventario", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["movimiento"]["usuario_id"] == str(usuario_autenticado.id)
+    assert response.json()["movimiento"]["usuario_dispositivo"] == "admin"

@@ -278,9 +278,9 @@ mostrador). Registra una venta de mostrador junto con sus líneas
 (`venta_detalle`) en una sola llamada. `id` es la PK del backend =
 `remote_id` del dispositivo una vez sincronizada; cada línea tiene su
 propio `id`/`local_id` con el mismo patrón de correlación que sucursales
-(sección 4). `usuario_id` es el identificador de sesión ficticio de la
-Parte 4 (`admin`/`user1`), no un UUID todavía — se endurece a FK real
-contra `usuarios` en la Parte 13. No hay endpoint de listado (`GET
+(sección 4). `usuario_id` lo fija el servidor con el usuario del JWT
+(sección 12, "Usuario de cada escritura"); el cliente manda el usuario
+local que operó en `usuario_dispositivo`. No hay endpoint de listado (`GET
 /ventas`) todavía: no lo necesita ningún sub-paso de la Parte 7; se agrega
 si una Parte futura lo requiere.
 
@@ -320,7 +320,7 @@ Request body
 {
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_dispositivo": "string o null",
   "folio": "string",
   "fecha": "2026-08-19T12:00:00Z",
   "subtotal": "100.00",
@@ -342,6 +342,14 @@ Request body
 ```
 `lineas` requiere al menos un elemento.
 
+**Consistencia de montos** (PLAN.md Parte 38, hallazgo M-2 de
+`docs/review_code.md`): el servidor recalcula con `Decimal` redondeado a 2
+decimales (`ROUND_HALF_UP`) y exige, con las mismas fórmulas que
+`VentaUiState` del lado Android:
+- en cada línea, `cantidad * precio_unitario == subtotal`;
+- `Σ lineas.subtotal == subtotal`;
+- `total == subtotal - descuento + impuestos`.
+
 Response `201 Created` → se creó una venta nueva.
 
 Response `200 OK` → ya existía una venta con ese `local_id` (reintento de
@@ -354,7 +362,8 @@ Ambos casos devuelven el mismo shape:
   "id": "uuid",
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_id": "uuid del usuario del JWT",
+  "usuario_dispositivo": "string o null",
   "folio": "string",
   "fecha": "2026-08-19T12:00:00Z",
   "subtotal": "100.00",
@@ -379,8 +388,9 @@ Ambos casos devuelven el mismo shape:
 }
 ```
 
-Response `422 Unprocessable Entity` — `lineas` vacío, o falta
-`local_id`/`sucursal_id`/`usuario_id`/`folio`/`metodo_pago`.
+Response `422 Unprocessable Entity` — `lineas` vacío, falta
+`local_id`/`sucursal_id`/`folio`/`metodo_pago`, o los montos no cumplen la
+consistencia de arriba.
 
 Response `404 Not Found` — algún `articulo_id` de `lineas` no corresponde a
 ningún artículo existente.
@@ -426,7 +436,7 @@ Request body — artículo existente:
 {
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_dispositivo": "string o null",
   "fecha": "2026-08-19T12:00:00Z",
   "cantidad": "10",
   "ubicacion": "Estante A1",
@@ -439,7 +449,7 @@ Request body — artículo nuevo:
 {
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_dispositivo": "string o null",
   "fecha": "2026-08-19T12:00:00Z",
   "cantidad": "25",
   "ubicacion": "Estante B2",
@@ -470,7 +480,8 @@ Ambos casos devuelven el mismo shape:
     "local_id": "uuid",
     "sucursal_id": "uuid",
     "articulo_id": "uuid",
-    "usuario_id": "admin",
+    "usuario_id": "uuid del usuario del JWT",
+    "usuario_dispositivo": "string o null",
     "tipo": "entrada",
     "cantidad": "25.000",
     "ubicacion": "Estante B2",
@@ -514,7 +525,7 @@ Ambos casos devuelven el mismo shape:
 (`articulo_id`), ya que no hubo alta de catálogo.
 
 Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
-`usuario_id`/`cantidad`, o el body trae tanto `articulo_id` como
+`cantidad`, o el body trae tanto `articulo_id` como
 `articulo_nuevo` (o ninguno de los dos).
 
 Response `404 Not Found` — `articulo_id` no corresponde a ningún artículo
@@ -606,7 +617,7 @@ Request body
 ```json
 {
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_dispositivo": "string o null",
   "nombre": "string, 1-160 caracteres",
   "descripcion": "string o null",
   "categoria": "string o null",
@@ -653,7 +664,8 @@ Response `200 OK`
     "local_id": "uuid o null",
     "sucursal_id": "uuid",
     "articulo_id": "uuid",
-    "usuario_id": "admin",
+    "usuario_id": "uuid del usuario del JWT",
+    "usuario_dispositivo": "string o null",
     "tipo": "ajuste",
     "cantidad": "5.000",
     "ubicacion": "string o null",
@@ -672,8 +684,8 @@ Response `200 OK`
 Response `404 Not Found` — `articulo_id` no corresponde a ningún artículo
 existente.
 
-Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
-`nombre`/`unidad_medida`/`precio_venta`/`cantidad`.
+Response `422 Unprocessable Entity` — falta `sucursal_id`/`nombre`/
+`unidad_medida`/`precio_venta`/`cantidad`.
 
 ### 7.3 Valores usados de categoría, unidad de medida y ubicación
 
@@ -730,7 +742,7 @@ Request body
   "local_id": "uuid",
   "sucursal_id": "uuid",
   "articulo_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_dispositivo": "string o null",
   "fecha": "2026-08-19T12:00:00Z",
   "delta": "-2.500"
 }
@@ -751,7 +763,8 @@ Ambos casos devuelven el mismo shape:
     "local_id": "uuid",
     "sucursal_id": "uuid",
     "articulo_id": "uuid",
-    "usuario_id": "admin",
+    "usuario_id": "uuid del usuario del JWT",
+    "usuario_dispositivo": "string o null",
     "tipo": "ajuste",
     "cantidad": "-2.500",
     "ubicacion": "string o null",
@@ -781,7 +794,7 @@ cliente puede usar para reconciliar su fila local.
 Response `404 Not Found` — `articulo_id` o `sucursal_id` no existen.
 
 Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
-`articulo_id`/`usuario_id`/`delta`, o `delta` es `0`.
+`articulo_id`/`delta`, o `delta` es `0`.
 
 ### 7.5 Editar catálogo y ubicación de un artículo
 
@@ -812,7 +825,6 @@ Request body
 ```json
 {
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
   "nombre": "string, 1-160 caracteres",
   "descripcion": "string o null",
   "categoria": "string o null",
@@ -838,8 +850,11 @@ en ese caso, si la sucursal no tiene fila de `inventario`, `inventario` es
 
 Response `404 Not Found` — `articulo_id` o `sucursal_id` no existen.
 
-Response `422 Unprocessable Entity` — falta `sucursal_id`/`usuario_id`/
-`nombre`/`unidad_medida`/`precio_venta`/`editado_en`.
+Response `422 Unprocessable Entity` — falta `sucursal_id`/`nombre`/
+`unidad_medida`/`precio_venta`/`editado_en`.
+
+Esta ruta no recibe `usuario_dispositivo` ni guarda usuario: no inserta
+`movimiento` (PLAN.md Parte 38).
 
 Limitación conocida: `POST /entradas` asigna `ubicacion` sin comparar
 fechas (la última en llegar gana), por lo que una entrada puede pisar una
@@ -853,8 +868,9 @@ Quinto recurso real del dominio (PLAN.md Parte 10, módulo Caja, ampliado
 2026-08-20 con cortes parciales/finales y retiros de efectivo). A
 diferencia de `POST /ventas` (sección 5), el backend **no recalcula**
 ningún total: el dispositivo ya agregó `ventas`/`retiros_efectivo` de su
-propio periodo (`LocalCajaRepository.calcularTotales`) y estas rutas solo
-persisten lo que llega, igual que `POST /sucursales` (sección 4). No hay
+propio periodo (`LocalCajaRepository.calcularTotales`) y estas rutas
+persisten lo que llega, tras comprobar solo su coherencia interna (8.1,
+PLAN.md Parte 38). No hay
 FK real entre `retiros_efectivo` y `cortes_caja` — se relacionan por rango
 de fecha del lado del dispositivo, nunca por referencia (PLAN.md Parte 10,
 "Decisiones abiertas").
@@ -878,7 +894,7 @@ Request body
 {
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_dispositivo": "string o null",
   "tipo": "parcial",
   "fecha_inicio": "2026-08-20T08:00:00Z",
   "fecha_fin": "2026-08-20T14:00:00Z",
@@ -894,6 +910,19 @@ Request body
 `tipo` es `"parcial"` o `"final"`. `monto_contado`/`diferencia` son `null`
 si el corte se guarda sin contar el efectivo físico todavía.
 
+**Consistencia del corte** (PLAN.md Parte 38, hallazgo M-2): con `Decimal`
+a 2 decimales y las mismas fórmulas que `LocalCajaRepository.calcularTotales`
+y `CajaUiState` del lado Android, el servidor exige:
+- `fecha_fin >= fecha_inicio`;
+- `total_ventas == total_efectivo + total_tarjeta`;
+- `monto_esperado == total_efectivo - total_retiros`;
+- `monto_contado` y `diferencia` vienen los dos o ninguno, y si vienen,
+  `diferencia == monto_contado - monto_esperado`.
+
+Solo se valida la coherencia interna del corte, no contra las ventas
+guardadas en el backend: con el sync diferido, el corte puede llegar antes
+que las ventas de su periodo.
+
 Response `201 Created` → se creó un corte nuevo.
 
 Response `200 OK` → ya existía un corte con ese `local_id` (reintento de
@@ -905,7 +934,8 @@ Ambos casos devuelven el mismo shape:
   "id": "uuid",
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_id": "uuid del usuario del JWT",
+  "usuario_dispositivo": "string o null",
   "tipo": "parcial",
   "fecha_inicio": "2026-08-20T08:00:00Z",
   "fecha_fin": "2026-08-20T14:00:00Z",
@@ -923,9 +953,9 @@ Ambos casos devuelven el mismo shape:
 ```
 
 Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
-`usuario_id`/`tipo`/`fecha_inicio`/`fecha_fin`/`total_ventas`/
-`total_efectivo`/`total_tarjeta`/`monto_esperado`, o `tipo` no es
-`"parcial"`/`"final"`.
+`tipo`/`fecha_inicio`/`fecha_fin`/`total_ventas`/`total_efectivo`/
+`total_tarjeta`/`monto_esperado`, `tipo` no es `"parcial"`/`"final"`, o el
+corte no cumple la consistencia de arriba.
 
 ### 8.2 Registrar retiro de efectivo
 
@@ -936,7 +966,7 @@ Request body
 {
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_dispositivo": "string o null",
   "monto": "100.00",
   "motivo": "string o null",
   "fecha": "2026-08-20T11:00:00Z"
@@ -954,7 +984,8 @@ Ambos casos devuelven el mismo shape:
   "id": "uuid",
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_id": "uuid del usuario del JWT",
+  "usuario_dispositivo": "string o null",
   "monto": "100.00",
   "motivo": "string o null",
   "fecha": "2026-08-20T11:00:00Z",
@@ -965,7 +996,7 @@ Ambos casos devuelven el mismo shape:
 ```
 
 Response `422 Unprocessable Entity` — falta `local_id`/`sucursal_id`/
-`usuario_id`/`monto`/`fecha`, o `monto` no es mayor que `0`.
+`monto`/`fecha`, o `monto` no es mayor que `0`.
 
 ### 8.3 Totales de un periodo (para calcular un corte)
 
@@ -1029,7 +1060,8 @@ Response `200 OK`
       "id": "uuid",
       "local_id": "uuid o null",
       "sucursal_id": "uuid",
-      "usuario_id": "admin",
+      "usuario_id": "uuid del usuario del JWT",
+      "usuario_dispositivo": "string o null",
       "tipo": "parcial",
       "fecha_inicio": "2026-08-20T08:00:00Z",
       "fecha_fin": "2026-08-20T14:00:00Z",
@@ -1081,7 +1113,8 @@ Response `200 OK`
       "id": "uuid",
       "local_id": "uuid o null",
       "sucursal_id": "uuid",
-      "usuario_id": "admin",
+      "usuario_id": "uuid del usuario del JWT",
+      "usuario_dispositivo": "string o null",
       "monto": "100.00",
       "motivo": "string o null",
       "fecha": "2026-08-20T11:00:00Z",
@@ -1127,7 +1160,7 @@ Request body
 {
   "local_id": "uuid",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_dispositivo": "string o null",
   "venta_id": "uuid o null",
   "folio": "string",
   "fecha": "2026-08-20T12:00:00Z",
@@ -1144,10 +1177,10 @@ Request body
 }
 ```
 `lineas` requiere al menos un elemento. `estado` es opcional, por defecto
-`"registrada"` (`docs/schema-pos.json`: `"registrada"` /
-`"en_gestion_proveedor"` / `"cerrada"`, sin validación server-side de la
-transición todavía — esta Parte solo crea devoluciones en `"registrada"`,
-las transiciones de estado no están en su checklist). `condicion` es libre
+`"registrada"`, y solo admite `"registrada"` / `"en_gestion_proveedor"` /
+`"cerrada"` (`docs/schema-pos.json`; valor cerrado desde la Parte 38,
+hallazgo B-2). No se valida la transición entre estados: hoy solo se crean
+devoluciones en `"registrada"`. `condicion` es libre
 (ej. `"defectuoso"` / `"no_defectuoso"`, `docs/schema-pos.json` lo describe
 como ejemplo, no como enum cerrado).
 
@@ -1157,7 +1190,8 @@ Response `201 Created`
   "id": "uuid",
   "local_id": "uuid o null",
   "sucursal_id": "uuid",
-  "usuario_id": "admin",
+  "usuario_id": "uuid del usuario del JWT",
+  "usuario_dispositivo": "string o null",
   "venta_id": "uuid o null",
   "folio": "string",
   "fecha": "2026-08-20T12:00:00Z",
@@ -1178,8 +1212,9 @@ Response `201 Created`
 }
 ```
 
-Response `422 Unprocessable Entity` — `lineas` vacío, o falta
-`local_id`/`sucursal_id`/`usuario_id`/`folio`/`fecha`.
+Response `422 Unprocessable Entity` — `lineas` vacío, falta
+`local_id`/`sucursal_id`/`folio`/`fecha`, o `estado` no es uno de los tres
+valores admitidos.
 
 Response `404 Not Found` — `venta_id` no corresponde a ninguna venta
 existente, o algún `articulo_id` de `lineas` no corresponde a ningún
@@ -1457,6 +1492,17 @@ Response `409 Conflict` — el usuario es el propio usuario del token, o el
   entidad transaccional (`inventario`, `ventas`, `cortes_caja`,
   `devoluciones`, `movimientos`) — arquitectura multi-sucursal, ver
   PLAN.md Parte 3.
+- **Usuario de cada escritura** (PLAN.md Parte 38, hallazgo M-1): en
+  `ventas`, `movimientos` (entradas y ajustes), `cortes_caja`,
+  `retiros_efectivo` y `devoluciones`, el servidor guarda en `usuario_id`
+  el `id` del usuario del JWT; ningún request lo trae (si llega, se ignora
+  como cualquier campo extra). El cliente manda en `usuario_dispositivo`
+  (opcional, hasta 120 caracteres) el usuario local que operó, dato solo
+  informativo: el sync sube los pendientes con la sesión vigente, que puede
+  ser de otro usuario que el del turno en que se registraron. Las filas
+  anteriores a la Parte 38 conservan su `usuario_id` original (ej.
+  `"admin"` o un UUID local de Room) y tienen `usuario_dispositivo` en
+  `null`.
 - **Campos de tracking de sincronización**: toda entidad sincronizable
   expone `local_id`, `remote_id` (nullable hasta sincronizar), `updated_at`,
   `is_synced`, y `deleted_at` (soft-delete; nunca DELETE físico) — ver

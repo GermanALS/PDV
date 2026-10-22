@@ -58,7 +58,7 @@ class InventarioAjustePusher @Inject constructor(
                         localId = mov.localId,
                         sucursalId = mov.sucursalId,
                         articuloId = articuloRemotoId,
-                        usuarioId = mov.usuarioId,
+                        usuarioDispositivo = mov.usuarioId,
                         fecha = Instant.ofEpochMilli(mov.fecha).toString(),
                         delta = mov.cantidad.toPlainString(),
                     ),

@@ -101,6 +101,7 @@
       "foreign_keys": { "usuario_id": "usuarios" },
       "fields": [
         { "name": "usuario_id", "type": "uuid", "nullable": false, "description": "usuario en turno que realizo la venta" },
+        { "name": "usuario_dispositivo", "type": "string", "nullable": true, "description": "usuario local que opero en el dispositivo, solo informativo; usuario_id lo fija el backend con el usuario del JWT. Room no tiene esta columna: su usuarioId ya es el usuario del dispositivo (Parte 38, M-1)" },
         { "name": "folio", "type": "string", "nullable": false, "description": "numero de venta visible al usuario" },
         { "name": "fecha", "type": "datetime", "nullable": false },
         { "name": "subtotal", "type": "decimal", "nullable": false },
@@ -133,6 +134,7 @@
       "notes": "PLAN.md Parte 10 (ampliada 2026-08-20): un dia puede tener varios cortes 'parcial' y un corte 'final'. Cada corte recalcula sus totales directamente desde ventas/retiros_efectivo filtrando por su propio fecha_inicio/fecha_fin - el final no suma los parciales, simplemente cubre un rango mas amplio que ya los incluye.",
       "fields": [
         { "name": "usuario_id", "type": "uuid", "nullable": false, "description": "quien realiza el corte" },
+        { "name": "usuario_dispositivo", "type": "string", "nullable": true, "description": "usuario local que opero en el dispositivo, solo informativo; usuario_id lo fija el backend con el usuario del JWT. Room no tiene esta columna: su usuarioId ya es el usuario del dispositivo (Parte 38, M-1)" },
         { "name": "tipo", "type": "string", "nullable": false, "description": "\"parcial\" / \"final\"" },
         { "name": "fecha_inicio", "type": "datetime", "nullable": false, "description": "inicio del periodo cortado" },
         { "name": "fecha_fin", "type": "datetime", "nullable": false, "description": "fin del periodo cortado" },
@@ -153,6 +155,7 @@
       "notes": "PLAN.md Parte 10 (ampliada 2026-08-20). Sin FK hacia cortes_caja: se agregan al periodo de un corte por rango de fecha, mismo patron que ventas.",
       "fields": [
         { "name": "usuario_id", "type": "uuid", "nullable": false, "description": "quien realiza el retiro" },
+        { "name": "usuario_dispositivo", "type": "string", "nullable": true, "description": "usuario local que opero en el dispositivo, solo informativo; usuario_id lo fija el backend con el usuario del JWT. Room no tiene esta columna: su usuarioId ya es el usuario del dispositivo (Parte 38, M-1)" },
         { "name": "monto", "type": "decimal", "nullable": false },
         { "name": "motivo", "type": "string", "nullable": true },
         { "name": "fecha", "type": "datetime", "nullable": false }
@@ -165,6 +168,7 @@
       "foreign_keys": { "usuario_id": "usuarios", "venta_id": "ventas" },
       "fields": [
         { "name": "usuario_id", "type": "uuid", "nullable": false },
+        { "name": "usuario_dispositivo", "type": "string", "nullable": true, "description": "usuario local que opero en el dispositivo, solo informativo; usuario_id lo fija el backend con el usuario del JWT. Room no tiene esta columna: su usuarioId ya es el usuario del dispositivo (Parte 38, M-1)" },
         { "name": "venta_id", "type": "uuid", "nullable": true, "description": "venta original, si se conoce" },
         { "name": "folio", "type": "string", "nullable": false },
         { "name": "fecha", "type": "datetime", "nullable": false },
@@ -194,6 +198,7 @@
       "fields": [
         { "name": "articulo_id", "type": "uuid", "nullable": false },
         { "name": "usuario_id", "type": "uuid", "nullable": false },
+        { "name": "usuario_dispositivo", "type": "string", "nullable": true, "description": "usuario local que opero en el dispositivo, solo informativo; usuario_id lo fija el backend con el usuario del JWT. Room no tiene esta columna: su usuarioId ya es el usuario del dispositivo (Parte 38, M-1)" },
         { "name": "tipo", "type": "string", "nullable": false, "description": "\"entrada\" / \"salida\" / \"ajuste\"" },
         { "name": "cantidad", "type": "decimal", "nullable": false, "description": "siempre positiva; el signo lo da tipo" },
         { "name": "ubicacion", "type": "string", "nullable": true, "description": "estante (Parte 8)" },

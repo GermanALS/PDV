@@ -44,7 +44,7 @@ class RemoteDevolucionRepository @Inject constructor(
 private fun Devolucion.toCreateRequestDto() = DevolucionCreateRequestDto(
     localId = id,
     sucursalId = sucursalId,
-    usuarioId = usuarioId,
+    usuarioDispositivo = usuarioId,
     ventaId = ventaId,
     folio = folio,
     fecha = Instant.ofEpochMilli(fecha).toString(),

@@ -5,10 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
+from app.dependencies import usuario_actual
+from app.inventario_bloqueo import bloquear_inventario
 from app.models.articulo import Articulo
-from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
 from app.models.sucursal import Sucursal
+from app.models.usuario import Usuario
 from app.models.venta import Venta, VentaDetalle
 from app.schemas.venta import VentaCreateSchema, VentaDetalleResponseSchema, VentaResponseSchema
 
@@ -24,6 +26,7 @@ def _to_response(venta: Venta) -> VentaResponseSchema:
         local_id=venta.local_id,
         sucursal_id=venta.sucursal_id,
         usuario_id=venta.usuario_id,
+        usuario_dispositivo=venta.usuario_dispositivo,
         folio=venta.folio,
         fecha=venta.fecha,
         subtotal=venta.subtotal,
@@ -50,7 +53,10 @@ def _to_response(venta: Venta) -> VentaResponseSchema:
 
 @router.post("/ventas", response_model=VentaResponseSchema, status_code=201)
 async def create_venta(
-    payload: VentaCreateSchema, response: Response, db: AsyncSession = Depends(get_db)
+    payload: VentaCreateSchema,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ) -> VentaResponseSchema:
     # Valida sucursal_id antes de escribir (PLAN.md Parte 32): un
     # sucursal_id inexistente daba un ForeignKeyViolationError sin capturar
@@ -71,7 +77,9 @@ async def create_venta(
     venta = Venta(
         local_id=payload.local_id,
         sucursal_id=payload.sucursal_id,
-        usuario_id=payload.usuario_id,
+        # El usuario sale del JWT, nunca del body (PLAN.md Parte 38, M-1).
+        usuario_id=str(usuario.id),
+        usuario_dispositivo=payload.usuario_dispositivo,
         folio=payload.folio,
         fecha=payload.fecha,
         subtotal=payload.subtotal,
@@ -114,35 +122,19 @@ async def create_venta(
     # lado del dispositivo). Delta con signo, nunca un UPDATE cantidad = X
     # directo (mismo principio que POST /entradas).
     for linea in payload.lineas:
-        # with_for_update(): bloquea la fila hasta el commit de esta
-        # transaccion, para que dos ventas concurrentes del mismo articulo no
-        # lean el mismo cantidad y pierdan un decremento (PLAN.md Parte 25,
-        # hallazgo M-1 de docs/review_code.md).
-        resultado_inventario = await db.execute(
-            select(Inventario)
-            .where(
-                Inventario.sucursal_id == payload.sucursal_id,
-                Inventario.articulo_id == linea.articulo_id,
-            )
-            .with_for_update()
-        )
-        inventario = resultado_inventario.scalar_one_or_none()
-        if inventario is None:
-            db.add(
-                Inventario(
-                    sucursal_id=payload.sucursal_id,
-                    articulo_id=linea.articulo_id,
-                    cantidad=-linea.cantidad,
-                )
-            )
-        else:
-            inventario.cantidad = inventario.cantidad - linea.cantidad
+        # Fila bloqueada hasta el commit, para que dos ventas concurrentes del
+        # mismo articulo no lean el mismo cantidad y pierdan un decremento
+        # (PLAN.md Parte 25, M-1), ni choquen al crear la primera fila (Parte
+        # 38, B-1).
+        inventario = await bloquear_inventario(db, payload.sucursal_id, linea.articulo_id)
+        inventario.cantidad = inventario.cantidad - linea.cantidad
 
         db.add(
             Movimiento(
                 sucursal_id=payload.sucursal_id,
                 articulo_id=linea.articulo_id,
-                usuario_id=payload.usuario_id,
+                usuario_id=str(usuario.id),
+                usuario_dispositivo=payload.usuario_dispositivo,
                 tipo=TIPO_MOVIMIENTO_SALIDA,
                 cantidad=linea.cantidad,
                 referencia_tipo=REFERENCIA_VENTA,

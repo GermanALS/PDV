@@ -19,6 +19,7 @@ class Movimiento(Base):
     sucursal_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sucursales.id"))
     articulo_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("articulos.id"))
     usuario_id: Mapped[str] = mapped_column(String(120))
+    usuario_dispositivo: Mapped[str | None] = mapped_column(String(120), nullable=True)
     tipo: Mapped[str] = mapped_column(String(20))
     cantidad: Mapped[Decimal] = mapped_column(Numeric(14, 3))
     ubicacion: Mapped[str | None] = mapped_column(String(80), nullable=True)

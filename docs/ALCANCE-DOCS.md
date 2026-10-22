@@ -33,13 +33,13 @@ Reglas:
 | §1 Descripción funcional | Módulos, pantallas, persistencia, `BackendMode` | `android/app/src/main/java/com/pdv/pos/**` (Screens, ViewModels, `BackendMode`), `CLAUDE.md` |
 | §2.1 Contexto / despliegue | Dispositivo, servicios Compose, proveedor LLM | `docker-compose.yml`, `backend/Dockerfile`, cliente LLM en `android/` |
 | §2.2 App Android — capas | MVVM, `domain / data.local / data.remote`, DI | `android/app/src/main/java/com/pdv/pos/{domain,data,di}/**` |
-| §2.3 Backend — capas | `main.py`, routers, schemas, models, database | `backend/app/**`, `backend/alembic/versions/` |
-| §2.4 Motor de sincronización | Push/pull, resolvers, `SyncWorker`, conflictos | `android/.../sync/**`, `docs/api-contract.md` §7.1, §7.4 y §12, `backend/app/routers/{sync_conflicts,inventario}.py`, `android/.../sync/SyncStateStore.kt`, `android/.../data/local/InventarioDao.kt` |
+| §2.3 Backend — capas | `main.py`, routers, schemas, models, database | `backend/app/**`, `backend/app/{inventario_bloqueo,dependencies}.py`, `backend/app/schemas/comunes.py`, `backend/alembic/versions/` |
+| §2.4 Motor de sincronización | Push/pull, resolvers, `SyncWorker`, conflictos | `android/.../sync/**`, `docs/api-contract.md` §7.1, §7.4 y §12, `backend/app/routers/{sync_conflicts,inventario}.py`, `android/.../sync/SyncStateStore.kt`, `android/.../sync/SyncMappers.kt`, `android/.../data/remote/dto/*Dto.kt`, `android/.../data/local/InventarioDao.kt` |
 | §3 Modelo de datos (ER) | Campos comunes, diagrama ER, integridad, Room | `docs/schema-pos.json`, `android/.../data/local/*Entity.kt`, `PdvDatabase`, `Migrations.kt`, `android/app/schemas/`, `backend/app/models/*.py` |
-| §4 Diagramas UML | Componentes, clases `ModeAware`, secuencias, despliegue | Mismas fuentes de §2 y §3; flujos en `ModeAware*Repository`, `EjecutorAccionesIa`, `backend/app/routers/{auth,ventas}.py` |
+| §4 Diagramas UML | Componentes, clases `ModeAware`, secuencias, despliegue | Mismas fuentes de §2 y §3; flujos en `ModeAware*Repository`, `EjecutorAccionesIa`, `android/.../auth/CambiarPassword*.kt`, `backend/app/routers/{auth,ventas}.py`, `backend/app/{inventario_bloqueo,dependencies}.py`, `backend/app/schemas/comunes.py` |
 | §5 Requerimientos e instalación | Docker, uv, Android, hardware, conectividad, IA, secretos | `scripts/*`, `docker-compose*.yml*`, `backend/pyproject.toml`, `backend/uv.lock`, `android/gradle/libs.versions.toml`, `android/app/build.gradle.kts`, `AndroidManifest.xml`, `app/src/debug/res/xml/network_security_config.xml` |
-| §6 Configuración | Variables de entorno, DataStore, versionado | `backend/app/{database,security}.py`, `docker-compose.yml`, `*Preferences.kt`, `SyncStateStore`, `SessionStore`, `DynamicHostInterceptor`, `android/app/build.gradle.kts` |
-| §7 Seguridad | JWT, bcrypt, permisos por módulo, cifrado de tokens, cleartext | `backend/app/{security,permissions,main}.py`, `AuthInterceptor`, `AndroidKeystoreTokenCipher`, `network_security_config.xml` |
+| §6 Configuración | Variables de entorno, DataStore, versionado | `backend/app/{database,security,config}.py`, `docker-compose.yml`, `*Preferences.kt`, `SyncStateStore`, `SessionStore`, `LimpiezaDataStore`, `DynamicHostInterceptor`, `android/app/build.gradle.kts` |
+| §7 Seguridad | JWT, bcrypt, permisos por módulo, cifrado de tokens, cleartext | `backend/app/{security,permissions,main,config,limite_login,dependencies}.py`, `AuthInterceptor`, `AndroidKeystoreTokenCipher`, `SessionStore`, `AndroidManifest.xml`, `network_security_config.xml`, `data_extraction_rules.xml` |
 | §8 Referencia de API | Tabla de endpoints y módulo de escritura | `backend/app/routers/**`, `backend/app/permissions.py` (`_ESCRITURA_MODULO`), `docs/api-contract.md` |
 | §9 Operación y diagnóstico | Health, logs, auditoría, Room en device, problemas frecuentes | `backend/app/routers/health.py`, `backend/app/main.py`, `AppLogger`, `BackendHealthChecker`, `docker-compose.yml`, `docs/PLAN.md` (hallazgos) |
 | §10 Mantenimiento | Estructura del repo, CI, pruebas, migraciones, convenciones, comandos y hooks de Claude Code, generación del manual | Árbol del repo (`git ls-files`), `.github/workflows/*.yml`, `backend/tests/**`, `android/app/src/test/**`, `backend/alembic/versions/`, `CLAUDE.md`, `.claude/commands/*.md`, `.claude/agents/*.md`, `.claude/hooks/*`, `.claude/settings.json`, `scripts/docs/` |
@@ -67,4 +67,4 @@ donde aparecen (cuerpo, `manual-meta` y chips):
 - Anclas internas (`[§N](#...)`) que apunten a encabezados existentes.
 
 ## Última sincronización
-<!-- docs-sync: commit=0e50550 parte="37" fecha=2026-10-21 -->
+<!-- docs-sync: commit=da5cabc parte="38" fecha=2026-10-21 -->

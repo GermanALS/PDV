@@ -1,9 +1,11 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.comunes import UsuarioDispositivo, a_centavos
 
 # Valores validos de metodo_pago/estado (PLAN.md Parte 25, hallazgo M-3):
 # caja.get_totales_corte filtra por estos mismos literales, asi que un
@@ -36,7 +38,7 @@ class VentaDetalleResponseSchema(BaseModel):
 class VentaCreateSchema(BaseModel):
     local_id: uuid.UUID
     sucursal_id: uuid.UUID
-    usuario_id: str = Field(min_length=1, max_length=120)
+    usuario_dispositivo: UsuarioDispositivo = None
     folio: str = Field(min_length=1, max_length=60)
     fecha: datetime
     subtotal: Decimal = Field(ge=0)
@@ -47,12 +49,26 @@ class VentaCreateSchema(BaseModel):
     estado: Literal[ESTADO_VENTA_COMPLETADA] = ESTADO_VENTA_COMPLETADA
     lineas: list[VentaDetalleCreateSchema] = Field(min_length=1)
 
+    @model_validator(mode="after")
+    def _validar_montos(self) -> Self:
+        """Recalcula los montos con las formulas de VentaUiState (Android) y
+        rechaza la venta si no cuadran (PLAN.md Parte 38, M-2)."""
+        for linea in self.lineas:
+            if a_centavos(linea.cantidad * linea.precio_unitario) != a_centavos(linea.subtotal):
+                raise ValueError("el subtotal de una linea no es cantidad * precio_unitario")
+        if a_centavos(sum((linea.subtotal for linea in self.lineas), Decimal("0"))) != a_centavos(self.subtotal):
+            raise ValueError("el subtotal no es la suma de los subtotales de las lineas")
+        if a_centavos(self.subtotal - self.descuento + self.impuestos) != a_centavos(self.total):
+            raise ValueError("el total no es subtotal - descuento + impuestos")
+        return self
+
 
 class VentaResponseSchema(BaseModel):
     id: uuid.UUID
     local_id: uuid.UUID | None
     sucursal_id: uuid.UUID
     usuario_id: str
+    usuario_dispositivo: str | None
     folio: str
     fecha: datetime
     subtotal: Decimal

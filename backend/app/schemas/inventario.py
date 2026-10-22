@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from pydantic import AwareDatetime, BaseModel, Field, field_validator
 
+from app.schemas.comunes import UsuarioDispositivo
 from app.schemas.entrada import ArticuloResponseSchema, InventarioResponseSchema, MovimientoResponseSchema
 
 
@@ -34,7 +35,7 @@ class InventarioListResponseSchema(BaseModel):
 
 class ArticuloEdicionSchema(BaseModel):
     sucursal_id: uuid.UUID
-    usuario_id: str = Field(min_length=1, max_length=120)
+    usuario_dispositivo: UsuarioDispositivo = None
     nombre: str = Field(min_length=1, max_length=160)
     descripcion: str | None = None
     categoria: str | None = None
@@ -55,7 +56,7 @@ class AjusteDeltaCreateSchema(BaseModel):
     local_id: uuid.UUID
     sucursal_id: uuid.UUID
     articulo_id: uuid.UUID
-    usuario_id: str = Field(min_length=1, max_length=120)
+    usuario_dispositivo: UsuarioDispositivo = None
     fecha: datetime
     delta: Decimal
 
@@ -74,7 +75,6 @@ class AjusteDeltaResponseSchema(BaseModel):
 
 class ArticuloCatalogoEdicionSchema(BaseModel):
     sucursal_id: uuid.UUID
-    usuario_id: str = Field(min_length=1, max_length=120)
     nombre: str = Field(min_length=1, max_length=160)
     descripcion: str | None = None
     categoria: str | None = None

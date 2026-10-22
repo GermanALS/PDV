@@ -19,7 +19,7 @@ async def test_create_entrada_articulo_nuevo_happy_path(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "25",
             "ubicacion": "Estante B2",
@@ -51,7 +51,7 @@ async def test_create_entrada_articulo_existente_increments_inventario(client_au
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "10",
             "articulo_nuevo": {
@@ -69,7 +69,7 @@ async def test_create_entrada_articulo_existente_increments_inventario(client_au
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "user1",
+            "usuario_dispositivo": "user1",
             "fecha": "2026-08-19T13:00:00Z",
             "cantidad": "5",
             "articulo_id": articulo_id,
@@ -91,7 +91,7 @@ async def test_create_entrada_sin_articulo_id_ni_articulo_nuevo_returns_422(clie
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "5",
         },
@@ -108,7 +108,7 @@ async def test_create_entrada_articulo_id_inexistente_returns_404(client_autenti
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "5",
             "articulo_id": str(uuid.uuid4()),
@@ -125,7 +125,7 @@ async def test_create_entrada_sin_local_id_returns_422(client_autenticado):
         "/api/v1/entradas",
         json={
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "5",
             "articulo_id": str(uuid.uuid4()),
@@ -140,7 +140,7 @@ async def test_create_entrada_reintento_con_mismo_local_id_es_idempotente(client
     payload = {
         "local_id": str(uuid.uuid4()),
         "sucursal_id": sucursal_id,
-        "usuario_id": "admin",
+        "usuario_dispositivo": "admin",
         "fecha": "2026-08-19T12:00:00Z",
         "cantidad": "25",
         "articulo_nuevo": {
@@ -181,7 +181,7 @@ async def test_create_entrada_sku_duplicado_returns_409(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "10",
             "articulo_nuevo": {
@@ -199,7 +199,7 @@ async def test_create_entrada_sku_duplicado_returns_409(client_autenticado):
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T13:00:00Z",
             "cantidad": "5",
             "articulo_nuevo": {
@@ -226,7 +226,7 @@ async def test_create_entrada_articulo_existente_reintento_con_mismo_local_id_es
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": sucursal_id,
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "10",
             "articulo_nuevo": {
@@ -242,7 +242,7 @@ async def test_create_entrada_articulo_existente_reintento_con_mismo_local_id_es
     payload = {
         "local_id": str(uuid.uuid4()),
         "sucursal_id": sucursal_id,
-        "usuario_id": "admin",
+        "usuario_dispositivo": "admin",
         "fecha": "2026-08-19T13:00:00Z",
         "cantidad": "5",
         "articulo_id": articulo_id,
@@ -271,7 +271,7 @@ async def test_create_entrada_sucursal_id_inexistente_returns_404(client_autenti
         json={
             "local_id": str(uuid.uuid4()),
             "sucursal_id": str(uuid.uuid4()),
-            "usuario_id": "admin",
+            "usuario_dispositivo": "admin",
             "fecha": "2026-08-19T12:00:00Z",
             "cantidad": "5",
             "articulo_nuevo": {
@@ -284,3 +284,30 @@ async def test_create_entrada_sucursal_id_inexistente_returns_404(client_autenti
     )
 
     assert response.status_code == 404
+
+
+async def test_create_entrada_usuario_sale_del_jwt(client_autenticado, usuario_autenticado):
+    sucursal_id = await _seeded_sucursal_id(client_autenticado)
+
+    response = await client_autenticado.post(
+        "/api/v1/entradas",
+        json={
+            "local_id": str(uuid.uuid4()),
+            "sucursal_id": sucursal_id,
+            "usuario_id": "otro-usuario-inventado",
+            "usuario_dispositivo": "almacenista-local",
+            "fecha": "2026-08-19T12:00:00Z",
+            "cantidad": "5",
+            "articulo_nuevo": {
+                "sku": "ENT-M1",
+                "nombre": "Articulo M-1",
+                "unidad_medida": "pieza",
+                "precio_venta": "15.00",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    movimiento = response.json()["movimiento"]
+    assert movimiento["usuario_id"] == str(usuario_autenticado.id)
+    assert movimiento["usuario_dispositivo"] == "almacenista-local"

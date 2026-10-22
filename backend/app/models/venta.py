@@ -17,6 +17,7 @@ class Venta(Base):
     local_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, unique=True)
     sucursal_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sucursales.id"))
     usuario_id: Mapped[str] = mapped_column(String(120))
+    usuario_dispositivo: Mapped[str | None] = mapped_column(String(120), nullable=True)
     folio: Mapped[str] = mapped_column(String(60))
     fecha: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2))

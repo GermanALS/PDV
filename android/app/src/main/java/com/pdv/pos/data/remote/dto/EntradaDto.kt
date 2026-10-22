@@ -22,7 +22,7 @@ data class ArticuloNuevoRequestDto(
 data class EntradaCreateRequestDto(
     @SerialName("local_id") val localId: String? = null,
     @SerialName("sucursal_id") val sucursalId: String,
-    @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String,
     val fecha: String,
     val cantidad: String,
     val ubicacion: String? = null,
@@ -68,6 +68,7 @@ data class MovimientoDto(
     @SerialName("sucursal_id") val sucursalId: String,
     @SerialName("articulo_id") val articuloId: String,
     @SerialName("usuario_id") val usuarioId: String,
+    @SerialName("usuario_dispositivo") val usuarioDispositivo: String? = null,
     val tipo: String,
     val cantidad: String,
     val ubicacion: String? = null,

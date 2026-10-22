@@ -129,7 +129,7 @@ private fun InventarioItemDto.toDomain() = InventarioItem(
 
 private fun EdicionArticulo.toRequestDto() = ArticuloEdicionRequestDto(
     sucursalId = sucursalId,
-    usuarioId = usuarioId,
+    usuarioDispositivo = usuarioId,
     nombre = nombre,
     descripcion = descripcion,
     categoria = categoria,

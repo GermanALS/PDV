@@ -44,7 +44,7 @@ class RemoteEntradaRepository @Inject constructor(
 private fun Entrada.toCreateRequestDto() = EntradaCreateRequestDto(
     localId = id,
     sucursalId = sucursalId,
-    usuarioId = usuarioId,
+    usuarioDispositivo = usuarioId,
     fecha = Instant.ofEpochMilli(fecha).toString(),
     cantidad = cantidad.toPlainString(),
     ubicacion = ubicacion,
