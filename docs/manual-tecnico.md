@@ -3,7 +3,7 @@ manual-meta
 titulo: Manual técnico — PDV (Punto de Venta)
 lead: Descripción funcional, arquitectura, requerimientos de instalación, diagramas UML y de base de datos, y guías de diagnóstico, mantenimiento y evolución.
 actualizado: 2026-10-21
-chips: Partes 1-36 mergeadas | Parte 37 implementada | Partes 38-40 pendientes | Backend 210 tests | Android 480 tests | Alembic 0001-0014 | Room v11
+chips: Partes 1-37 mergeadas | Parte 38 implementada | Partes 39-40 pendientes | Backend 226 tests | Android 486 tests | Alembic 0001-0015 | Room v11
 -->
 # Manual técnico — PDV (Punto de Venta)
 
@@ -12,26 +12,27 @@ funcional, arquitectura, requerimientos de instalación, diagramas UML y de base
 de datos, y guías de diagnóstico, mantenimiento y evolución.
 
 - **Código de proyecto**: `POS` (Jira) / `PDV` (repo).
-- **Estado a la fecha de este manual (2026-10-21)**: Partes 1-36
-  implementadas y mergeadas (la 36 en PR #46, merge `679664e`), incluyendo el
-  motor de sincronización diferida (Parte 32), este propio manual (Parte 33),
-  la convergencia del inventario en el sync (Parte 34), la de catálogo y
-  ubicación (Parte 35) y la de sucursal estable y rechazos visibles (Parte
-  36). La Parte 37 (endurecimiento de seguridad pre-release; épica `POS-172`,
-  historias `POS-173`..`POS-175`) está implementada y verificada en
-  dispositivo en la rama `feature/POS-172-endurecimiento-seguridad` (commit
-  `0e50550`), aún sin mergear a `main`, y sigue listada en `docs/PLAN.md`.
-  Partes 38-40 (integridad del backend, calidad menor y primer release
-  productivo) pendientes, sin claves de Jira todavía; salen de la revisión
-  pre-release de `docs/review_code.md`. App corriendo en dispositivo físico
-  contra backend dockerizado en LAN.
+- **Estado a la fecha de este manual (2026-10-21)**: Partes 1-37
+  implementadas y mergeadas (la 36 en PR #46, merge `679664e`; la 37 en PR
+  #47, merge `871e8a8`), incluyendo el motor de sincronización diferida
+  (Parte 32), este propio manual (Parte 33), la convergencia del inventario
+  en el sync (Parte 34), la de catálogo y ubicación (Parte 35), la de
+  sucursal estable y rechazos visibles (Parte 36) y el endurecimiento de
+  seguridad pre-release (Parte 37; épica `POS-172`, historias
+  `POS-173`..`POS-175`). La Parte 38 (integridad de datos del backend; épica
+  `POS-177`, historias `POS-178`..`POS-180`) está implementada en la rama
+  `feature/POS-177-integridad-datos` (commit `da5cabc`), aún sin mergear a
+  `main`, y sigue listada en `docs/PLAN.md`. Partes 39-40 (calidad menor y
+  primer release productivo) pendientes, sin claves de Jira todavía; salen de
+  la revisión pre-release de `docs/review_code.md`. App corriendo en
+  dispositivo físico contra backend dockerizado en LAN.
 - **Fuentes de verdad vivas** (este manual las resume, no las reemplaza):
   - `CLAUDE.md` — arquitectura estable, convenciones, comandos.
   - `docs/api-contract.md` — contrato de endpoints REST.
   - `docs/schema-pos.json` — esquema de datos compartido (Room + Alembic).
-  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 37 implementada, Partes 38-40 + Backlog).
+  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 38 implementada, Partes 39-40 + Backlog).
   - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33 (la 34, la
-    35 y la 36, ya mergeadas, siguen en `docs/PLAN.md` hasta archivarse).
+    35, la 36 y la 37, ya mergeadas, siguen en `docs/PLAN.md` hasta archivarse).
   - `docs/review_code.md` — revisión pre-release del 2026-09-28/29 (origen de
     las Partes 34 y 36-40). La revisión anterior (2026-08-30, origen de las Partes
     21-30) se archivó como `docs/review_code_2026-09-28_1816.md`.
@@ -275,7 +276,7 @@ flowchart TD
     MODELS["app/models/* (SQLAlchemy 2.0 async)"]
     DBPY["app/database.py\ncreate_async_engine + async_sessionmaker"]
     PG[("PostgreSQL 16\n(asyncpg)")]
-    ALEMBIC["alembic/versions/*\n(14 migraciones)"]
+    ALEMBIC["alembic/versions/*\n(15 migraciones)"]
 
     CLIENT --> CORS --> OPEN
     CORS --> PROT --> R
@@ -300,6 +301,25 @@ flowchart TD
   (el proceso no arranca sin ella, ni con el valor de desarrollo fuera de
   `PDV_ENV=development`). `opciones_docs` deja `/docs`, `/redoc` y
   `/openapi.json` solo en `development`.
+- **Atribución y validación de escrituras** (Parte 38,
+  `docs/api-contract.md` §12): `usuario_id` de ventas, movimientos (entradas y
+  ajustes, 7.2 y 7.4), `cortes_caja`, `retiros_efectivo` y `devoluciones` lo
+  fija el servidor con `str(usuario.id)` de `Depends(usuario_actual)`; los
+  schemas de entrada ya no traen `usuario_id` y aceptan `usuario_dispositivo`
+  (`UsuarioDispositivo`, `app/schemas/comunes.py`, máx. 120 caracteres, `422`
+  si se excede), columna informativa nullable agregada por Alembic `0015`.
+  `PATCH /articulos/{articulo_id}` (7.5) ya no recibe usuario. Un
+  `model_validator` en `VentaCreateSchema` (por línea `cantidad *
+  precio_unitario == subtotal`, `Σ subtotales == subtotal`, `total == subtotal
+  - descuento + impuestos`) y en `CorteCajaCreateSchema` (fechas, totales y
+  diferencia coherentes) compara con el helper `a_centavos` (2 decimales,
+  `ROUND_HALF_UP`) y responde `422`. `app/inventario_bloqueo.py`
+  (`bloquear_inventario`) hace `INSERT ... ON CONFLICT DO NOTHING` sobre
+  `uq_inventario_sucursal_articulo` seguido de `SELECT ... FOR UPDATE`; lo usan
+  ventas, entradas y `POST /ajustes-inventario`, de modo que el primer insert
+  concurrente de una fila de inventario ya no da `500`. `POST /devoluciones`
+  valida los artículos con una sola query `IN` y su `estado` es
+  `Literal["registrada", "en_gestion_proveedor", "cerrada"]`.
 - **Límite de intentos de login** (`app/limite_login.py`): contador en
   memoria por `username`, 5 fallos en 15 minutos bloquean ese username con
   `429` (por worker, se pierde al reiniciar).
@@ -336,7 +356,7 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
   `EventoAditivoCombiner.combinar(base, deltaLocal, deltaRemoto)` — nunca un
   `UPDATE cantidad = X` directo, siempre suma de deltas con signo. El backend
   aplica el mismo principio (`inventario.cantidad = cantidad_actual ± delta`,
-  con `with_for_update()` para evitar carreras).
+  con `FOR UPDATE` vía `bloquear_inventario` para evitar carreras).
 - **Auditoría**: toda divergencia de `updated_at` se registra en
   `sync_conflicts` (aunque se resuelva automáticamente) y se loguea con
   `LogType.SYNC_CONFLICT`.
@@ -433,6 +453,17 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
   - *Backend*: `GET /inventario?updated_since=` devuelve una fila si cambió
     `inventario.updated_at` o `articulos.updated_at`, y su `updated_at` es el
     mayor de ambos.
+- **Usuario en el push** (Parte 38, M-1): los DTOs de request de venta,
+  entrada, corte, retiro, devolución, `PATCH /inventario` y ajuste por delta
+  mandan el `usuarioId` local como `usuarioDispositivo` (campo
+  `usuario_dispositivo`); el backend lo guarda aparte y fija `usuario_id` con
+  el JWT, lo que conserva quién operó cuando se suben pendientes de un turno
+  anterior con la sesión de otro usuario. `ArticuloCatalogoRequestDto` ya no
+  lleva usuario. Los DTOs de response suman `usuarioDispositivo` opcional, y
+  el pull y el modo REMOTO de cortes y retiros guardan `usuarioDispositivo ?:
+  usuarioId`. Room no cambia (`usuarioId` local sigue siendo el del
+  dispositivo); `UsuarioDispositivoMappersTest` cubre el JSON de salida y el
+  fallback del pull.
 - **Política de errores del push**: `IOException`/`5xx` reintentan el ciclo
   completo; `401` corta el ciclo (ver "Sesión y 401 del worker" abajo); un
   `4xx` no-401 en una fila puntual la **rechaza** (Parte 36, A-6), salvo que
@@ -576,7 +607,8 @@ erDiagram
     ventas {
         uuid local_id PK
         uuid sucursal_id FK
-        uuid usuario_id FK
+        uuid usuario_id FK "del JWT"
+        string usuario_dispositivo "nullable, informativo"
         string folio
         datetime fecha
         decimal subtotal
@@ -597,7 +629,8 @@ erDiagram
     cortes_caja {
         uuid local_id PK
         uuid sucursal_id FK
-        uuid usuario_id FK
+        uuid usuario_id FK "del JWT"
+        string usuario_dispositivo "nullable, informativo"
         string tipo "parcial|final"
         datetime fecha_inicio
         datetime fecha_fin
@@ -612,7 +645,8 @@ erDiagram
     retiros_efectivo {
         uuid local_id PK
         uuid sucursal_id FK
-        uuid usuario_id FK
+        uuid usuario_id FK "del JWT"
+        string usuario_dispositivo "nullable, informativo"
         decimal monto
         string motivo "nullable"
         datetime fecha
@@ -620,7 +654,8 @@ erDiagram
     devoluciones {
         uuid local_id PK
         uuid sucursal_id FK
-        uuid usuario_id FK
+        uuid usuario_id FK "del JWT"
+        string usuario_dispositivo "nullable, informativo"
         uuid venta_id FK "nullable"
         string folio
         datetime fecha
@@ -638,7 +673,8 @@ erDiagram
         uuid local_id PK
         uuid sucursal_id FK
         uuid articulo_id FK
-        uuid usuario_id FK
+        uuid usuario_id FK "del JWT"
+        string usuario_dispositivo "nullable, informativo"
         string tipo "entrada|salida|ajuste"
         decimal cantidad "siempre positiva; el signo lo da tipo"
         string referencia_tipo "nullable"
@@ -680,7 +716,13 @@ erDiagram
   columnas existentes de `articulos` e `inventario`. La Parte 36 tampoco
   agregó migraciones; la Parte 37 agrega la `0014`
   (`usuarios.debe_cambiar_password`, `Boolean` no nulo con `server_default`
-  falso, marcada en `true` para el usuario `admin` existente al migrar).
+  falso, marcada en `true` para el usuario `admin` existente al migrar) y la
+  Parte 38 la `0015` (`usuario_dispositivo`, `String(120)` nullable, en
+  `ventas`, `movimientos`, `cortes_caja`, `retiros_efectivo` y
+  `devoluciones`; las filas existentes quedan en `NULL`). Las columnas
+  `usuario_id` de esas tablas guardan desde la Parte 38 el `id` del usuario
+  del JWT (texto), no el valor que mande el dispositivo. Room no cambia:
+  `usuario_dispositivo` es solo del backend y del contrato.
 - `sync_conflicts.politica_aplicada` toma en la práctica valores más
   específicos que los dos del diccionario del esquema: `evento_aditivo_delta`,
   `last_write_wins_local_gana`, `last_write_wins_remoto_gana` (edición de
@@ -868,18 +910,20 @@ sequenceDiagram
     VS->>VVM: confirmarVenta()
     VVM->>MVR: registrarVenta(venta)   (BackendMode = REMOTO)
     MVR->>RVR: registrarVenta(venta)
-    RVR->>AI: POST /ventas {local_id, lineas...}
+    RVR->>AI: POST /ventas {local_id, usuario_dispositivo, lineas...}
     AI->>BE: + Authorization: Bearer <JWT>
+    Note over BE: 422 si los montos no cuadran (model_validator)
     BE->>DB: SELECT articulo.id WHERE id IN (:ids)
     alt algún articulo_id no existe
         BE-->>RVR: 404 {detail}
     else artículos OK
-        BE->>DB: INSERT venta + venta_detalle, FLUSH
+        BE->>DB: INSERT venta (usuario_id = id del JWT) + venta_detalle, FLUSH
         alt IntegrityError (local_id ya existe)
             BE->>DB: ROLLBACK, SELECT venta WHERE local_id = :local_id
             BE-->>RVR: 200 {venta existente}  (reintento idempotente)
         else primera vez
             loop por línea
+                BE->>DB: INSERT inventario ON CONFLICT DO NOTHING
                 BE->>DB: SELECT inventario ... FOR UPDATE
                 BE->>DB: inventario.cantidad -= linea.cantidad
                 BE->>DB: INSERT movimiento (tipo=salida, referencia=venta)
@@ -1217,6 +1261,7 @@ deja pasar la request con el `BASE_URL` por defecto
 | **Secreto JWT y entorno** | `JWT_SECRET_KEY` obligatoria sin default en código; el valor de desarrollo solo se acepta con `PDV_ENV=development`; `/docs`, `/redoc` y `/openapi.json` solo existen en `development` (`app/config.py`). |
 | **Integridad de roles y administradores** | `DELETE /roles/{id}` con usuarios asignados -> `409`; un rol borrado no otorga módulos (`modulos_del_usuario` en `app/permissions.py`); desactivar o borrar al propio usuario o al último usuario activo con el módulo `usuarios` -> `409`. |
 | **Respaldo del dispositivo** | `allowBackup="false"` más `res/xml/data_extraction_rules.xml` (excluye nube y transferencia entre dispositivos): las claves de Android Keystore no viajan, así que sesión y token de IA cifrados quedarían ilegibles. |
+| **Atribución de escrituras** | Desde la Parte 38 el `usuario_id` de ventas, movimientos, cortes, retiros y devoluciones es el `id` del usuario del JWT (`Depends(usuario_actual)`); el request ya no lo trae, así que un cliente no puede registrar operaciones a nombre de otro. El usuario local del dispositivo viaja como `usuario_dispositivo` (informativo, máx. 120 caracteres). Venta y corte con montos incoherentes se rechazan con `422`. |
 | **Tokens** | JWT `HS256`, `sub` = `usuario.id`, expiración 24 h, firmado con `JWT_SECRET_KEY`. Sin `refresh_token` (diferido, ratificado en la Parte 32: se mantiene el JWT de 24 h + re-login al recibir 401, aunque `SessionStore` persista la sesión para el worker de sync). |
 | **Enforcement backend** | `Depends(usuario_actual)` en el router `protected`: valida firma/expiración y que el `sub` corresponda a un usuario existente, activo y no borrado. `401 {"detail": "token invalido o expirado"}` genérico. `health` y `auth` exentos. |
 | **Autorización por módulo** | `verificar_modulo` gatea **solo escrituras** (`POST`/`PATCH`/`DELETE`) según `(método, ruta)` -> módulo requerido (mapa en `app/permissions.py`). Los `GET` solo exigen token válido. `403 {"detail": "el rol no tiene permiso para el modulo: X"}`. |
@@ -1232,8 +1277,8 @@ deja pasar la request con el `BASE_URL` por defecto
 `assembleRelease` produce un APK sin firmar), `JWT_SECRET_KEY` fuerte en el
 entorno desplegado, backend por HTTPS, cleartext deshabilitado en release,
 R8/ofuscación (B-7, diferido). La Parte 37 (`docs/PLAN.md`, hallazgos A-3,
-A-4, A-5, M-4, M-6 y M-10 de `docs/review_code.md`) quedó implementada y
-verificada en dispositivo, sin mergear: cambio forzado de la contraseña
+A-4, A-5, M-4, M-6 y M-10 de `docs/review_code.md`) quedó implementada,
+verificada en dispositivo y mergeada (PR #47): cambio forzado de la contraseña
 `admin/admin123`, `JWT_SECRET_KEY` obligatoria, límite de intentos de login,
 `/docs` deshabilitado fuera de desarrollo y `allowBackup`/limpieza de claves.
 Queda como tarea operativa, a cargo del usuario, rotar la API key del
@@ -1255,18 +1300,18 @@ arranque pendiente de cambio, toda ruta protegida responde `403 {"detail":
 | POST | `/auth/cambiar-password` | — (exenta; exige Bearer) | Cambia la contraseña del usuario del token (body `password_hash` bcrypt) y apaga `debe_cambiar_password`; `204`. Única ruta que acepta el token de un usuario con la marca encendida (Parte 37). |
 | GET / POST | `/sucursales` | `configuracion` (POST) | Paginado. |
 | GET / POST | `/sync-conflicts` | — (infraestructura) | POST idempotente por `id` del dispositivo. |
-| POST | `/ventas` | `venta` | Idempotente por `local_id`. Decrementa inventario + movimiento. |
-| POST | `/entradas` | `entrada` | Idempotente por `local_id`. Alta de artículo + inventario + movimiento en una llamada atómica. |
+| POST | `/ventas` | `venta` | Idempotente por `local_id`. Decrementa inventario + movimiento. `usuario_id` sale del JWT (el body trae `usuario_dispositivo`); `422` si los montos no cuadran (Parte 38). |
+| POST | `/entradas` | `entrada` | Idempotente por `local_id`. Alta de artículo + inventario + movimiento en una llamada atómica. `usuario_id` del JWT (Parte 38). |
 | GET | `/inventario` | — | `sucursal_id` requerido; `q` filtra nombre/SKU/código; `updated_since` para el pull del sync diferido (Parte 32) filtra por `inventario.updated_at` o `articulos.updated_at` (Parte 35); el `updated_at` devuelto es el mayor de ambos, cambia con todo movimiento de stock (Parte 34) o edición de catálogo, y el cliente consulta con 2 min de solape. |
-| PATCH | `/inventario/{articulo_id}` | `inventario` | `cantidad` = nuevo valor; el server aplica el delta con signo. Valor absoluto: queda para el modo REMOTO interactivo (el sync diferido usa `/ajustes-inventario`). |
-| POST | `/ajustes-inventario` | `inventario` | Ajuste de existencia por **delta** con signo (`delta` distinto de 0), idempotente por `local_id` del movimiento (`201` aplicado, `200` reintento), con `with_for_update()`; lo usa el sync diferido (Parte 34, `docs/api-contract.md` 7.4). No toca catálogo ni `ubicacion`. |
-| PATCH | `/articulos/{articulo_id}` | `inventario` | Edita nombre, descripción, categoría, unidad de medida, precio, costo y `ubicacion` (de la sucursal del body) sin tocar `cantidad` ni crear movimiento. Last-write-wins: se aplica si `editado_en` >= `articulos.updated_at`; responde `200` con `aplicado` true/false y el estado vigente. Bloquea el artículo con `FOR NO KEY UPDATE`; `404` si no existe el artículo o la sucursal (Parte 35, `docs/api-contract.md` 7.5). |
+| PATCH | `/inventario/{articulo_id}` | `inventario` | `cantidad` = nuevo valor; el server aplica el delta con signo. Valor absoluto: queda para el modo REMOTO interactivo (el sync diferido usa `/ajustes-inventario`). El movimiento lleva `usuario_id` del JWT y `usuario_dispositivo` del body (Parte 38). |
+| POST | `/ajustes-inventario` | `inventario` | Ajuste de existencia por **delta** con signo (`delta` distinto de 0), idempotente por `local_id` del movimiento (`201` aplicado, `200` reintento), con `FOR UPDATE` (`bloquear_inventario`, Parte 38); lo usa el sync diferido (Parte 34, `docs/api-contract.md` 7.4). `usuario_id` del JWT. No toca catálogo ni `ubicacion`. |
+| PATCH | `/articulos/{articulo_id}` | `inventario` | Edita nombre, descripción, categoría, unidad de medida, precio, costo y `ubicacion` (de la sucursal del body) sin tocar `cantidad` ni crear movimiento. Last-write-wins: se aplica si `editado_en` >= `articulos.updated_at`; responde `200` con `aplicado` true/false y el estado vigente. Bloquea el artículo con `FOR NO KEY UPDATE`; `404` si no existe el artículo o la sucursal (Parte 35, `docs/api-contract.md` 7.5). Desde la Parte 38 no recibe usuario. |
 | GET | `/inventario/ubicaciones` | — | Valores usados. |
 | GET | `/articulos/categorias`, `/articulos/unidades-medida` | — | Valores usados (sin tabla de catálogo). |
-| POST / GET | `/cortes-caja` | `caja` (POST) | Idempotente por `local_id`. Filtros `desde`/`hasta`/`updated_since` (este último para el pull del sync diferido). |
+| POST / GET | `/cortes-caja` | `caja` (POST) | Idempotente por `local_id`. `usuario_id` del JWT; `422` si las fechas o los totales son incoherentes (Parte 38). Filtros `desde`/`hasta`/`updated_since` (este último para el pull del sync diferido). |
 | GET | `/cortes-caja/totales` | — | Agrega ventas/retiros del periodo. |
-| POST / GET | `/retiros-efectivo` | `caja` (POST) | Idempotente por `local_id`. Filtros `desde`/`hasta`/`updated_since` (pull del sync diferido). |
-| POST | `/devoluciones` | `devoluciones` | Con líneas. No toca inventario. Idempotente por `local_id` (Parte 32). |
+| POST / GET | `/retiros-efectivo` | `caja` (POST) | Idempotente por `local_id`. `usuario_id` del JWT (Parte 38). Filtros `desde`/`hasta`/`updated_since` (pull del sync diferido). |
+| POST | `/devoluciones` | `devoluciones` | Con líneas. No toca inventario. Idempotente por `local_id` (Parte 32). `usuario_id` del JWT; `estado` solo `registrada`, `en_gestion_proveedor` o `cerrada` (`422` otro valor) (Parte 38). |
 | GET / POST / PATCH / DELETE | `/roles` | `usuarios` (escrituras) | Roles de sistema: `400` a PATCH/DELETE. DELETE = soft-delete; `409` si el rol tiene usuarios asignados (Parte 37). |
 | GET / POST / PATCH / DELETE | `/usuarios` | `usuarios` (escrituras) | Nunca devuelve `password_hash`; el `password_hash` de entrada se valida como bcrypt (`422`). DELETE = soft-delete. `409` al desactivar (PATCH con `activo=false`) o borrar al propio usuario o al último con el módulo `usuarios` (Parte 37). |
 
@@ -1290,7 +1335,7 @@ para guiar el proceso.
 |---|---|
 | Backend vivo | `curl http://<host>:8000/api/v1/health` -> `{"status":"ok","version":"0.1.0"}`. |
 | Contenedores | `docker compose ps` (backend `healthy`, `migrate` `exited 0`). |
-| Migraciones aplicadas | `docker compose exec backend alembic current` (debe coincidir con el head del repo, hoy `0014`). |
+| Migraciones aplicadas | `docker compose exec backend alembic current` (debe coincidir con el head del repo, hoy `0015`). |
 | Prueba de conexión desde la app | Panel de conexión -> "Probar conexión" (`BackendHealthChecker`, OkHttp propio sin interceptores, contra la URL tecleada). |
 
 ### 9.2 Logs del backend
@@ -1392,8 +1437,8 @@ sincronizados vía `docs/api-contract.md`.
 
 | Lado | Comando | Estado de referencia |
 |---|---|---|
-| Backend | `uv run pytest` | 17 archivos `test_*.py` más `conftest.py` (la Parte 37 sumó `test_config.py` y `test_limite_login.py`), **210 passed** (registrado en `docs/PLAN.md` el 2026-10-20, tras la Parte 37). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
-| Android | `./gradlew testDebugUnitTest` | 94 archivos `*Test.kt` (la Parte 37 sumó `CambiarPasswordViewModelTest` y `LimpiezaDataStoreTest`); última corrida registrada en `docs/PLAN.md` (2026-10-20, tras la Parte 37): **480 / 0 fallos / 0 errores / 0 omitidos**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
+| Backend | `uv run pytest` | 17 archivos `test_*.py` más `conftest.py` (la Parte 37 sumó `test_config.py` y `test_limite_login.py`; la Parte 38 amplió `test_ventas.py`, `test_entradas.py`, `test_inventario.py`, `test_caja.py` y `test_devoluciones.py`, incluido un test de 6 ventas concurrentes sin fila previa de inventario), **226 passed** (registrado en `docs/PLAN.md` el 2026-10-21, tras la Parte 38). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
+| Android | `./gradlew testDebugUnitTest` | 95 archivos `*Test.kt` (la Parte 37 sumó `CambiarPasswordViewModelTest` y `LimpiezaDataStoreTest`; la Parte 38, `UsuarioDispositivoMappersTest`); última corrida registrada en `docs/PLAN.md` (2026-10-21, tras la Parte 38): **486 / 0 fallos / 0 errores / 0 omitidos**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
 
 Ningún PR/feature se considera terminado sin tests unitarios en el lado
 modificado (`CLAUDE.md` §6). "Compilar" no es evidencia suficiente para cerrar
@@ -1415,9 +1460,10 @@ Un cambio de esquema toca **tres artefactos** que deben quedar alineados
 Verificación: `uv run alembic check` (drift modelo/migración) y
 `backend/tests/test_schema_parity.py`.
 
-Estado actual: **14 migraciones Alembic** (`0001`..`0014`; la `0013` agrega
+Estado actual: **15 migraciones Alembic** (`0001`..`0015`; la `0013` agrega
 `UNIQUE(local_id)` a `devoluciones` para la idempotencia del push de la Parte
-32 y la `0014` agrega `usuarios.debe_cambiar_password` en la Parte 37; las
+32, la `0014` agrega `usuarios.debe_cambiar_password` en la Parte 37 y la
+`0015` agrega `usuario_dispositivo` a cinco tablas en la Parte 38; las
 Partes 34, 35 y 36 no agregaron migraciones), Room en **v11** (línea base v7 con `exportSchema`, más `MIGRATION_7_8`
 para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35, `MIGRATION_9_10` para `syncRechazo`, Parte 36, y `MIGRATION_10_11` para `usuarios.debeCambiarPassword`, Parte 37).
 
@@ -1487,15 +1533,17 @@ para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35
 Las Partes 1-33 están implementadas y mergeadas (su detalle se archivó en
 `docs/PLAN-historico.md`); `docs/PLAN.md` conserva las Partes 34, 35 y 36
 (mergeadas, PR #44 merge `11e0427`, PR #45 merge `7c0bd94` y PR #46 merge
-`679664e`, aún sin archivar), la Parte 37 (implementada y verificada en
-dispositivo en la rama `feature/POS-172-endurecimiento-seguridad`, pendiente
-de merge) y las Partes pendientes 38-40. La 34 y las 36-40 salen de la revisión
+`679664e`, aún sin archivar), la Parte 37 (mergeada, PR #47 merge `871e8a8`,
+aún sin archivar), la Parte 38 (implementada en la rama
+`feature/POS-177-integridad-datos`, pendiente de merge) y las Partes
+pendientes 39-40. La 34 y las 36-40 salen de la revisión
 pre-release del 2026-09-28/29 (`docs/review_code.md`, hallazgos A-n / M-n /
 B-n con reproducción); la 35 salió de la ejecución de la 34 (2026-10-12). Las
-Partes 34, 35, 36 y 37 tienen claves de Jira (épica `POS-157`, historias
+Partes 34, 35, 36, 37 y 38 tienen claves de Jira (épica `POS-157`, historias
 `POS-158`..`POS-161`; épica `POS-162`, historias `POS-163`..`POS-167`; épica
 `POS-168`, historias `POS-169`..`POS-171`; épica `POS-172`, historias
-`POS-173`..`POS-175`); las 38-40 no. El checklist completo — criterios de cierre,
+`POS-173`..`POS-175`; épica `POS-177`, historias `POS-178`..`POS-180`); las
+39-40 no. El checklist completo — criterios de cierre,
 etiquetas de verificación y decisiones abiertas — vive en `docs/PLAN.md`; esta
 sección solo resume el alcance, no lo duplica.
 
@@ -1545,8 +1593,8 @@ sección solo resume el alcance, no lo duplica.
   "sync requiere re-login" (detalle en [§2.4](#24-motor-de-sincronización)).
   Fuera de alcance, en el Backlog: subir conflictos al backend y reintentar
   filas rechazadas.
-- **Parte 37 — endurecimiento de seguridad pre-release** (implementada y
-  verificada en dispositivo, sin mergear; épica `POS-172`, historias
+- **Parte 37 — endurecimiento de seguridad pre-release** (mergeada, PR #47,
+  verificada en dispositivo; épica `POS-172`, historias
   `POS-173`..`POS-175`; A-3, A-4, A-5, M-4, M-6, M-10): `debe_cambiar_password`
   (Alembic `0014`, Room v11 con `MIGRATION_10_11`), `POST /auth/cambiar-password`,
   `usuario_del_token` frente a `usuario_actual` (`403` mientras la marca esté
@@ -1560,9 +1608,20 @@ sección solo resume el alcance, no lo duplica.
   `IaPreferences` y `LimpiezaDataStore` (detalle en [§7](#7-seguridad)).
   Pendiente a cargo del usuario: rotar la API key de IA del dispositivo de
   pruebas.
-- **Parte 38 — integridad de datos del backend** (pendiente; M-1, M-2, B-1,
-  B-2): `usuario_id` derivado del JWT, validación de montos y fechas, primer
-  insert concurrente de inventario sin `500`, devoluciones sin N+1.
+- **Parte 38 — integridad de datos del backend** (implementada en la rama
+  `feature/POS-177-integridad-datos`, commit `da5cabc`, sin mergear; épica
+  `POS-177`, historias `POS-178`..`POS-180`; M-1, M-2, B-1, B-2): `usuario_id`
+  derivado del JWT con `usuario_dispositivo` informativo (Alembic `0015`,
+  `schema-pos.json`, Room sin cambios), validación de montos de venta y de
+  coherencia de corte (`422`), `bloquear_inventario` (`ON CONFLICT DO NOTHING`
+  + `FOR UPDATE`) para que el primer insert concurrente de inventario no dé
+  `500`, y devoluciones con una sola query `IN` y `estado` cerrado a tres
+  valores (detalle en [§2.3](#23-backend-fastapi--capas) y
+  [§2.4](#24-motor-de-sincronización)). Cifras registradas en `docs/PLAN.md`
+  (2026-10-21): pytest 226 passed; Android 486 tests, 0 fallos. Auditoría
+  única de solo lectura del backend de desarrollo: 1 de 20 ventas
+  inconsistente (la reproducción de `review_code.md`); no se modificaron
+  datos.
 - **Parte 39 — calidad y deuda menor pre-release** (pendiente; M-7, B-3 a
   B-6, B-8, B-11 a B-13): test `MigrationTestHelper` de `MIGRATION_7_8`,
   `AppLogger`, advertencias de lint, textos cortados en el Xiaomi y
@@ -1713,6 +1772,7 @@ evidencia directa de dispositivo y base de datos, no solo de logs — ver
 | **Ajuste por delta** | Ajuste de existencia que viaja como diferencia con signo (`POST /ajustes-inventario`, idempotente por `local_id`) en vez de la cantidad absoluta; permite que varias terminales converjan sin pisarse (Parte 34). |
 | **`edicionPendiente`** | Columna de `inventario` (Room v9, solo cliente) que marca una edición local de catálogo o `ubicacion` aún sin subir con `PATCH /articulos/{articulo_id}` (Parte 35). |
 | **`debe_cambiar_password`** | Marca de `usuarios` (Alembic `0014`, Room v11 `debeCambiarPassword`) que deja al admin de arranque sin acceso a ningún módulo hasta cambiar la contraseña (`403` en el backend, `CambiarPasswordScreen` en la app) (Parte 37). |
+| **`usuario_dispositivo`** | Columna nullable (Alembic `0015`) de `ventas`, `movimientos`, `cortes_caja`, `retiros_efectivo` y `devoluciones` con el usuario local que operó en el dispositivo; informativa. `usuario_id` lo fija el servidor con el usuario del JWT (Parte 38). |
 | **`PDV_ENV`** | Variable de entorno del backend: `development` habilita la clave JWT de desarrollo y `/docs`; cualquier otro valor (o su ausencia) se trata como producción (Parte 37). |
 | **`syncRechazo`** | Columna de cliente (Room v10) con el código HTTP con que el backend rechazó una fila en el push (`0` = desconocido); la fila deja de ser pendiente y se registra en `sync_conflicts` con política `rechazo_backend` (Parte 36). |
 | **Ventana de solape** | Margen de 2 minutos que el cliente resta al cursor del pull (`SyncStateStore.pullDesde`) para no saltar filas confirmadas tarde en el backend. |
