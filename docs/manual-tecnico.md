@@ -2,8 +2,8 @@
 manual-meta
 titulo: Manual técnico — PDV (Punto de Venta)
 lead: Descripción funcional, arquitectura, requerimientos de instalación, diagramas UML y de base de datos, y guías de diagnóstico, mantenimiento y evolución.
-actualizado: 2026-10-21
-chips: Partes 1-37 mergeadas | Parte 38 implementada | Partes 39-40 pendientes | Backend 226 tests | Android 486 tests | Alembic 0001-0015 | Room v11
+actualizado: 2026-10-25
+chips: Partes 1-37 mergeadas | Partes 38-39 implementadas | Parte 40 pendiente | Backend 226 tests | Android 492 tests | Alembic 0001-0015 | Room v11
 -->
 # Manual técnico — PDV (Punto de Venta)
 
@@ -12,7 +12,7 @@ funcional, arquitectura, requerimientos de instalación, diagramas UML y de base
 de datos, y guías de diagnóstico, mantenimiento y evolución.
 
 - **Código de proyecto**: `POS` (Jira) / `PDV` (repo).
-- **Estado a la fecha de este manual (2026-10-21)**: Partes 1-37
+- **Estado a la fecha de este manual (2026-10-25)**: Partes 1-37
   implementadas y mergeadas (la 36 en PR #46, merge `679664e`; la 37 en PR
   #47, merge `871e8a8`), incluyendo el motor de sincronización diferida
   (Parte 32), este propio manual (Parte 33), la convergencia del inventario
@@ -22,15 +22,18 @@ de datos, y guías de diagnóstico, mantenimiento y evolución.
   `POS-173`..`POS-175`). La Parte 38 (integridad de datos del backend; épica
   `POS-177`, historias `POS-178`..`POS-180`) está implementada en la rama
   `feature/POS-177-integridad-datos` (commit `da5cabc`), aún sin mergear a
-  `main`, y sigue listada en `docs/PLAN.md`. Partes 39-40 (calidad menor y
-  primer release productivo) pendientes, sin claves de Jira todavía; salen de
-  la revisión pre-release de `docs/review_code.md`. App corriendo en
+  `main`, y sigue listada en `docs/PLAN.md`. La Parte 39 (calidad y deuda menor
+  pre-release; épica `POS-181`, historias `POS-182`..`POS-185`) está
+  implementada en la rama `feature/POS-181-calidad-deuda-menor` (commit
+  `9706649`), pendiente de merge. La Parte 40 (primer release productivo)
+  sigue pendiente, sin claves de Jira todavía; las Partes 36-40 salen de la
+  revisión pre-release de `docs/review_code.md`. App corriendo en
   dispositivo físico contra backend dockerizado en LAN.
 - **Fuentes de verdad vivas** (este manual las resume, no las reemplaza):
   - `CLAUDE.md` — arquitectura estable, convenciones, comandos.
   - `docs/api-contract.md` — contrato de endpoints REST.
   - `docs/schema-pos.json` — esquema de datos compartido (Room + Alembic).
-  - `docs/PLAN.md` — trabajo en curso y pendiente (Parte 38 implementada, Partes 39-40 + Backlog).
+  - `docs/PLAN.md` — trabajo en curso y pendiente (Partes 38-39 implementadas, Parte 40 + Backlog).
   - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33 (la 34, la
     35, la 36 y la 37, ya mergeadas, siguen en `docs/PLAN.md` hasta archivarse).
   - `docs/review_code.md` — revisión pre-release del 2026-09-28/29 (origen de
@@ -76,12 +79,13 @@ y actualizaciones asistidas.
 | **Inventario** | `InventarioScreen`, `ImportarCatalogoScreen` | Consulta paginada con búsqueda (nombre/SKU/código de barras), ajuste de atributos de catálogo + existencia (genera movimiento de ajuste con delta), exportación CSV/Excel, importación de catálogo desde CSV. | `articulos`, `inventario`, `movimientos`. |
 | **Caja** | `CajaScreen` | Cortes de caja parciales y finales, retiros de efectivo, cálculo de totales del periodo (ventas, efectivo, tarjeta, retiros, monto esperado), exportación por periodo. | `cortes_caja`, `retiros_efectivo`. |
 | **Devoluciones** | `DevolucionScreen` | Registro de devolución de cliente con líneas (motivo, condición). No toca inventario (gestión con proveedor). | `devoluciones`, `devolucion_detalle`. |
-| **Usuarios** | `UsuarioScreen` | CRUD de usuarios, asignación de rol, alta/cambio de contraseña (hash bcrypt calculado en el dispositivo). | `usuarios`. |
+| **Usuarios** | `UsuarioScreen` | CRUD de usuarios, asignación de rol (selector vertical `SelectorRadio`), alta/cambio de contraseña (hash bcrypt calculado en el dispositivo). | `usuarios`. |
 | **Roles** | `RolScreen` | CRUD de roles personalizados; `modulos_permitidos` activa/desactiva pantallas completas. Dos roles de sistema no editables (`administrador`, `encargado_turno`). | `roles`. |
-| **Configuración** | `ConfiguracionScreen` | `BackendMode`, parámetros de conexión remota, sucursal seleccionada, activación y token del asistente de IA, prompt de sistema editable. En `LOCAL_CON_SINCRONIZACION`: sección "Sincronización" (última sync, pendientes, último error, botón "Sincronizar ahora") la cuenta "Rechazadas por el backend: N (ver Conflictos)" (Parte 36) y confirmación de pendientes al cambiar de modo (Parte 32). Si la sucursal guardada no aparece en el catálogo emitido, la conserva y muestra un aviso para que el usuario elija (Parte 36). | DataStore (preferencia de dispositivo); token cifrado con Android Keystore. |
+| **Configuración** | `ConfiguracionScreen` | `BackendMode` (selector vertical `SelectorRadio`, igual que en el panel de conexión del login; reemplaza los botones segmentados que cortaban palabras, Parte 39), parámetros de conexión remota, sucursal seleccionada, activación y token del asistente de IA, prompt de sistema editable. En `LOCAL_CON_SINCRONIZACION`: sección "Sincronización" (última sync, pendientes, último error, botón "Sincronizar ahora") la cuenta "Rechazadas por el backend: N (ver Conflictos)" (Parte 36) y confirmación de pendientes al cambiar de modo (Parte 32). Si la sucursal guardada no aparece en el catálogo emitido, la conserva y muestra un aviso para que el usuario elija (Parte 36). | DataStore (preferencia de dispositivo); token cifrado con Android Keystore. |
+| **Pantalla principal / Acerca de** | `HelloScreen`, `AcercaDeScreen` | La pantalla principal ya no muestra el saludo de prueba de la Parte 1; solo consulta `/health` si `BackendMode` no es LOCAL (`HelloViewModel` observa el modo). `AcercaDeScreen` (ruta `ACERCA_DE`, botón "Acerca de") muestra versión y `versionCode` (de `BuildConfig`), fecha, novedades, equipo y contacto (de `res/values/strings.xml`, vía `InfoRelease`/`di/AcercaDeModule`); fecha y novedades se editan a mano en cada release. | `BuildConfig` y recursos; sin persistencia. |
 | **Revisión de conflictos** | `RevisionConflictosScreen` | Panel **solo lectura** de `sync_conflicts`: lista los conflictos de sincronización detectados y su resolución automática. | `sync_conflicts`. |
 | **Asistente de IA + FAQ** | `AsistenteIaWidget` (overlay flotante) | Chat con LLM; responde consultas, ejecuta acciones (alta de artículo, corte parcial, retiro, devolución, exportar/consultar inventario) por los **mismos repositorios** que las pantallas manuales, con confirmación explícita y chequeo de permiso. FAQ curado con retrieval de 3 niveles y atajos sin conexión (`qN`, match de texto). | Reutiliza los repositorios de dominio; FAQ empaquetado (`faq.jsonl`). |
-| **Logs / Auditoría** | — (sin pantalla) | `AppLogger` escribe archivos `.txt` locales al dispositivo, una línea por evento con `[tipo][timestamp][sucursal][usuario] mensaje`. Categorías: `ERROR`, `WARN`, `INFO`, `DB_WRITE`, `SYNC_CONFLICT`, `AUTH`. Rotación a 5 MB, retención 30 días. | Sistema de archivos del dispositivo (`filesDir`). |
+| **Logs / Auditoría** | — (sin pantalla) | `AppLogger` escribe archivos `.txt` locales al dispositivo, una línea por evento con `[tipo][timestamp][sucursal][usuario] mensaje`. Categorías: `ERROR`, `WARN`, `INFO`, `DB_WRITE`, `SYNC_CONFLICT`, `AUTH`. Rotación a 5 MB, retención 30 días (la purga corre solo al rotar). | Sistema de archivos del dispositivo (`filesDir`). |
 
 ### 1.2 Modos de backend (`BackendMode`)
 
@@ -225,7 +229,9 @@ flowchart TD
    `ModeAware*Repository`, que resuelve local vs. remoto leyendo `BackendMode`
    de DataStore en cada llamada.
 4. Nunca se lanzan excepciones sin capturar desde la capa de red: se usa
-   `ApiResult.Success/Error` o `Result<T>`.
+   `ApiResult.Success/Error` o `Result<T>`. `ModeAwareAuthRepository` captura
+   solo `IOException` y `HttpException` (no `runCatching`), de modo que la
+   cancelación de corrutinas se propaga (Parte 39).
 5. `BackendMode`, parámetros de conexión y sucursal seleccionada son
    preferencia de dispositivo y viven en DataStore, **sin Room** (excepción
    documentada). El catálogo de sucursales sí sigue el patrón repositorio/Room.
@@ -255,7 +261,8 @@ override suspend fun registrarVenta(venta: Venta) {
 | Persistencia local | Room · DataStore Preferences | 2.8.4 · 1.2.1 |
 | Escaneo | CameraX · ML Kit barcode-scanning | 1.6.1 · 17.3.0 |
 | Cripto | bcrypt (at.favre.lib) | 0.10.2 |
-| Test | JUnit5 · MockK · kotlinx-coroutines-test · OkHttp MockWebServer | 6.1.3 · 1.14.11 · 1.11.0 · 5.4.0 |
+| Test (JVM) | JUnit5 · MockK · kotlinx-coroutines-test · OkHttp MockWebServer | 6.1.3 · 1.14.11 · 1.11.0 · 5.4.0 |
+| Test (instrumentado, Parte 39) | `room-testing` (misma versión de Room) · `androidx.test:runner` · `androidx.test.ext:junit` | 2.8.4 · 1.7.0 · 1.3.0 |
 | JVM target | 17 | |
 
 ### 2.3 Backend FastAPI — capas
@@ -764,6 +771,12 @@ erDiagram
 - Migraciones registradas en `DatabaseModule`
   (`addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)`); la v7 es la línea base con
   `exportSchema` (Parte 24).
+- Pruebas instrumentadas (Parte 39, `android/app/src/androidTest/`):
+  `MigrationTest` (`MigrationTestHelper` sobre los JSON de `app/schemas/`,
+  expuestos como assets de `androidTest` en `build.gradle.kts`; cubre
+  `MIGRATION_7_8` y sirve de plantilla para las futuras) y
+  `PendingSyncQueriesTest` (queries `isSynced = 0` de ventas sobre SQLite
+  real). Ver comandos en [§5.3](#53-android).
 
 ---
 
@@ -1100,6 +1113,16 @@ cd android
 ./gradlew lint
 ```
 
+**Pruebas instrumentadas** (Parte 39, `app/src/androidTest`): no usar
+`connectedAndroidTest`, porque al terminar desinstala la app y borra la base
+Room y la clave de Keystore del dispositivo. En su lugar:
+
+```bash
+./gradlew installDebug assembleDebugAndroidTest
+adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w com.pdv.pos.test/androidx.test.runner.AndroidJUnitRunner
+```
+
 **"Definición de hecho" para cambios en `android/`**: no basta con compilar o
 pasar revisión textual; debe quedar instalado y verificado corriendo en el
 dispositivo físico (o el emulador de fallback).
@@ -1351,7 +1374,7 @@ para guiar el proceso.
 
 - `AppLogger` escribe en `filesDir` archivos `app-log-<yyyyMMdd-HHmmss>.txt`,
   una línea por evento: `[TIPO][yyyy-MM-dd HH:mm:ss][sucursalId][usuario] mensaje`.
-- Rotación al superar 5 MB (archivo nuevo); purga de archivos con más de 30 días.
+- Rotación al superar 5 MB (archivo nuevo); la purga de archivos con más de 30 días corre solo al rotar (Parte 39). Las marcas de tiempo usan `DateTimeFormatter`; el arranque ya no escribe la línea de prueba "Verificacion Parte 5".
 - Categorías: `ERROR`, `WARN`, `INFO`, `DB_WRITE`, `SYNC_CONFLICT`, `AUTH`.
 - Extracción:
   ```bash
@@ -1438,7 +1461,12 @@ sincronizados vía `docs/api-contract.md`.
 | Lado | Comando | Estado de referencia |
 |---|---|---|
 | Backend | `uv run pytest` | 17 archivos `test_*.py` más `conftest.py` (la Parte 37 sumó `test_config.py` y `test_limite_login.py`; la Parte 38 amplió `test_ventas.py`, `test_entradas.py`, `test_inventario.py`, `test_caja.py` y `test_devoluciones.py`, incluido un test de 6 ventas concurrentes sin fila previa de inventario), **226 passed** (registrado en `docs/PLAN.md` el 2026-10-21, tras la Parte 38). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
-| Android | `./gradlew testDebugUnitTest` | 95 archivos `*Test.kt` (la Parte 37 sumó `CambiarPasswordViewModelTest` y `LimpiezaDataStoreTest`; la Parte 38, `UsuarioDispositivoMappersTest`); última corrida registrada en `docs/PLAN.md` (2026-10-21, tras la Parte 38): **486 / 0 fallos / 0 errores / 0 omitidos**. ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
+| Android | `./gradlew testDebugUnitTest` | 96 archivos `*Test.kt` (la Parte 39 sumó `AcercaDeViewModelTest` y amplió `HelloViewModelTest`, `ModeAwareAuthRepositoryTest` y `AppLoggerTest`) (la Parte 37 sumó `CambiarPasswordViewModelTest` y `LimpiezaDataStoreTest`; la Parte 38, `UsuarioDispositivoMappersTest`); última corrida (2026-10-25, tras la Parte 39): **492 tests / 0 fallos / 0 errores** (antes, 2026-10-21, tras la Parte 38: 486). ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
+
+Además, desde la Parte 39 existen pruebas **instrumentadas** en
+`android/app/src/androidTest/` (`MigrationTest`, 1 test; `PendingSyncQueriesTest`,
+2 tests; `OK (3 tests)` en el Xiaomi 24030PN60G el 2026-10-25), que corren en el dispositivo con `adb shell am instrument` y no
+forman parte de `testDebugUnitTest` ni del CI ([§5.3](#53-android)).
 
 Ningún PR/feature se considera terminado sin tests unitarios en el lado
 modificado (`CLAUDE.md` §6). "Compilar" no es evidencia suficiente para cerrar
@@ -1465,7 +1493,7 @@ Estado actual: **15 migraciones Alembic** (`0001`..`0015`; la `0013` agrega
 32, la `0014` agrega `usuarios.debe_cambiar_password` en la Parte 37 y la
 `0015` agrega `usuario_dispositivo` a cinco tablas en la Parte 38; las
 Partes 34, 35 y 36 no agregaron migraciones), Room en **v11** (línea base v7 con `exportSchema`, más `MIGRATION_7_8`
-para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35, `MIGRATION_9_10` para `syncRechazo`, Parte 36, y `MIGRATION_10_11` para `usuarios.debeCambiarPassword`, Parte 37).
+para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35, `MIGRATION_9_10` para `syncRechazo`, Parte 36, y `MIGRATION_10_11` para `usuarios.debeCambiarPassword`, Parte 37; `MIGRATION_7_8` tiene test instrumentado desde la Parte 39). `backend/alembic.ini` fija `path_separator = os` (Parte 39) para evitar el `DeprecationWarning` de Alembic.
 
 ### 10.5 Añadir o cambiar un endpoint
 
@@ -1535,15 +1563,16 @@ Las Partes 1-33 están implementadas y mergeadas (su detalle se archivó en
 (mergeadas, PR #44 merge `11e0427`, PR #45 merge `7c0bd94` y PR #46 merge
 `679664e`, aún sin archivar), la Parte 37 (mergeada, PR #47 merge `871e8a8`,
 aún sin archivar), la Parte 38 (implementada en la rama
-`feature/POS-177-integridad-datos`, pendiente de merge) y las Partes
-pendientes 39-40. La 34 y las 36-40 salen de la revisión
+`feature/POS-177-integridad-datos`, pendiente de merge), la Parte 39
+(implementada en la rama `feature/POS-181-calidad-deuda-menor`, pendiente de
+merge) y la Parte pendiente 40. La 34 y las 36-40 salen de la revisión
 pre-release del 2026-09-28/29 (`docs/review_code.md`, hallazgos A-n / M-n /
 B-n con reproducción); la 35 salió de la ejecución de la 34 (2026-10-12). Las
-Partes 34, 35, 36, 37 y 38 tienen claves de Jira (épica `POS-157`, historias
+Partes 34, 35, 36, 37, 38 y 39 tienen claves de Jira (épica `POS-157`, historias
 `POS-158`..`POS-161`; épica `POS-162`, historias `POS-163`..`POS-167`; épica
 `POS-168`, historias `POS-169`..`POS-171`; épica `POS-172`, historias
-`POS-173`..`POS-175`; épica `POS-177`, historias `POS-178`..`POS-180`); las
-39-40 no. El checklist completo — criterios de cierre,
+`POS-173`..`POS-175`; épica `POS-177`, historias `POS-178`..`POS-180`; épica
+`POS-181`, historias `POS-182`..`POS-185`); la 40 no. El checklist completo — criterios de cierre,
 etiquetas de verificación y decisiones abiertas — vive en `docs/PLAN.md`; esta
 sección solo resume el alcance, no lo duplica.
 
@@ -1622,10 +1651,20 @@ sección solo resume el alcance, no lo duplica.
   única de solo lectura del backend de desarrollo: 1 de 20 ventas
   inconsistente (la reproducción de `review_code.md`); no se modificaron
   datos.
-- **Parte 39 — calidad y deuda menor pre-release** (pendiente; M-7, B-3 a
-  B-6, B-8, B-11 a B-13): test `MigrationTestHelper` de `MIGRATION_7_8`,
-  `AppLogger`, advertencias de lint, textos cortados en el Xiaomi y
-  `path_separator` de Alembic.
+- **Parte 39 — calidad y deuda menor pre-release** (implementada en la rama
+  `feature/POS-181-calidad-deuda-menor`, commit `9706649`, sin mergear; épica
+  `POS-181`, historias `POS-182`..`POS-185`; M-7, B-3 a B-6, B-11 a B-13):
+  pruebas instrumentadas (`MigrationTest` de `MIGRATION_7_8`,
+  `PendingSyncQueriesTest`), `AppLogger` con `DateTimeFormatter` y purga solo
+  al rotar, `toBigDecimalOrNull` de la stdlib, `ModeAwareAuthRepository` sin
+  `runCatching`, `SelectorRadio` en lugar de botones segmentados (B-12),
+  icono adaptativo en `mipmap-anydpi` sin `ic_launcher_round` (B-11),
+  `path_separator = os` en `backend/alembic.ini`, pantalla principal sin el
+  saludo de prueba y sin consulta a `/health` en modo LOCAL, y el módulo
+  `acercade/` (detalle en [§1.1](#11-módulos)). B-6 se midió el 2026-10-25
+  (`DynamicHostInterceptor` bloquea 0.75-1.2 ms, sin violación de StrictMode):
+  no confirmado, sin corrección. B-8 (textos a `strings.xml`) y la
+  actualización de dependencias por lint pasaron al Backlog.
 - **Parte 40 — primer release productivo** (pendiente; era la Parte 34, pasó
   a 39 el 2026-10-02 y a 40 el 2026-10-12): firma de release, despliegue del backend
   productivo, URL base productiva en la app, endurecimiento del build
@@ -1722,6 +1761,12 @@ tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
   `politica_aplicada` del dispositivo no están en el `Literal` del backend.
 - **Reintentar filas rechazadas por el sync** (Parte 36): las filas con
   `syncRechazo` no tienen acción de reintento en la app tras corregir la causa.
+- **Lectura de disco en el hilo principal en `LoggingModule`** (hallazgo de la
+  medición B-6, Parte 39): StrictMode en debug marca `DiskReadViolation` en
+  `LoggingModule.provideLogDirectory`; evaluar si justifica moverlo.
+- **Textos de UI a `strings.xml`** (B-8): después del primer release.
+- **Actualización de dependencias marcadas por lint** (B-11,
+  `GradleDependency`/`NewerVersionAvailable`): en una Parte de mantenimiento.
 - **Robustez ante `content` vacío del proveedor de IA** (hallazgo Parte 20):
   reintento único ante `content` vacío y/o `max_tokens` explícito en
   `ChatCompletionRequestDto`. Afecta el camino compartido de IA, no solo el FAQ.

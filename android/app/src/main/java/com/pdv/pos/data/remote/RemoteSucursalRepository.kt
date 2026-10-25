@@ -10,7 +10,7 @@ import javax.inject.Singleton
 
 // Las fallas de red se propagan por el Flow (sin capturarlas aca), igual
 // que el resto del proyecto las mapea a ApiResult recien en el ViewModel
-// que consume el repositorio (ver HelloViewModel.fetchHealth, Parte 2).
+// que consume el repositorio (ver HelloViewModel.consultarHealth, Parte 2).
 @Singleton
 class RemoteSucursalRepository @Inject constructor(
     private val api: SucursalApiService,

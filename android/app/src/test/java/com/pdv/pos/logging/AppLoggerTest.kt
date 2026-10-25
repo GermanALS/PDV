@@ -50,16 +50,29 @@ class AppLoggerTest {
     }
 
     @Test
-    fun `purges files older than the retention window and keeps recent ones`(@TempDir tempDir: File) = runTest {
+    fun `on rotation purges files older than the retention window and keeps recent ones`(@TempDir tempDir: File) = runTest {
         val expired = File(tempDir, "app-log-20200101-000000.txt").apply { writeText("viejo") }
         expired.setLastModified(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(31))
-        val recent = File(tempDir, "app-log-20260101-000000.txt").apply { writeText("reciente") }
-        recent.setLastModified(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1))
+        val recentFull = File(tempDir, "app-log-20260101-000000.txt").apply { writeText("x".repeat(5 * 1024 * 1024)) }
+        recentFull.setLastModified(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1))
         val logger = AppLogger(tempDir)
 
-        logger.log(LogType.INFO, sucursalId = "suc-1", usuario = "german", mensaje = "trigger purge")
+        logger.log(LogType.INFO, sucursalId = "suc-1", usuario = "german", mensaje = "trigger rotation")
 
         assertFalse(expired.exists())
-        assertTrue(recent.exists())
+        assertTrue(recentFull.exists())
+        assertEquals(2, tempDir.listFiles()!!.size)
+    }
+
+    @Test
+    fun `does not purge while the current file has room`(@TempDir tempDir: File) = runTest {
+        val expired = File(tempDir, "app-log-20200101-000000.txt").apply { writeText("viejo") }
+        expired.setLastModified(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(31))
+        File(tempDir, "app-log-20260101-000000.txt").writeText("reciente")
+        val logger = AppLogger(tempDir)
+
+        logger.log(LogType.INFO, sucursalId = "suc-1", usuario = "german", mensaje = "no rotation")
+
+        assertTrue(expired.exists())
     }
 }

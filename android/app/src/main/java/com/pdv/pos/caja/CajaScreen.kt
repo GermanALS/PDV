@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -337,7 +338,7 @@ private fun SelectorFechaHora(
 ) {
     var mostrarFecha by remember { mutableStateOf(false) }
     var mostrarHora by remember { mutableStateOf(false) }
-    var fechaElegidaMillis by remember { mutableStateOf(valorMillis) }
+    var fechaElegidaMillis by remember { mutableLongStateOf(valorMillis) }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(etiqueta, style = MaterialTheme.typography.bodySmall)

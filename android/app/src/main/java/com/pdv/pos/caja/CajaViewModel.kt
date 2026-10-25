@@ -373,6 +373,3 @@ class CajaViewModel @Inject constructor(
         }
     }
 }
-
-private fun String.toBigDecimalOrNull(): BigDecimal? =
-    if (isBlank()) null else runCatching { BigDecimal(this) }.getOrNull()

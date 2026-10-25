@@ -66,12 +66,12 @@ object InventarioCsvImporter {
             return FilaCsvImportada.Invalida(numeroFila, "SKU, Nombre, Categoria y Unidad de medida no pueden estar vacios")
         }
 
-        val cantidad = cantidadTexto.toBigDecimalOrNull()
+        val cantidad = cantidadTexto.trim().toBigDecimalOrNull()
         if (cantidad == null || cantidad <= BigDecimal.ZERO) {
             return FilaCsvImportada.Invalida(numeroFila, "Cantidad invalida: \"$cantidadTexto\"")
         }
 
-        val precioVenta = precioTexto.toBigDecimalOrNull()
+        val precioVenta = precioTexto.trim().toBigDecimalOrNull()
         if (precioVenta == null) {
             return FilaCsvImportada.Invalida(numeroFila, "Precio de venta invalido: \"$precioTexto\"")
         }
@@ -79,7 +79,7 @@ object InventarioCsvImporter {
         val costo = if (costoTexto.isBlank()) {
             null
         } else {
-            costoTexto.toBigDecimalOrNull()
+            costoTexto.trim().toBigDecimalOrNull()
                 ?: return FilaCsvImportada.Invalida(numeroFila, "Costo invalido: \"$costoTexto\"")
         }
 
@@ -97,8 +97,6 @@ object InventarioCsvImporter {
         )
     }
 }
-
-private fun String.toBigDecimalOrNull(): BigDecimal? = runCatching { BigDecimal(trim()) }.getOrNull()
 
 // Split RFC 4180 basico, simetrico a InventarioCsvExporter.escapar(): soporta
 // campos entre comillas (con comillas dobles escapadas como "").

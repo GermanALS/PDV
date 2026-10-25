@@ -176,9 +176,6 @@ class DevolucionViewModel @Inject constructor(
     }
 }
 
-private fun String.toBigDecimalOrNull(): BigDecimal? =
-    if (isBlank()) null else runCatching { BigDecimal(this) }.getOrNull()
-
 private fun DevolucionUiState.toDevolucion(sucursalId: String, usuarioId: String): Devolucion {
     val ahora = System.currentTimeMillis()
     return Devolucion(

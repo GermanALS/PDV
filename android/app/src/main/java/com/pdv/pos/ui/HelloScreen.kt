@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.data.remote.ApiResult
+import com.pdv.pos.domain.model.BackendMode
 
 @Composable
 fun HelloScreen(
@@ -27,6 +29,7 @@ fun HelloScreen(
     onNavigateToCaja: () -> Unit,
     onNavigateToDevoluciones: () -> Unit,
     onNavigateToUsuarios: () -> Unit,
+    onNavigateToAcercaDe: () -> Unit,
     viewModel: HelloViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -40,14 +43,15 @@ fun HelloScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         ) {
             Text(text = "Sesión: ${uiState.username}", style = MaterialTheme.typography.bodyMedium)
-            Text(text = uiState.localGreeting, style = MaterialTheme.typography.titleLarge)
 
-            val healthText = when (val result = uiState.healthResult) {
-                null -> "Consultando backend..."
-                is ApiResult.Success -> "Backend: ${result.data}"
-                is ApiResult.Error -> "Error de backend: ${result.message}"
+            if (uiState.backendMode != null && uiState.backendMode != BackendMode.LOCAL) {
+                val healthText = when (val result = uiState.healthResult) {
+                    null -> "Consultando backend..."
+                    is ApiResult.Success -> "Backend: ${result.data}"
+                    is ApiResult.Error -> "Error de backend: ${result.message}"
+                }
+                Text(text = healthText, style = MaterialTheme.typography.bodyLarge)
             }
-            Text(text = healthText, style = MaterialTheme.typography.bodyLarge)
 
             if ("venta" in uiState.modulosPermitidos) {
                 Button(onClick = { if (viewModel.onIntentoNavegar("venta")) onNavigateToVenta() }, modifier = Modifier.fillMaxWidth()) {
@@ -83,6 +87,9 @@ fun HelloScreen(
                 Button(onClick = { if (viewModel.onIntentoNavegar("configuracion")) onNavigateToConfiguracion() }, modifier = Modifier.fillMaxWidth()) {
                     Text("Configuración")
                 }
+            }
+            OutlinedButton(onClick = onNavigateToAcercaDe, modifier = Modifier.fillMaxWidth()) {
+                Text("Acerca de")
             }
             Button(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
                 Text("Cerrar sesión")

@@ -20,6 +20,13 @@ android {
         // Ambos se suben a mano en el commit que prepara cada release.
         versionCode = 1
         versionName = "0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // MigrationTestHelper lee los JSON de esquema exportados como assets
+    // del APK de pruebas instrumentadas (M-7, PLAN.md Parte 39).
+    sourceSets {
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
     }
 
     ksp {
@@ -119,4 +126,8 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.room.testing)
 }

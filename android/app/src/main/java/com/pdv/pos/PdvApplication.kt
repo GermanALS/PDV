@@ -6,8 +6,6 @@ import androidx.work.Configuration
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.config.LimpiezaDataStore
-import com.pdv.pos.logging.AppLogger
-import com.pdv.pos.logging.LogType
 import com.pdv.pos.sync.SyncScheduler
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -20,9 +18,6 @@ import javax.inject.Inject
 
 @HiltAndroidApp
 class PdvApplication : Application(), Configuration.Provider {
-
-    @Inject
-    lateinit var appLogger: AppLogger
 
     // WorkManager con inicializacion on-demand: HiltWorkerFactory inyecta las
     // dependencias de los @HiltWorker (SyncWorker, PLAN.md Parte 32). El
@@ -51,7 +46,6 @@ class PdvApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        logSampleLinePerCategory()
         restaurarSesionYProgramarSync()
     }
 
@@ -74,19 +68,6 @@ class PdvApplication : Application(), Configuration.Provider {
                 .map { it.backendMode }
                 .distinctUntilChanged()
                 .collect { syncScheduler.actualizarProgramacion(it) }
-        }
-    }
-
-    // Verificacion manual de la Parte 5 (PLAN.md): ningun modulo real llama
-    // todavia al logger (eso empieza en la Parte 6), asi que esta llamada
-    // temporal genera una linea por categoria al arrancar para confirmar en
-    // el Xiaomi que el archivo .txt las contiene. Remover cuando la Parte 6
-    // empiece a loguear de verdad.
-    private fun logSampleLinePerCategory() {
-        applicationScope.launch {
-            LogType.entries.forEach { tipo ->
-                appLogger.log(tipo, sucursalId = "demo", usuario = "system", mensaje = "Verificacion Parte 5")
-            }
         }
     }
 }

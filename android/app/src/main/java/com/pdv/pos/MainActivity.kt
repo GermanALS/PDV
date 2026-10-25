@@ -13,6 +13,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.pdv.pos.acercade.AcercaDeScreen
 import com.pdv.pos.auth.CambiarPasswordScreen
 import com.pdv.pos.auth.LoginScreen
 import com.pdv.pos.auth.SessionManager
@@ -33,7 +34,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 private enum class Pantalla {
-    HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO, CAJA, DEVOLUCIONES, USUARIOS, ROLES, IMPORTAR_CATALOGO, CONFLICTOS,
+    HELLO, CONFIGURACION, VENTA, ENTRADA, INVENTARIO, CAJA, DEVOLUCIONES, USUARIOS, ROLES, IMPORTAR_CATALOGO, CONFLICTOS, ACERCA_DE,
 }
 
 @AndroidEntryPoint
@@ -81,6 +82,7 @@ private fun PdvNavHost(navController: NavHostController) {
                 onNavigateToCaja = { navController.navigate(Pantalla.CAJA.name) },
                 onNavigateToDevoluciones = { navController.navigate(Pantalla.DEVOLUCIONES.name) },
                 onNavigateToUsuarios = { navController.navigate(Pantalla.USUARIOS.name) },
+                onNavigateToAcercaDe = { navController.navigate(Pantalla.ACERCA_DE.name) },
             )
         }
         composable(Pantalla.CONFIGURACION.name) {
@@ -119,6 +121,9 @@ private fun PdvNavHost(navController: NavHostController) {
         }
         composable(Pantalla.CONFLICTOS.name) {
             RevisionConflictosScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Pantalla.ACERCA_DE.name) {
+            AcercaDeScreen(onBack = { navController.popBackStack() })
         }
     }
 }

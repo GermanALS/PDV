@@ -7,6 +7,8 @@ import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.repository.AuthRepository
 import com.pdv.pos.domain.repository.LoginResultado
 import kotlinx.coroutines.flow.first
+import retrofit2.HttpException
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,9 +43,13 @@ class ModeAwareAuthRepository @Inject constructor(
         val localResultado = local.login(username, password)
         if (localResultado !is LoginResultado.Exitoso) return localResultado
 
-        val remoto = runCatching { remote.login(username, password) }
-            .getOrNull() as? LoginResultado.Exitoso
-            ?: return localResultado
+        val remoto = try {
+            remote.login(username, password)
+        } catch (e: IOException) {
+            null
+        } catch (e: HttpException) {
+            null
+        } as? LoginResultado.Exitoso ?: return localResultado
 
         // Si el backend exige el cambio aunque el usuario local no, la sesion
         // tambien lo exige: con la marca remota encendida el JWT recibe 403 en
@@ -69,6 +75,12 @@ class ModeAwareAuthRepository @Inject constructor(
     // llamada remota recibe 401 y se ignora.
     private suspend fun cambiarLocalYRemoto(usuarioId: String, nuevaPassword: String) {
         local.cambiarPassword(usuarioId, nuevaPassword)
-        runCatching { remote.cambiarPassword(usuarioId, nuevaPassword) }
+        try {
+            remote.cambiarPassword(usuarioId, nuevaPassword)
+        } catch (e: IOException) {
+            // best-effort: sin red, la remota queda como estaba
+        } catch (e: HttpException) {
+            // best-effort: 401 sin token o rechazo del backend
+        }
     }
 }

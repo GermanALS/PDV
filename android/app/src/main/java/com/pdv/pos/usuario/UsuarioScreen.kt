@@ -15,9 +15,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -30,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pdv.pos.domain.model.Rol
 import com.pdv.pos.domain.model.Usuario
+import com.pdv.pos.ui.SelectorRadio
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,17 +112,12 @@ private fun FormularioUsuario(
             if (uiState.roles.isEmpty()) {
                 Text("Sin roles disponibles", style = MaterialTheme.typography.bodySmall)
             } else {
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    uiState.roles.forEachIndexed { index, rol ->
-                        SegmentedButton(
-                            selected = uiState.rolIdSeleccionado == rol.id,
-                            onClick = { onRolSelected(rol.id) },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = uiState.roles.size),
-                        ) {
-                            Text(rol.nombre)
-                        }
-                    }
-                }
+                SelectorRadio(
+                    opciones = uiState.roles,
+                    seleccionada = uiState.roles.find { it.id == uiState.rolIdSeleccionado },
+                    etiqueta = { it.nombre },
+                    onSeleccion = { onRolSelected(it.id) },
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),

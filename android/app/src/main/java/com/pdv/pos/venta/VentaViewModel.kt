@@ -290,13 +290,6 @@ class VentaViewModel @Inject constructor(
     }
 }
 
-// Mismo helper que InventarioViewModel.kt/EntradaViewModel.kt (parseo seguro
-// de BigDecimal desde entrada de usuario) - sin utilidad compartida en el
-// proyecto todavia, se mantiene la misma duplicacion por archivo ya
-// establecida en esos dos modulos.
-private fun String.toBigDecimalOrNull(): BigDecimal? =
-    if (isBlank()) null else runCatching { BigDecimal(this) }.getOrNull()
-
 private fun VentaUiState.sinResultadoDeVenta(): VentaUiState = copy(
     mensajeConfirmacion = null,
     cambioEntregado = null,

@@ -10,12 +10,17 @@ import com.pdv.pos.domain.repository.LoginResultado
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import retrofit2.HttpException
+import retrofit2.Response
 import java.io.IOException
 
 class ModeAwareAuthRepositoryTest {
@@ -99,6 +104,39 @@ class ModeAwareAuthRepositoryTest {
 
             assertEquals(LoginResultado.Exitoso(usuario, accessToken = null), resultado)
         }
+
+    @Test
+    fun `local con sincronizacion keeps a tokenless session when the backend answers an http error`(
+        @TempDir tempDir: File,
+    ) = runTest {
+        val local = mockk<LocalAuthRepository>()
+        coEvery { local.login("admin", "admin123") } returns LoginResultado.Exitoso(usuario, accessToken = null)
+        val remote = mockk<RemoteAuthRepository>()
+        coEvery { remote.login("admin", "admin123") } throws
+            HttpException(Response.error<Any>(503, "".toResponseBody()))
+
+        val preferences = preferences(tempDir)
+        preferences.setBackendMode(BackendMode.LOCAL_CON_SINCRONIZACION)
+        val repository = ModeAwareAuthRepository(local, remote, preferences)
+
+        val resultado = repository.login("admin", "admin123")
+
+        assertEquals(LoginResultado.Exitoso(usuario, accessToken = null), resultado)
+    }
+
+    @Test
+    fun `local con sincronizacion propagates cancellation of the remote login`(@TempDir tempDir: File) = runTest {
+        val local = mockk<LocalAuthRepository>()
+        coEvery { local.login("admin", "admin123") } returns LoginResultado.Exitoso(usuario, accessToken = null)
+        val remote = mockk<RemoteAuthRepository>()
+        coEvery { remote.login("admin", "admin123") } throws CancellationException("login cancelado")
+
+        val preferences = preferences(tempDir)
+        preferences.setBackendMode(BackendMode.LOCAL_CON_SINCRONIZACION)
+        val repository = ModeAwareAuthRepository(local, remote, preferences)
+
+        assertThrows<CancellationException> { repository.login("admin", "admin123") }
+    }
 
     @Test
     fun `local con sincronizacion keeps a tokenless session when the remote returns invalid credentials`(

@@ -226,9 +226,6 @@ class InventarioViewModel @Inject constructor(
     }
 }
 
-private fun String.toBigDecimalOrNull(): BigDecimal? =
-    if (isBlank()) null else runCatching { BigDecimal(this) }.getOrNull()
-
 private fun EdicionArticuloUiState.construirEdicion(sucursalId: String, usuarioId: String): Result<EdicionArticulo> {
     if (nombre.isBlank() || unidadMedida.isBlank()) {
         return Result.failure(IllegalArgumentException("Completa nombre y unidad de medida"))
