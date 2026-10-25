@@ -7,6 +7,7 @@ import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.data.remote.HealthApiService
 import com.pdv.pos.data.remote.dto.HealthResponseDto
+import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.Rol
 import com.pdv.pos.domain.repository.RolRepository
 import com.pdv.pos.logging.AppLogger
@@ -29,6 +30,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -63,16 +65,21 @@ class HelloViewModelTest {
         return repository
     }
 
-    private fun preferences(tempDir: File, sucursalId: String? = "suc-1"): ConfiguracionPreferences {
+    private fun preferences(
+        tempDir: File,
+        sucursalId: String? = "suc-1",
+        backendMode: BackendMode = BackendMode.LOCAL,
+    ): ConfiguracionPreferences {
         val dataStore = PreferenceDataStoreFactory.create(
             scope = CoroutineScope(dispatcher + SupervisorJob()),
             produceFile = { File(tempDir, "test.preferences_pb") },
         )
         val preferences = ConfiguracionPreferences(dataStore)
-        if (sucursalId != null) {
-            CoroutineScope(dispatcher).launch { preferences.setSucursalSeleccionada(sucursalId) }
-            dispatcher.scheduler.advanceUntilIdle()
+        CoroutineScope(dispatcher).launch {
+            preferences.setBackendMode(backendMode)
+            if (sucursalId != null) preferences.setSucursalSeleccionada(sucursalId)
         }
+        dispatcher.scheduler.advanceUntilIdle()
         return preferences
     }
 
@@ -83,24 +90,13 @@ class HelloViewModelTest {
     }
 
     @Test
-    fun `local greeting is set immediately without waiting on the network call`(@TempDir tempDir: File) {
-        val api = mockk<HealthApiService>()
-        coEvery { api.getHealth() } coAnswers {
-            kotlinx.coroutines.delay(1000)
-            HealthResponseDto(status = "ok", version = "0.1.0")
-        }
-
-        val viewModel = HelloViewModel(api, sessionManager(), rolRepository(), preferences(tempDir), appLogger())
-
-        assertTrue(viewModel.uiState.value.localGreeting.isNotBlank())
-    }
-
-    @Test
-    fun `fetchHealth exposes Success when the backend responds`(@TempDir tempDir: File) = runTest(dispatcher) {
+    fun `remoto exposes Success when the backend responds`(@TempDir tempDir: File) = runTest(dispatcher) {
         val api = mockk<HealthApiService>()
         coEvery { api.getHealth() } returns HealthResponseDto(status = "ok", version = "0.1.0")
 
-        val viewModel = HelloViewModel(api, sessionManager(), rolRepository(), preferences(tempDir), appLogger())
+        val viewModel = HelloViewModel(
+            api, sessionManager(), rolRepository(), preferences(tempDir, backendMode = BackendMode.REMOTO), appLogger(),
+        )
         dispatcher.scheduler.advanceUntilIdle()
 
         val result = viewModel.uiState.value.healthResult
@@ -108,15 +104,47 @@ class HelloViewModelTest {
     }
 
     @Test
-    fun `fetchHealth exposes Error when the backend call fails`(@TempDir tempDir: File) = runTest(dispatcher) {
+    fun `remoto exposes Error when the backend call fails`(@TempDir tempDir: File) = runTest(dispatcher) {
         val api = mockk<HealthApiService>()
         coEvery { api.getHealth() } throws IOException("sin conexion")
 
-        val viewModel = HelloViewModel(api, sessionManager(), rolRepository(), preferences(tempDir), appLogger())
+        val viewModel = HelloViewModel(
+            api, sessionManager(), rolRepository(), preferences(tempDir, backendMode = BackendMode.REMOTO), appLogger(),
+        )
         dispatcher.scheduler.advanceUntilIdle()
 
         val result = viewModel.uiState.value.healthResult
         assertEquals(ApiResult.Error("sin conexion"), result)
+    }
+
+    @Test
+    fun `local never queries the backend`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val api = mockk<HealthApiService>()
+
+        val viewModel = HelloViewModel(
+            api, sessionManager(), rolRepository(), preferences(tempDir, backendMode = BackendMode.LOCAL), appLogger(),
+        )
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(BackendMode.LOCAL, viewModel.uiState.value.backendMode)
+        assertNull(viewModel.uiState.value.healthResult)
+        coVerify(exactly = 0) { api.getHealth() }
+    }
+
+    @Test
+    fun `switching from remoto to local clears the backend status`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val api = mockk<HealthApiService>()
+        coEvery { api.getHealth() } throws IOException("sin conexion")
+        val preferences = preferences(tempDir, backendMode = BackendMode.REMOTO)
+        val viewModel = HelloViewModel(api, sessionManager(), rolRepository(), preferences, appLogger())
+        dispatcher.scheduler.advanceUntilIdle()
+
+        preferences.setBackendMode(BackendMode.LOCAL)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(BackendMode.LOCAL, viewModel.uiState.value.backendMode)
+        assertNull(viewModel.uiState.value.healthResult)
+        coVerify(exactly = 1) { api.getHealth() }
     }
 
     @Test

@@ -511,55 +511,98 @@ sin depender de que el cliente mande datos consistentes.
 
 ---
 
-## Parte 39: Calidad y deuda menor pre-release
+## Parte 39: Calidad y deuda menor pre-release  <!-- POS-181 -->
 
 *(Sale de los hallazgos M-7, B-3, B-4, B-5, B-6, B-8, B-11, B-12 y B-13 de
 `docs/review_code.md`. Ninguno bloquea por sí solo, pero varios son
 visibles para el usuario (botones con texto cortado, línea de prueba en el
 log) o protegen las migraciones futuras sobre datos reales (M-7).)*
 
-Claves de Jira: **sin asignar todavía** (las asigna `/jira-sync`).
+Claves de Jira: épica POS-181; historias POS-182 (grupo 1), POS-183 (grupo 2), POS-184
+(grupo 3) y POS-185 (grupo 4).
 
 Objetivo: dejar el código y la app sin deuda visible ni riesgos conocidos
 de mantenimiento antes del primer release.
 
 ### Checklist
 
-**1. Pruebas instrumentadas (M-7)**
-- [ ] `android/app/src/androidTest` con un test `MigrationTestHelper` de
+**1. Pruebas instrumentadas (M-7) (POS-182)**
+- [x] `android/app/src/androidTest` con un test `MigrationTestHelper` de
   `MIGRATION_7_8` (diferido desde las Partes 24 y 28) como plantilla para
   las migraciones futuras, y una prueba de las queries `isSynced = 0`.
-  Criterio: `./gradlew connectedAndroidTest` en verde en el Xiaomi.
+  Criterio: `adb shell am instrument -w
+  com.pdv.pos.test/androidx.test.runner.AndroidJUnitRunner` en verde en el
+  Xiaomi, tras `installDebug` + instalar el APK de `androidTest`.
+  *(Ajustado el 2026-10-25: `connectedAndroidTest` desinstala la app al
+  terminar y borra la base Room y la clave de Keystore del dispositivo.)*
   `needs-device`.
 
-**2. Android menor**
-- [ ] B-3: `AppLogger` con `DateTimeFormatter` (sin `SimpleDateFormat`
+**2. Android menor (POS-183)**
+- [x] B-3: `AppLogger` con `DateTimeFormatter` (sin `SimpleDateFormat`
   compartido), purga solo al rotar, y sin la línea "Verificacion Parte 5"
   de cada arranque (`PdvApplication.logSampleLinePerCategory`). `jvm-tests`.
-- [ ] B-4/B-5: `String.toBigDecimalOrNull()` de Kotlin en lugar de las 6
+- [x] B-4/B-5: `String.toBigDecimalOrNull()` de Kotlin en lugar de las 6
   copias privadas; `ModeAwareAuthRepository` captura `IOException`/
   `HttpException` en vez de `runCatching`. `jvm-tests`.
-- [ ] B-6: medir con StrictMode en debug si `DynamicHostInterceptor` lee
+- [x] B-6: medir con StrictMode en debug si `DynamicHostInterceptor` lee
   DataStore en el hilo principal; corregir solo si se confirma.
-  `needs-device`.
-- [ ] B-11: advertencias de lint no relacionadas con versiones resueltas
+  `needs-device`. *(Medido el 2026-10-25 en 3 arranques en frío: se
+  construye en el hilo principal pero bloquea 0.75-1.2 ms y no aparece en
+  ninguna violación de StrictMode. No confirmado, sin corrección.)*
+- [x] B-11: advertencias de lint no relacionadas con versiones resueltas
   (`ConstantLocale` en `ConfiguracionScreen.kt:263`, `ic_launcher_round` +
   carpeta `mipmap-anydpi-v26`, `mutableLongStateOf` en `CajaScreen.kt`).
   Criterio: `./gradlew lint` sin esas advertencias.
-- [ ] B-12: los botones segmentados de Configuración y Usuarios no cortan
+- [x] B-12: los botones segmentados de Configuración y Usuarios no cortan
   palabras en el Xiaomi (1080x2400). `needs-device`.
 
-**3. Backend menor**
-- [ ] B-13: `path_separator = os` en `backend/alembic.ini`. Criterio:
+**3. Backend menor (POS-184)**
+- [x] B-13: `path_separator = os` en `backend/alembic.ini`. Criterio:
   `uv run pytest` sin el `DeprecationWarning`.
+
+**4. Pantalla principal y "Acerca de" (POS-185)** *(Agregado a pedido del usuario el
+2026-10-17, observado en el Xiaomi tras el login.)*
+- [x] La pantalla principal ya no muestra el mensaje "Hola desde una funcion
+  local de Kotlin" (`HelloViewModel.buildLocalGreeting`, texto de prueba de
+  la Parte 1). `jvm-tests` del ViewModel + verificación visual en el Xiaomi.
+  `needs-device`.
+- [x] En modo local (`LOCAL_PURO`) la pantalla principal no consulta el
+  backend ni muestra "Error de backend: failed to connect to
+  /192.168.0.132 (port 8000)..." (`HelloScreen`, rama `ApiResult.Error`);
+  el modo local compila y funciona sin red (`CLAUDE.md` §3). `jvm-tests` del
+  ViewModel + verificación en el Xiaomi sin el backend levantado.
+  `needs-device`.
+- [x] Apartado "Acerca de" accesible desde la app con los datos del equipo
+  de desarrollo y la información relevante del release (versión
+  `versionName`/`versionCode`, fecha, novedades). Esa información se
+  actualiza en cada release productivo. `jvm-tests` del ViewModel +
+  verificación visual en el Xiaomi. `needs-device`.
 
 ### Decisiones abiertas
 
-- [ ] B-8: mover los textos de UI a `strings.xml`, ¿dentro del primer
+- [x] "Acerca de": ¿qué datos exactos del equipo de desarrollo se muestran
+  (nombres, contacto, sitio)?
+  *(Resuelta (2026-10-24): equipo "German y Susana ALS", contacto
+  german.antoniols@gmail.com; sin sitio.)*
+- [x] "Acerca de": ¿qué fuente tiene la información del release (constantes
+  en `BuildConfig`/`strings.xml`, o un recurso editable por release)?
+  *(Resuelta (2026-10-24): versión y `versionCode` desde `BuildConfig`;
+  fecha y novedades en `strings.xml`, editadas a mano en cada release.)*
+- [x] "Acerca de": ¿se agrega a la Parte 40 (grupo 5, "Preparación del
+  release") un ítem para actualizarla en cada release productivo?
+  *(Resuelta (2026-10-24): sí.)*
+- [x] El texto "Hola desde una funcion local de Kotlin" aparecía también en
+  el grupo 7 de la Parte 40. **Resuelta (2026-10-17):** se quitó de la Parte
+  40; queda solo en esta Parte.
+- [x] B-8: mover los textos de UI a `strings.xml`, ¿dentro del primer
   release o después?
-- [ ] B-11: ¿se actualizan las dependencias marcadas por lint
+  *(Resuelta (2026-10-24): después del primer release; queda en el
+  Backlog.)*
+- [x] B-11: ¿se actualizan las dependencias marcadas por lint
   (`GradleDependency`, `NewerVersionAvailable`) en esta Parte o en una
   Parte de mantenimiento aparte?
+  *(Resuelta (2026-10-24): en una Parte de mantenimiento aparte; queda en
+  el Backlog.)*
 
 ---
 
@@ -661,6 +704,9 @@ desde fuera de la LAN.
   `docs/manual-tecnico.html`/`.pdf` (salida de `/docs-sync`) se versionan o
   se agregan a `.gitignore`. Criterio: `git status` limpio antes de
   etiquetar el release.
+- [ ] Apartado "Acerca de" (Parte 39, grupo 4) actualizado: fecha y
+  novedades del release en `strings.xml` (la versión sale de `BuildConfig`).
+  *(Agregado el 2026-10-24 por decisión de la Parte 39.)*
 
 **6. Distribución**
 - [ ] Artefacto generado según el canal elegido (ver Decisiones abiertas):
@@ -683,10 +729,11 @@ desde fuera de la LAN.
 
 **7. Pantalla principal y tema (hallazgo A-7)**
 - [ ] La pantalla principal deja de mostrar el texto de prueba de la
-  Parte 1 ("Hola desde una funcion local de Kotlin", "Backend: ok
-  (v0.1.0)") y muestra contenido propio del punto de venta (sucursal,
-  usuario en turno, estado de conexión). `jvm-tests` del ViewModel +
-  verificación visual en el Xiaomi. `needs-device`.
+  Parte 1 ("Backend: ok (v0.1.0)") y muestra contenido propio del punto de
+  venta (sucursal, usuario en turno, estado de conexión). `jvm-tests` del
+  ViewModel + verificación visual en el Xiaomi. `needs-device`. *(El texto
+  "Hola desde una funcion local de Kotlin" se quitó de este ítem el
+  2026-10-17: lo resuelve la Parte 39, grupo 4.)*
 - [ ] Tema propio de la Activity (paleta "Recibo" de `CLAUDE.md` §3) y
   pantalla de arranque con `core-splashscreen` (librería nueva, señalar
   según `CLAUDE.md` §9), sin el destello claro del tema de plataforma en el
@@ -720,6 +767,18 @@ desde fuera de la LAN.
 
 ## Backlog (trabajo futuro, fuera del alcance actual)
 
+- **Lectura de disco en el hilo principal en `LoggingModule`** (hallazgo
+  de la medición B-6, Parte 39, 2026-10-25): StrictMode en debug marca
+  `DiskReadViolation` en `LoggingModule.provideLogDirectory` al construir
+  el grafo de Hilt desde `MainActivity`. Evaluar si el costo justifica
+  moverlo fuera del hilo principal.
+- **Textos de UI a `strings.xml`** (B-8 de `docs/review_code.md`, decidido
+  en la Parte 39 el 2026-10-24): después del primer release.
+- **Actualización de dependencias marcadas por lint** (B-11,
+  `GradleDependency`/`NewerVersionAvailable`/`AndroidGradlePluginVersion`,
+  decidido en la Parte 39 el 2026-10-24): en una Parte de mantenimiento
+  aparte.
+
 - **Robustez ante `content` vacío del proveedor de IA** (hallazgo Parte
   20, 2026-08-30): DeepSeek `deepseek-chat` en modo `json_object` devuelve
   `content` vacío de forma intermitente, lo que hoy corta la conversación
@@ -749,6 +808,16 @@ desde fuera de la LAN.
   `syncRechazo` quedan intactas pero no hay acción en la app para
   reintentarlas tras corregir la causa (ej. darle el módulo al rol en el
   backend).
+- **Política de contraseñas** (revisión tras la Parte 37, 2026-10-21): no
+  hay reglas de fortaleza. Crear un usuario (`UsuarioViewModel`) solo exige
+  que la contraseña no esté vacía; `CambiarPasswordViewModel` además exige
+  confirmación y rechaza `admin123`. El backend no puede validarla porque
+  recibe el hash bcrypt, no el texto (solo comprueba el prefijo `$2`), así
+  que la política debe vivir en la app, en un validador compartido por
+  ambas pantallas. Definir: longitud mínima, si se exige variedad de
+  caracteres, y rechazo de `admin123` también al crear o editar usuarios.
+  Relacionado: el modo local no limita los intentos de login (el bloqueo
+  de 5 fallos en 15 min de la Parte 37 existe solo en el backend).
 
 ---
 

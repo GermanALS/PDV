@@ -42,9 +42,10 @@ import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.EsquemaConexion
 import com.pdv.pos.domain.model.Sucursal
 import com.pdv.pos.ia.LlmProvider
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.pdv.pos.ui.SelectorRadio
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -250,17 +251,12 @@ private fun SucursalSection(
 private fun ModoSection(modo: BackendMode, onModoSelected: (BackendMode) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Modo", style = MaterialTheme.typography.titleMedium)
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            BackendMode.entries.forEachIndexed { index, opcion ->
-                SegmentedButton(
-                    selected = modo == opcion,
-                    onClick = { onModoSelected(opcion) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = BackendMode.entries.size),
-                ) {
-                    Text(opcion.etiqueta())
-                }
-            }
-        }
+        SelectorRadio(
+            opciones = BackendMode.entries,
+            seleccionada = modo,
+            etiqueta = { it.etiqueta() },
+            onSeleccion = onModoSelected,
+        )
     }
 }
 
@@ -270,7 +266,7 @@ internal fun BackendMode.etiqueta(): String = when (this) {
     BackendMode.LOCAL_CON_SINCRONIZACION -> "Local con sincronización"
 }
 
-private val FORMATO_FECHA_SYNC = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
+private val FORMATO_FECHA_SYNC = DateTimeFormatter.ofPattern("dd/MM HH:mm")
 
 // Estado del motor de sync diferido (PLAN.md Parte 32, Grupo 5): ultima
 // sincronizacion correcta, pendientes sin subir, ultimo error, y el disparo
@@ -288,7 +284,7 @@ private fun SincronizacionSection(
         Text("Sincronización", style = MaterialTheme.typography.titleMedium)
         Text(
             if (ultimoExitoMillis != null) {
-                "Última sincronización: ${FORMATO_FECHA_SYNC.format(Date(ultimoExitoMillis))}"
+                "Última sincronización: ${Instant.ofEpochMilli(ultimoExitoMillis).atZone(ZoneId.systemDefault()).format(FORMATO_FECHA_SYNC)}"
             } else {
                 "Todavía no sincronizó en este dispositivo"
             },

@@ -238,9 +238,6 @@ class EntradaViewModel @Inject constructor(
     }
 }
 
-private fun String.toBigDecimalOrNull(): BigDecimal? =
-    if (isBlank()) null else runCatching { BigDecimal(this) }.getOrNull()
-
 private fun EntradaUiState.construirEntrada(sucursalId: String, usuarioId: String): Result<Entrada> {
     val cantidadValida = cantidad.toBigDecimalOrNull()
     if (cantidadValida == null || cantidadValida <= BigDecimal.ZERO) {

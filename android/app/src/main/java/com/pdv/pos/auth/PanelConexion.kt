@@ -29,6 +29,7 @@ import com.pdv.pos.config.etiqueta
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.model.EsquemaConexion
+import com.pdv.pos.ui.SelectorRadio
 
 // Panel de conexion invocable desde el login (PLAN.md Parte 31). Se muestra
 // como hoja inferior modal: el login se renderiza fuera del NavHost cuando no
@@ -52,17 +53,12 @@ fun PanelConexionBottomSheet(
             Text("Conexión al backend", style = MaterialTheme.typography.titleLarge)
 
             Text("Modo", style = MaterialTheme.typography.titleMedium)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                BackendMode.entries.forEachIndexed { index, opcion ->
-                    SegmentedButton(
-                        selected = uiState.modo == opcion,
-                        onClick = { viewModel.onModoSelected(opcion) },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = BackendMode.entries.size),
-                    ) {
-                        Text(opcion.etiqueta())
-                    }
-                }
-            }
+            SelectorRadio(
+                opciones = BackendMode.entries,
+                seleccionada = uiState.modo,
+                etiqueta = { it.etiqueta() },
+                onSeleccion = viewModel::onModoSelected,
+            )
 
             if (uiState.modo == BackendMode.LOCAL) {
                 Text(

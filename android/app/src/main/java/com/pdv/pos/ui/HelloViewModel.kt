@@ -6,6 +6,7 @@ import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.data.remote.HealthApiService
+import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.repository.RolRepository
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
@@ -14,6 +15,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -22,8 +25,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.IOException
 import javax.inject.Inject
-
-private fun buildLocalGreeting(): String = "Hola desde una funcion local de Kotlin"
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -36,28 +37,37 @@ class HelloViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
-        HelloUiState(
-            username = sessionManager.session.value?.username.orEmpty(),
-            localGreeting = buildLocalGreeting(),
-        )
+        HelloUiState(username = sessionManager.session.value?.username.orEmpty())
     )
     val uiState: StateFlow<HelloUiState> = _uiState.asStateFlow()
 
     init {
-        fetchHealth()
+        observarModoBackend()
         observarModulosPermitidos()
     }
 
-    fun fetchHealth() {
+    // En LOCAL no se consulta el backend (CLAUDE.md seccion 3: el modo local
+    // funciona sin red); al cambiar de modo desde Configuracion se reevalua.
+    private fun observarModoBackend() {
         viewModelScope.launch {
-            val result = try {
-                val response = healthApiService.getHealth()
-                ApiResult.Success("${response.status} (v${response.version})")
-            } catch (e: IOException) {
-                ApiResult.Error(e.message ?: "No se pudo conectar al backend")
-            }
-            _uiState.value = _uiState.value.copy(healthResult = result)
+            preferences.deviceConfig
+                .map { it.backendMode }
+                .distinctUntilChanged()
+                .collectLatest { modo ->
+                    _uiState.update { it.copy(backendMode = modo, healthResult = null) }
+                    if (modo != BackendMode.LOCAL) {
+                        val result = consultarHealth()
+                        _uiState.update { it.copy(healthResult = result) }
+                    }
+                }
         }
+    }
+
+    private suspend fun consultarHealth(): ApiResult<String> = try {
+        val response = healthApiService.getHealth()
+        ApiResult.Success("${response.status} (v${response.version})")
+    } catch (e: IOException) {
+        ApiResult.Error(e.message ?: "No se pudo conectar al backend")
     }
 
     // Activacion/desactivacion de modulos segun el rol de la sesion activa
