@@ -748,14 +748,15 @@ sin backend productivo en este release; sus 4 ítems pasan al Backlog.)*
   errores, 0 omitidos.)* *(2026-10-26, con los grupos 6-8 y los arreglos
   de la sesión de release: BUILD SUCCESSFUL; 97 suites, 516 tests, 0
   fallos, 0 errores, 0 omitidos.)*
-- [ ] B-9 (`docs/review_code.md`): `.github/workflows/android-ci.yml`
+- [x] B-9 (`docs/review_code.md`): `.github/workflows/android-ci.yml`
   compila la variante de release (`assembleRelease`) para que un fallo de
   reglas keep de R8 aparezca en CI y no en el teléfono. Criterio: el
   workflow corre en verde en el PR de esta Parte. *(2026-10-25: paso
   "Compilar la variante de release" agregado, firmado con un keystore
   desechable generado con `keytool` en el job; se cierra al ver el PR en
-  verde.)*
-- [ ] B-10 (`docs/review_code.md`): decidido y aplicado si
+  verde.)* *(2026-10-26: Android CI en verde en el PR #50 (run
+  40448141323), con el paso "Compilar la variante de release" exitoso.)*
+- [x] B-10 (`docs/review_code.md`): decidido y aplicado si
   `docs/manual-tecnico.html`/`.pdf` (salida de `/docs-sync`) se versionan o
   se agregan a `.gitignore`. Criterio: `git status` limpio antes de
   etiquetar el release. *(Decidido (2026-10-25): dejan de versionarse y se
@@ -764,7 +765,9 @@ sin backend productivo en este release; sus 4 ítems pasan al Backlog.)*
   `docs_guard.py` ya no corre `build_manual.py --check` antes del push y
   sigue bloqueando la edición a mano de los derivados; `/docs-sync` y
   `ALCANCE-DOCS.md` ajustados. Se cierra con `git status` limpio tras el
-  commit.)*
+  commit.)* *(2026-10-26: tras generar el manual con `/docs-sync 40` y
+  commitear, `git status` no muestra el HTML ni el PDF; solo queda
+  `docs/informe_seguridad.md`, fuera del repo por decisión del usuario.)*
 - [x] Apartado "Acerca de" (Parte 39, grupo 4) actualizado: fecha y
   novedades del release en `strings.xml` (la versión sale de `BuildConfig`).
   *(Agregado el 2026-10-24 por decisión de la Parte 39.)* Declara además la
