@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
 import com.pdv.pos.config.LimpiezaDataStore
+import com.pdv.pos.config.SucursalInicial
 import com.pdv.pos.sync.SyncScheduler
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +38,9 @@ class PdvApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var limpiezaDataStore: LimpiezaDataStore
 
+    @Inject
+    lateinit var sucursalInicial: SucursalInicial
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -61,8 +65,9 @@ class PdvApplication : Application(), Configuration.Provider {
             // Antes de restaurar: borra claves obsoletas como ia_token en
             // claro (PLAN.md Parte 37, M-10).
             limpiezaDataStore.limpiarClavesObsoletas()
-            sessionManager.restaurarSesion()
+            sessionManager.restaurarSesion(System.currentTimeMillis())
         }
+        applicationScope.launch { sucursalInicial.preseleccionarSiFalta() }
         applicationScope.launch {
             configuracionPreferences.deviceConfig
                 .map { it.backendMode }

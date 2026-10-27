@@ -2,8 +2,8 @@
 manual-meta
 titulo: Manual técnico — PDV (Punto de Venta)
 lead: Descripción funcional, arquitectura, requerimientos de instalación, diagramas UML y de base de datos, y guías de diagnóstico, mantenimiento y evolución.
-actualizado: 2026-10-25
-chips: Partes 1-37 mergeadas | Partes 38-39 implementadas | Parte 40 pendiente | Backend 226 tests | Android 492 tests | Alembic 0001-0015 | Room v11
+actualizado: 2026-10-26
+chips: Partes 1-37 mergeadas | Partes 38-40 implementadas | Backend 226 tests | Android 516 tests | Alembic 0001-0015 | Room v11 | Release 1.0.0
 -->
 # Manual técnico — PDV (Punto de Venta)
 
@@ -12,7 +12,7 @@ funcional, arquitectura, requerimientos de instalación, diagramas UML y de base
 de datos, y guías de diagnóstico, mantenimiento y evolución.
 
 - **Código de proyecto**: `POS` (Jira) / `PDV` (repo).
-- **Estado a la fecha de este manual (2026-10-25)**: Partes 1-37
+- **Estado a la fecha de este manual (2026-10-26)**: Partes 1-37
   implementadas y mergeadas (la 36 en PR #46, merge `679664e`; la 37 en PR
   #47, merge `871e8a8`), incluyendo el motor de sincronización diferida
   (Parte 32), este propio manual (Parte 33), la convergencia del inventario
@@ -25,15 +25,18 @@ de datos, y guías de diagnóstico, mantenimiento y evolución.
   `main`, y sigue listada en `docs/PLAN.md`. La Parte 39 (calidad y deuda menor
   pre-release; épica `POS-181`, historias `POS-182`..`POS-185`) está
   implementada en la rama `feature/POS-181-calidad-deuda-menor` (commit
-  `9706649`), pendiente de merge. La Parte 40 (primer release productivo)
-  sigue pendiente, sin claves de Jira todavía; las Partes 36-40 salen de la
-  revisión pre-release de `docs/review_code.md`. App corriendo en
+  `9706649`), pendiente de merge. La Parte 40 (primer release: APK firmado
+  y ofuscado `1.0.0`; épica `POS-186`, historias `POS-187`..`POS-193`) está
+  implementada en la rama `feature/POS-186-primer-release` (commit
+  `d3a4cd2`), pendiente de merge; el backend productivo y la prueba en un
+  segundo dispositivo quedaron diferidos al Backlog. Las Partes 36-40 salen
+  de la revisión pre-release de `docs/review_code.md`. App corriendo en
   dispositivo físico contra backend dockerizado en LAN.
 - **Fuentes de verdad vivas** (este manual las resume, no las reemplaza):
   - `CLAUDE.md` — arquitectura estable, convenciones, comandos.
   - `docs/api-contract.md` — contrato de endpoints REST.
   - `docs/schema-pos.json` — esquema de datos compartido (Room + Alembic).
-  - `docs/PLAN.md` — trabajo en curso y pendiente (Partes 38-39 implementadas, Parte 40 + Backlog).
+  - `docs/PLAN.md` — trabajo en curso y pendiente (Partes 38-40 implementadas + Backlog).
   - `docs/PLAN-historico.md` — bitácora cerrada de las Partes 1-33 (la 34, la
     35, la 36 y la 37, ya mergeadas, siguen en `docs/PLAN.md` hasta archivarse).
   - `docs/review_code.md` — revisión pre-release del 2026-09-28/29 (origen de
@@ -73,16 +76,16 @@ y actualizaciones asistidas.
 
 | Módulo | Pantalla(s) | Qué hace | Persistencia |
 |---|---|---|---|
-| **Login / Sesión** | `LoginScreen`, `PanelConexionBottomSheet`, `CambiarPasswordScreen` | Autenticación por usuario/contraseña; panel de conexión accesible sin sesión (cambiar modo LOCAL/REMOTO, esquema/host/puerto, "Probar conexión"). Si la sesión trae `debeCambiarPassword` (admin de arranque con `admin123`), `MainActivity` muestra `CambiarPasswordScreen` en lugar de la navegación hasta que se cambie la contraseña (Parte 37). | Sesión en memoria (`SessionManager`) más `SessionStore` cifrado; conexión en DataStore. |
+| **Login / Sesión** | `LoginScreen`, `PanelConexionBottomSheet`, `CambiarPasswordScreen` | Autenticación por usuario/contraseña; panel de conexión accesible sin sesión (cambiar modo LOCAL/REMOTO, esquema/host/puerto, "Probar conexión"). Si la sesión trae `debeCambiarPassword` (admin de arranque con `admin123`), `MainActivity` muestra `CambiarPasswordScreen` en lugar de la navegación hasta que se cambie la contraseña (Parte 37). Muestra el logo horizontal de MiPE (versión clara u oscura según el tema). La sesión expira tras 12 horas en segundo plano: al volver a la app o al arrancar el proceso se muestra el login (Parte 40, M-5; ver [§7](#7-seguridad)). | Sesión en memoria (`SessionManager`) más `SessionStore` cifrado (incluye `session_ultimo_uso`); conexión en DataStore. |
 | **Venta de mostrador** | `VentaScreen` | Alta de venta con líneas, escaneo de código de barras (CameraX + ML Kit), método de pago efectivo/tarjeta, cálculo de cambio, ticket PDF e impresión. Decrementa inventario y genera movimiento de salida. | `ventas`, `venta_detalle`, `inventario`, `movimientos`. |
 | **Entrada de mercancía** | `EntradaScreen` | Recepción de mercancía de artículo existente o alta de artículo nuevo. Incrementa inventario (delta aditivo) y genera movimiento de entrada. | `movimientos` (tipo `entrada`), `articulos`, `inventario`. |
-| **Inventario** | `InventarioScreen`, `ImportarCatalogoScreen` | Consulta paginada con búsqueda (nombre/SKU/código de barras), ajuste de atributos de catálogo + existencia (genera movimiento de ajuste con delta), exportación CSV/Excel, importación de catálogo desde CSV. | `articulos`, `inventario`, `movimientos`. |
+| **Inventario** | `InventarioScreen`, `ImportarCatalogoScreen` | Consulta paginada con búsqueda (nombre/SKU/código de barras), ajuste de atributos de catálogo + existencia (genera movimiento de ajuste con delta), exportación CSV/Excel, importación de catálogo desde CSV (`InventarioCsvImporter` quita el BOM UTF-8 del encabezado, Parte 40). | `articulos`, `inventario`, `movimientos`. |
 | **Caja** | `CajaScreen` | Cortes de caja parciales y finales, retiros de efectivo, cálculo de totales del periodo (ventas, efectivo, tarjeta, retiros, monto esperado), exportación por periodo. | `cortes_caja`, `retiros_efectivo`. |
 | **Devoluciones** | `DevolucionScreen` | Registro de devolución de cliente con líneas (motivo, condición). No toca inventario (gestión con proveedor). | `devoluciones`, `devolucion_detalle`. |
 | **Usuarios** | `UsuarioScreen` | CRUD de usuarios, asignación de rol (selector vertical `SelectorRadio`), alta/cambio de contraseña (hash bcrypt calculado en el dispositivo). | `usuarios`. |
 | **Roles** | `RolScreen` | CRUD de roles personalizados; `modulos_permitidos` activa/desactiva pantallas completas. Dos roles de sistema no editables (`administrador`, `encargado_turno`). | `roles`. |
-| **Configuración** | `ConfiguracionScreen` | `BackendMode` (selector vertical `SelectorRadio`, igual que en el panel de conexión del login; reemplaza los botones segmentados que cortaban palabras, Parte 39), parámetros de conexión remota, sucursal seleccionada, activación y token del asistente de IA, prompt de sistema editable. En `LOCAL_CON_SINCRONIZACION`: sección "Sincronización" (última sync, pendientes, último error, botón "Sincronizar ahora") la cuenta "Rechazadas por el backend: N (ver Conflictos)" (Parte 36) y confirmación de pendientes al cambiar de modo (Parte 32). Si la sucursal guardada no aparece en el catálogo emitido, la conserva y muestra un aviso para que el usuario elija (Parte 36). | DataStore (preferencia de dispositivo); token cifrado con Android Keystore. |
-| **Pantalla principal / Acerca de** | `HelloScreen`, `AcercaDeScreen` | La pantalla principal ya no muestra el saludo de prueba de la Parte 1; solo consulta `/health` si `BackendMode` no es LOCAL (`HelloViewModel` observa el modo). `AcercaDeScreen` (ruta `ACERCA_DE`, botón "Acerca de") muestra versión y `versionCode` (de `BuildConfig`), fecha, novedades, equipo y contacto (de `res/values/strings.xml`, vía `InfoRelease`/`di/AcercaDeModule`); fecha y novedades se editan a mano en cada release. | `BuildConfig` y recursos; sin persistencia. |
+| **Configuración** | `ConfiguracionScreen` | `BackendMode` (selector vertical `SelectorRadio`, igual que en el panel de conexión del login; reemplaza los botones segmentados que cortaban palabras, Parte 39), parámetros de conexión remota, sucursal seleccionada, activación y token del asistente de IA, prompt de sistema editable. Encender la IA abre un diálogo de consentimiento (qué datos se envían al proveedor: mensaje e historial, resumen de inventario, totales de caja del día); sin aceptarlo el switch queda apagado, y apagarlo persiste al momento y retira el consentimiento (Parte 40, A-7). En LOCAL también se persiste la sucursal por defecto (Parte 40). En `LOCAL_CON_SINCRONIZACION`: sección "Sincronización" (última sync, pendientes, último error, botón "Sincronizar ahora") la cuenta "Rechazadas por el backend: N (ver Conflictos)" (Parte 36) y confirmación de pendientes al cambiar de modo (Parte 32). Si la sucursal guardada no aparece en el catálogo emitido, la conserva y muestra un aviso para que el usuario elija (Parte 36). | DataStore (preferencia de dispositivo); token cifrado con Android Keystore. |
+| **Pantalla principal / Acerca de** | `HelloScreen`, `AcercaDeScreen` | La pantalla principal (`HelloViewModel`, `HelloUiState`) muestra un encabezado de turno: nombre de la sucursal seleccionada (o "Sin sucursal seleccionada"), usuario en turno con su rol y el `EstadoConexion` (`SOLO_LOCAL`, `COMPROBANDO`, `CONECTADO`, `SIN_CONEXION`); fuera de LOCAL consulta `/health` y solo distingue si hubo `IOException`. `AcercaDeScreen` (ruta `ACERCA_DE`, botón "Acerca de") muestra el logo con eslogan, versión y `versionCode` (de `BuildConfig`), fecha, novedades, "Limitaciones conocidas" (cantidades enteras y sin IVA desglosado, M-8), equipo y contacto (de `res/values/strings.xml`, vía `InfoRelease`/`di/AcercaDeModule`); fecha, novedades y limitaciones se editan a mano en cada release. El nombre visible de la app es "MiPE PDV" (`app_name`; `applicationId` `com.pdv.pos` sin cambio). | `BuildConfig` y recursos; sin persistencia. |
 | **Revisión de conflictos** | `RevisionConflictosScreen` | Panel **solo lectura** de `sync_conflicts`: lista los conflictos de sincronización detectados y su resolución automática. | `sync_conflicts`. |
 | **Asistente de IA + FAQ** | `AsistenteIaWidget` (overlay flotante) | Chat con LLM; responde consultas, ejecuta acciones (alta de artículo, corte parcial, retiro, devolución, exportar/consultar inventario) por los **mismos repositorios** que las pantallas manuales, con confirmación explícita y chequeo de permiso. FAQ curado con retrieval de 3 niveles y atajos sin conexión (`qN`, match de texto). | Reutiliza los repositorios de dominio; FAQ empaquetado (`faq.jsonl`). |
 | **Logs / Auditoría** | — (sin pantalla) | `AppLogger` escribe archivos `.txt` locales al dispositivo, una línea por evento con `[tipo][timestamp][sucursal][usuario] mensaje`. Categorías: `ERROR`, `WARN`, `INFO`, `DB_WRITE`, `SYNC_CONFLICT`, `AUTH`. Rotación a 5 MB, retención 30 días (la purga corre solo al rotar). | Sistema de archivos del dispositivo (`filesDir`). |
@@ -259,6 +262,7 @@ override suspend fun registrarVenta(venta: Venta) {
 | Sync en background | WorkManager · Hilt-Work (Parte 32) | 2.10.1 · 1.2.0 |
 | Red | Retrofit · OkHttp · kotlinx.serialization | 3.0.0 · 5.4.0 · 1.11.0 |
 | Persistencia local | Room · DataStore Preferences | 2.8.4 · 1.2.1 |
+| Arranque (Parte 40) | `androidx.core:core-splashscreen` | 1.2.0 |
 | Escaneo | CameraX · ML Kit barcode-scanning | 1.6.1 · 17.3.0 |
 | Cripto | bcrypt (at.favre.lib) | 0.10.2 |
 | Test (JVM) | JUnit5 · MockK · kotlinx-coroutines-test · OkHttp MockWebServer | 6.1.3 · 1.14.11 · 1.11.0 · 5.4.0 |
@@ -501,6 +505,7 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
   `MOTIVO_RELOGIN` ("sync requiere re-login") o, si la sesión no tiene
   `accessToken`, con `MOTIVO_SIN_TOKEN`; Configuración lo muestra como "Último
   error" y no se expulsa al cajero.
+- **Sesión expirada** (Parte 40, M-5): `DefaultSyncOrchestrator.sincronizar` llama primero a `SessionManager.cerrarSiExpirada`; sin sesión devuelve `SyncResultado.Fallo` con `MOTIVO_SIN_SESION` ("no hay sesion activa: inicia sesion para sincronizar") y el sync no avanza hasta el próximo login.
 - **Autenticación del worker desatendido**: `SessionStore` persiste la sesión
   (incluido el `accessToken`) cifrada con `TokenCipher`/Android Keystore
   (mismo patrón que el token de IA, Parte 14) y siembra `SessionManager` al
@@ -517,7 +522,7 @@ Diseño *last-write-wins* + eventos aditivos (`android/.../sync/`,
   sucursal seleccionada y evita cerrar la sesión por un 401 del worker
   (mergeada). La Parte 37 añade que el worker no sube mientras la sesión
   tenga `debeCambiarPassword` (`MOTIVO_CAMBIAR_PASSWORD`, "cambia la
-  contrasena inicial antes de sincronizar"). Queda como limitación conocida
+  contrasena inicial antes de sincronizar"). La Parte 40 suma `MOTIVO_SIN_SESION` para la sesión expirada o ausente. Queda como limitación conocida
   que `InventarioPuller.resolverArticulo` no es
   atómico (ventana de milisegundos entre `hayEdicionPendiente` y
   `updateArticulo`); ver
@@ -542,7 +547,9 @@ que el JSON, la entidad Room y la migración Alembic queden alineados entre sí.
   **No** lo llevan `articulos`, `roles`, `usuarios` (globales entre sucursales).
 - **Seed**: si no existe ninguna fila en `sucursales` al arrancar, se crea
   "Sucursal principal" (backend: migración inicial; Android LOCAL: primer
-  arranque).
+  arranque). En LOCAL, `SucursalInicial` (invocada desde `PdvApplication`)
+  persiste la primera sucursal como seleccionada si no hay ninguna guardada
+  (Parte 40).
 
 ### 3.2 Diagrama entidad-relación
 
@@ -1111,7 +1118,27 @@ cd android
 ./gradlew installDebug           # instala en el dispositivo/emulador conectado
 ./gradlew testDebugUnitTest      # tests unitarios JVM
 ./gradlew lint
+./gradlew testReleaseUnitTest    # tests unitarios sobre el variant de release
+./gradlew assembleRelease        # APK de release firmado y ofuscado (R8)
 ```
+
+**Release firmado** (Parte 40, `android/app/build.gradle.kts`): `signingConfigs.release`
+toma la firma de `android/keystore.properties` (gitignoreado, igual que `*.jks`
+y `*.keystore`; claves `storeFile`, `storePassword`, `keyAlias`, `keyPassword`)
+o, si ese archivo no existe, de las variables de entorno `PDV_KEYSTORE_FILE`,
+`PDV_KEYSTORE_PASSWORD`, `PDV_KEY_ALIAS` y `PDV_KEY_PASSWORD` (las usa el CI).
+Sin ninguno de los dos, `assembleDebug` compila igual y `packageRelease` falla
+con el mensaje "Falta la firma de release". El keystore vive fuera del repo
+(procedimiento de respaldo y rotación en `CLAUDE.md` §7). El buildType
+`release` activa `isMinifyEnabled` e `isShrinkResources`, y el APK se llama
+`pos-pdv-release-v<versionName>.apk` (hoy `pos-pdv-release-v1.0.0.apk`).
+`proguard-rules.pro` contiene una sola regla propia,
+`-keep,allowobfuscation @kotlinx.serialization.Serializable class
+com.pdv.pos.data.remote.dto.**`: sin ella R8 eliminaba un DTO referenciado
+solo desde la firma genérica de una función `suspend` de Retrofit y el
+convertidor fallaba en runtime con "Serializer for class 'Any' is not found".
+Room, Hilt, Retrofit, kotlinx-serialization y ML Kit se apoyan en las reglas de
+consumidor que traen sus librerías.
 
 **Pruebas instrumentadas** (Parte 39, `app/src/androidTest`): no usar
 `connectedAndroidTest`, porque al terminar desinstala la app y borra la base
@@ -1144,12 +1171,14 @@ los APK ya compilados.
 | Pantalla | teléfono táctil, vertical | — | Diseño Compose pensado para portrait. |
 | Red | ninguna en modo LOCAL | Wi-Fi | Wi-Fi en la misma subred para modo REMOTO / sync. Internet solo para el asistente de IA. |
 
-**Tamaño de los artefactos actuales** (build sin R8, sin ofuscación, sin App
-Bundle ni ABI splits):
+**Tamaño de los artefactos** (sin App Bundle ni ABI splits):
 
-- APK debug: **41,6 MB**. APK release sin firmar: **36,2 MB** (`docs/PLAN.md` Parte 40 registra 36,5 MB en la medición del 2026-09-29).
-- DEX (multidex, 17 archivos): ~45 MB sin comprimir en debug — grande porque
-  `isMinifyEnabled = false` (se reduce en la Parte 40).
+- APK debug: **41,6 MB** (medición anterior a la Parte 40, sin R8) <!-- VERIFICAR: no se re-midió el APK debug tras la Parte 40 -->.
+- APK release con R8 y `isShrinkResources` (Parte 40): **25 103 991 bytes**
+  (~25,1 MB), firmado; `docs/PLAN.md` registra 36 560 235 bytes sin R8 el
+  2026-10-25 (-31 %).
+- DEX del debug (multidex, 17 archivos): ~45 MB sin comprimir — grande porque
+  el debug no minifica.
 - Nativas de ML Kit barcode (`libbarhopper_v3.so`): ~4,8 MB para la ABI
   `arm64-v8a` + ~0,9 MB de modelos `.tflite` empaquetados (sin descarga en
   runtime).
@@ -1163,8 +1192,8 @@ Bundle ni ABI splits):
 | Logs (`AppLogger`) | Pocos MB típico; decenas de MB con logging intenso | Archivos `app-log-*.txt` de 5 MB máx.; se purgan los de más de 30 días. No hay tope de tamaño total, solo retención temporal. |
 | Tickets PDF y exportaciones CSV/Excel | Pequeño (ticket pocos KB; export escala con el catálogo) | Van a `cacheDir/exports/`. Son cache: el SO puede evictarlos bajo presión de almacenamiento; la app no los borra por su cuenta. |
 
-La Parte 40 (`isMinifyEnabled` + `isShrinkResources` + AAB / ABI splits)
-reduciría de forma notable el tamaño de descarga e instalación.
+El shrink de la Parte 40 ya redujo el tamaño de descarga; el AAB / ABI splits
+no se aplican (el canal es sideload de APK).
 
 ### 5.4 Conectividad dispositivo físico -> backend
 
@@ -1192,7 +1221,12 @@ El túnel **no persiste** entre reconexiones de cable, reinicios ni
 
 **Cleartext HTTP**: habilitado solo en el build de **debug**
 (`app/src/debug/res/xml/network_security_config.xml`, `base-config`). El build
-de release bloquea cleartext por defecto (endurecimiento formal: Parte 40).
+de release no incluye ese archivo y el manifest principal declara
+`android:usesCleartextTraffic="false"` (Parte 40): en release "Probar conexión"
+contra `http://<IP LAN>:8000` falla con "CLEARTEXT communication ... not
+permitted" (verificado en el Xiaomi el 2026-10-26). Consecuencia: con el APK de
+release los modos REMOTO y LOCAL_CON_SINCRONIZACION solo funcionan contra un
+backend HTTPS; el modo LOCAL no se ve afectado.
 
 ### 5.5 Asistente de IA (opcional)
 
@@ -1200,6 +1234,10 @@ de release bloquea cleartext por defecto (endurecimiento formal: Parte 40).
   `OPEN_ROUTER`), pegar el **API key del proveedor** y opcionalmente el modelo.
 - El token se cifra con AES-256 respaldado por Android Keystore; en DataStore
   solo se guarda ciphertext + IV (`AndroidKeystoreTokenCipher`).
+- Encender la IA exige antes aceptar un diálogo de consentimiento (datos que se
+  envían al proveedor); `ChatViewModel` no llama al proveedor salvo que
+  `IaConfig.puedeEnviar` (activo y consentimiento) sea verdadero. Apagar la IA
+  retira el consentimiento (Parte 40, A-7).
 - El asistente llama directo al proveedor por HTTPS; no pasa por el backend.
 
 ### 5.6 Secretos y despliegue no-local
@@ -1212,7 +1250,10 @@ de release bloquea cleartext por defecto (endurecimiento formal: Parte 40).
   `PDV_ENV: production` y credenciales reales de Postgres, y levantar con
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
 - El destino de despliegue productivo (Render / Fly.io / VPS / AWS) está
-  **sin decidir** (`CLAUDE.md` §7 `[TODO]`; se resuelve en la Parte 40).
+  **sin decidir** (`CLAUDE.md` §7 `[TODO]`): la Parte 40 lo difirió al Backlog
+  (2026-10-25) porque el primer release se centra en el modo local; la
+  recomendación registrada es un VPS propio con el compose tal cual, Caddy como
+  proxy TLS y `pg_dump` programado.
 
 ---
 
@@ -1244,16 +1285,20 @@ Parámetros fijos en código (`app/security.py`): `JWT_ALGORITHM = "HS256"`,
 
 `ConfiguracionViewModel` empareja la sucursal guardada por `id` o `remoteId`
 (`Sucursal.remoteId`, Parte 36) y solo persiste la primera del catálogo cuando
-no hay ninguna guardada.
+no hay ninguna guardada; desde la Parte 40 lo hace también en modo LOCAL, y
+`SucursalInicial` (invocada desde `PdvApplication`) la preselecciona al arrancar
+en LOCAL.
 
-Otras preferencias: `IaPreferences` (activo, proveedor, modelo, token cifrado),
+Otras preferencias: `IaPreferences` (activo, proveedor, modelo, token cifrado y,
+desde la Parte 40, `ia_consentimiento`),
 `PromptIaPreferences` (prompt de sistema editable), `SyncStateStore` (Parte
 32: `lastSuccessAtMillis`, `lastError`, cursor `updated_since` del pull por
 `(entidad, sucursal)` desde la Parte 34, y banderas
 `sync_inventario_reconciliado_v2_<sucursal>` y, desde la Parte 35,
 `sync_catalogo_reconciliado_<sucursal>`), `SessionStore` (Parte 32: sesión del usuario para el `SyncWorker`
 desatendido, `accessToken` cifrado igual que el token de IA; desde la Parte 37
-guarda también `session_debe_cambiar_password`). `LimpiezaDataStore` (Parte
+guarda también `session_debe_cambiar_password`; desde la Parte 40,
+`session_ultimo_uso` con la hora en que la app pasó a segundo plano). `LimpiezaDataStore` (Parte
 37) borra al arrancar las claves obsoletas `ia_token` (API key en claro de un
 build previo al cifrado), `nombre_base_datos` y los cursores de pull sin
 sucursal.
@@ -1270,7 +1315,10 @@ deja pasar la request con el `BASE_URL` por defecto
   publicado; se sube a mano en el commit de release).
 - `versionCode = MAJOR*10000 + MINOR*100 + PATCH` (entero monotónico, sin
   colisiones entre APKs distribuidos).
-- Hoy: `versionCode = 1` / `versionName = "0.1"` hasta el primer release.
+- Hoy: `versionCode = 10000` / `versionName = "1.0.0"` (primer release, Parte 40;
+  `aapt2 dump badging` lo confirmó el 2026-10-25). El debug conserva el nombre
+  de archivo `pos-hello-debug-v0.1.apk`; el release emite
+  `pos-pdv-release-v<versionName>.apk`.
 
 ---
 
@@ -1288,24 +1336,28 @@ deja pasar la request con el `BASE_URL` por defecto
 | **Tokens** | JWT `HS256`, `sub` = `usuario.id`, expiración 24 h, firmado con `JWT_SECRET_KEY`. Sin `refresh_token` (diferido, ratificado en la Parte 32: se mantiene el JWT de 24 h + re-login al recibir 401, aunque `SessionStore` persista la sesión para el worker de sync). |
 | **Enforcement backend** | `Depends(usuario_actual)` en el router `protected`: valida firma/expiración y que el `sub` corresponda a un usuario existente, activo y no borrado. `401 {"detail": "token invalido o expirado"}` genérico. `health` y `auth` exentos. |
 | **Autorización por módulo** | `verificar_modulo` gatea **solo escrituras** (`POST`/`PATCH`/`DELETE`) según `(método, ruta)` -> módulo requerido (mapa en `app/permissions.py`). Los `GET` solo exigen token válido. `403 {"detail": "el rol no tiene permiso para el modulo: X"}`. |
+| **Expiración de la sesión por inactividad** | Parte 40 (M-5): la ventana de inactividad abre cuando `MainActivity.onStop` llama a `SessionManager.registrarUso` (guarda `session_ultimo_uso` en `SessionStore`) y se evalúa en `onStart` con `cerrarSiExpirada`; `restaurarSesion` descarta la sesión persistida si venció. Límite `INACTIVIDAD_MAXIMA_MILLIS` = 12 horas en segundo plano (el tiempo en primer plano no cuenta; una sesión recién iniciada sin marca no expira). Una sesión expirada detiene el sync de `LOCAL_CON_SINCRONIZACION` (`MOTIVO_SIN_SESION`). |
+| **Cleartext y build de release** | Debug permite HTTP a cualquier host (`base-config`); release declara `usesCleartextTraffic="false"` y no incluye el network security config de debug. El release además va firmado y ofuscado con R8 (ver [§5.3](#53-android)). |
 | **Reacción del cliente a 401** | `AuthInterceptor` cierra la sesión y vuelve a `LoginScreen` **solo si** la request llevaba token (`token != null`), no era `/auth/login` y el modo es `REMOTO` (Parte 36, M-5). Un 401 a una request sin token (esperado en LOCAL / LOCAL_CON_SINCRONIZACION contra un backend con enforcement) lo maneja el repositorio que llamó; un 401 con token en `LOCAL_CON_SINCRONIZACION` lo registra el orquestador de sync ("sync requiere re-login") sin cerrar la sesión. |
 | **No enumeración de usuarios** | `/auth/login` devuelve el mismo 401 para usuario inexistente, inactivo, sin hash o contraseña incorrecta. |
 | **Token de IA** | Cifrado AES-256 con clave respaldada por Android Keystore; solo ciphertext + IV en DataStore. El token viaja únicamente en el header del request al proveedor, nunca se loguea. Si el descifrado lanza `GeneralSecurityException` (clave de Keystore ausente tras reinstalar o restaurar), `IaPreferences` lo trata como "sin token" y borra las claves; `SessionStore` hace lo mismo con la sesión (Parte 37). |
+| **Consentimiento de IA** | Parte 40 (A-7): el diálogo de Configuración declara los datos que van al proveedor (mensaje e historial, nombre de sucursal y resumen de inventario con SKU, nombre, existencias, precio, costo y ubicación, totales de caja del día, y el texto del dictado por voz). `IaPreferences.consentimiento` (`ia_consentimiento`) más `IaConfig.puedeEnviar`: `ChatViewModel` no envía nada si no hay activo y consentimiento; apagar la IA retira el consentimiento. |
 | **Autorización de acciones de IA** | El módulo a autorizar se deriva del `tipo` de acción (mapa fijo), nunca del campo `modulo` de la salida del LLM. Confirmación explícita del usuario para las 4 acciones de escritura. |
 | **CORS** | `CORSMiddleware` con `allow_origins=["*"]` (no hay cliente web; revisar el día que exista uno). Los `500` del handler global **no llevan headers CORS** (posición de `ServerErrorMiddleware` en el stack de Starlette). |
 | **Contenedor** | Corre como usuario no privilegiado `app` (`adduser --system` + `USER app` en el `Dockerfile`). |
 | **Logging de auditoría** | `AppLogger` (dispositivo): categoría `AUTH` para logins y rechazos de permiso de la IA; `SYNC_CONFLICT` para conflictos. Archivos `.txt` locales, nunca viajan por API. Backend: logging operativo a stdout/stderr, nivel `ERROR` en el handler global. |
 
-**Pendientes de seguridad para producción (Parte 40):** APK firmado (hoy
-`assembleRelease` produce un APK sin firmar), `JWT_SECRET_KEY` fuerte en el
-entorno desplegado, backend por HTTPS, cleartext deshabilitado en release,
-R8/ofuscación (B-7, diferido). La Parte 37 (`docs/PLAN.md`, hallazgos A-3,
-A-4, A-5, M-4, M-6 y M-10 de `docs/review_code.md`) quedó implementada,
-verificada en dispositivo y mergeada (PR #47): cambio forzado de la contraseña
-`admin/admin123`, `JWT_SECRET_KEY` obligatoria, límite de intentos de login,
-`/docs` deshabilitado fuera de desarrollo y `allowBackup`/limpieza de claves.
-Queda como tarea operativa, a cargo del usuario, rotar la API key del
-proveedor de IA del dispositivo de pruebas.
+**Estado de seguridad del primer release (Parte 40):** APK de release firmado
+(keystore fuera del repo, `CLAUDE.md` §7), R8 con shrink de recursos y
+cleartext deshabilitado, verificados en el Xiaomi el 2026-10-26. La Parte 37
+(`docs/PLAN.md`, hallazgos A-3, A-4, A-5, M-4, M-6 y M-10 de
+`docs/review_code.md`) quedó implementada, verificada en dispositivo y
+mergeada (PR #47): cambio forzado de la contraseña `admin/admin123`,
+`JWT_SECRET_KEY` obligatoria, límite de intentos de login, `/docs`
+deshabilitado fuera de desarrollo y `allowBackup`/limpieza de claves. Quedan
+diferidos al Backlog el backend productivo por HTTPS con `JWT_SECRET_KEY` fuerte
+y el respaldo de Postgres. Queda como tarea operativa, a cargo del usuario,
+rotar la API key del proveedor de IA del dispositivo de pruebas.
 
 ---
 
@@ -1415,6 +1467,11 @@ python -c "import sqlite3;c=sqlite3.connect('pdv.db');print(c.execute('select na
 | El contenedor del backend termina con `RuntimeError: JWT_SECRET_KEY ...` | Falta `JWT_SECRET_KEY`, o tiene el valor de desarrollo con `PDV_ENV` distinto de `development`. | Definir una clave propia en el entorno del despliegue (`docker-compose.prod.yml`). En local, `PDV_ENV=development` (lo fija el `docker-compose.yml`). |
 | `/docs` devuelve `404` | Sin `PDV_ENV=development` el backend no expone `/docs`, `/redoc` ni `/openapi.json`. | Esperado fuera de desarrollo. |
 | Configuración muestra "Último error: cambia la contrasena inicial antes de sincronizar" | La sesión tiene `debeCambiarPassword`; el orquestador no sube hasta el cambio. | Cambiar la contraseña inicial. |
+| Con el APK de release: "Probar conexión" a `http://<IP>:8000` falla con "CLEARTEXT communication ... not permitted" | Esperado: el release declara `usesCleartextTraffic="false"` (Parte 40). | Usar un backend HTTPS, o el build de debug para pruebas en la LAN. |
+| Con el APK de release: "Unable to create converter for class java.lang.Object" o "Serializer for class Any is not found" | R8 eliminó un DTO `@Serializable` que solo aparecía en la firma genérica de una función `suspend` de Retrofit (caso `HealthResponseDto`). | Mantener la regla `-keep,allowobfuscation` sobre `com.pdv.pos.data.remote.dto.**` en `proguard-rules.pro`; desofuscar el stack trace con `app/build/outputs/mapping/release/mapping.txt`. |
+| `assembleRelease` falla en `packageRelease` con "Falta la firma de release" | No existe `android/keystore.properties` ni las variables `PDV_KEYSTORE_*`. | Crear el archivo o definir las variables (`CLAUDE.md` §7). |
+| Al abrir la app aparece el login aunque había sesión | Pasaron más de 12 horas en segundo plano (`SessionManager.cerrarSiExpirada`, Parte 40). | Esperado; volver a iniciar sesión. El sync de `LOCAL_CON_SINCRONIZACION` reporta "no hay sesion activa" hasta entonces. |
+| El asistente de IA responde "La IA no está activada" con la IA activa de antes | Falta el consentimiento (`ia_consentimiento`): un dispositivo con la IA activa de antes de la Parte 40 vuelve a pedirlo. | Volver a encender la IA en Configuración y aceptar el diálogo. |
 | Carrera KSP debug/release al compilar Android | Hallazgo transitorio de la Parte 24 (a vigilar en la Parte 26 / CI). | `./gradlew clean` y recompilar; reportar si es reproducible. |
 | OpenRouter nunca probado en vivo | No hay token de OpenRouter en el entorno. | Cargar un token real para validar antes de recomendar ese proveedor a un comercio. |
 
@@ -1434,7 +1491,9 @@ PDV/
 │                   schema-pos.json, review_code.md (+ la revisión anterior
 │                   review_code_2026-09-28_1816.md), inventario-inicial.csv,
 │                   ALCANCE-DOCS.md (alcance del manual), manual-tecnico.md
-│                   (este archivo) + derivados .html/.pdf
+│                   (este archivo); los derivados .html/.pdf están en
+│                   .gitignore y se generan bajo demanda; mipe-logo/ (SVG
+│                   del logo MiPE; los PNG no se versionan)
 ├── .claude/commands/  Comandos slash del proyecto (/parte, /docs-sync, /jira-sync)
 ├── .claude/agents/    Subagentes (doc-maintainer)
 ├── .claude/hooks/     docs_guard.py (PreToolUse, registrado en .claude/settings.json)
@@ -1452,7 +1511,13 @@ sincronizados vía `docs/api-contract.md`.
   Postgres 16, `astral-sh/setup-uv@v6` (pin `0.10.12`), `uv lock --check`
   (falla si `uv.lock` está desactualizado), `uv sync --frozen`,
   `uv run alembic upgrade head`, `uv run alembic check`, `uv run pytest`.
-- **`.github/workflows/android-ci.yml`** (trigger en `android/**`).
+- **`.github/workflows/android-ci.yml`** (trigger en `android/**`): tests y lint,
+  verificación de que `app/schemas` está al día y, desde la Parte 40 (B-9), el
+  paso "Compilar la variante de release": genera con `keytool` un keystore
+  desechable (PKCS12, validez 1 día) en `runner.temp`, lo pasa por las variables
+  `PDV_KEYSTORE_*` y corre `./gradlew assembleRelease --max-workers=1`, para que
+  un fallo de reglas keep de R8 aparezca en CI. El APK resultante no sirve para
+  distribuir.
 - **No hay CI/CD de despliegue** todavía (pendiente; Parte 26 del historial /
   Parte 40).
 
@@ -1461,7 +1526,7 @@ sincronizados vía `docs/api-contract.md`.
 | Lado | Comando | Estado de referencia |
 |---|---|---|
 | Backend | `uv run pytest` | 17 archivos `test_*.py` más `conftest.py` (la Parte 37 sumó `test_config.py` y `test_limite_login.py`; la Parte 38 amplió `test_ventas.py`, `test_entradas.py`, `test_inventario.py`, `test_caja.py` y `test_devoluciones.py`, incluido un test de 6 ventas concurrentes sin fila previa de inventario), **226 passed** (registrado en `docs/PLAN.md` el 2026-10-21, tras la Parte 38). Cobertura: happy path + ≥1 error por endpoint, más `test_schema_parity.py`, `test_auth_enforcement.py`, `test_permisos.py`. |
-| Android | `./gradlew testDebugUnitTest` | 96 archivos `*Test.kt` (la Parte 39 sumó `AcercaDeViewModelTest` y amplió `HelloViewModelTest`, `ModeAwareAuthRepositoryTest` y `AppLoggerTest`) (la Parte 37 sumó `CambiarPasswordViewModelTest` y `LimpiezaDataStoreTest`; la Parte 38, `UsuarioDispositivoMappersTest`); última corrida (2026-10-25, tras la Parte 39): **492 tests / 0 fallos / 0 errores** (antes, 2026-10-21, tras la Parte 38: 486). ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
+| Android | `./gradlew testDebugUnitTest` | 97 archivos `*Test.kt` (la Parte 40 sumó `SucursalInicialTest` y amplió `SessionManagerTest`, `SessionStoreTest`, `ConfiguracionViewModelTest`, `HelloViewModelTest`, `ChatViewModelTest`, `DefaultSyncOrchestratorTest`, `InventarioCsvImporterTest` y `AcercaDeViewModelTest`) (la Parte 39 sumó `AcercaDeViewModelTest` y amplió `HelloViewModelTest`, `ModeAwareAuthRepositoryTest` y `AppLoggerTest`) (la Parte 37 sumó `CambiarPasswordViewModelTest` y `LimpiezaDataStoreTest`; la Parte 38, `UsuarioDispositivoMappersTest`); última corrida registrada en `docs/PLAN.md` (2026-10-26, `./gradlew testReleaseUnitTest` tras la Parte 40): **97 suites, 516 tests / 0 fallos / 0 errores / 0 omitidos** (antes, 2026-10-25, tras la Parte 39: 492; 2026-10-21, tras la Parte 38: 486). ViewModels con estados mockeados; repos locales contra Room in-memory; repos remotos contra MockWebServer; orquestador/pushers/pullers de sync con fakes (sin Robolectric, D5 de la Parte 32). |
 
 Además, desde la Parte 39 existen pruebas **instrumentadas** en
 `android/app/src/androidTest/` (`MigrationTest`, 1 test; `PendingSyncQueriesTest`,
@@ -1532,7 +1597,8 @@ para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35
   `docs/ALCANCE-DOCS.md` (nunca parcial). Delega la revisión en el subagente
   `doc-maintainer` (único que lee y edita el Markdown); tras la confirmación
   explícita del usuario, genera los derivados `docs/manual-tecnico.html` y
-  `.pdf` con `uv run scripts/docs/build_manual.py` y registra el commit/Parte/
+  `.pdf` con `uv run scripts/docs/build_manual.py` (no se versionan: están en
+  `.gitignore` y quedan locales, Parte 40) y registra el commit/Parte/
   fecha en la línea `docs-sync:` de `docs/ALCANCE-DOCS.md`. `--check` (o
   `build_manual.py --check`) verifica, sin generar nada, que el sha256 del
   Markdown coincida con el embebido en el HTML y en los metadatos del PDF. Se
@@ -1543,8 +1609,9 @@ para `cantidadNum`, `MIGRATION_8_9` para `inventario.edicionPendiente`, Parte 35
   `.pdf` — deben regenerarse con `build_manual.py`, nunca editarse a mano; (2)
   bloquea `git push` hacia `main`/`master` si el manual quedó desactualizado:
   hay archivos cambiados fuera de `docs/` desde el commit registrado en la
-  línea `docs-sync:` de `docs/ALCANCE-DOCS.md`, o `build_manual.py --check`
-  falla. `exit 2` con el motivo en `stderr`, visible para Claude.
+  línea `docs-sync:` de `docs/ALCANCE-DOCS.md`. Desde la Parte 40 el hook ya no
+  corre `build_manual.py --check` (el HTML/PDF no se versionan). `exit 2` con el
+  motivo en `stderr`, visible para Claude.
 - `/jira-sync <sección>` — sincroniza una sección de `PLAN.md` hacia Jira
   (proyecto `POS`) como épica + historias, unidireccional, con confirmación
   humana. `PLAN.md` es la única fuente de verdad del alcance. Antes de
@@ -1565,14 +1632,16 @@ Las Partes 1-33 están implementadas y mergeadas (su detalle se archivó en
 aún sin archivar), la Parte 38 (implementada en la rama
 `feature/POS-177-integridad-datos`, pendiente de merge), la Parte 39
 (implementada en la rama `feature/POS-181-calidad-deuda-menor`, pendiente de
-merge) y la Parte pendiente 40. La 34 y las 36-40 salen de la revisión
+merge) y la Parte 40 (implementada en la rama `feature/POS-186-primer-release`,
+pendiente de merge). La 34 y las 36-40 salen de la revisión
 pre-release del 2026-09-28/29 (`docs/review_code.md`, hallazgos A-n / M-n /
 B-n con reproducción); la 35 salió de la ejecución de la 34 (2026-10-12). Las
-Partes 34, 35, 36, 37, 38 y 39 tienen claves de Jira (épica `POS-157`, historias
+Partes 34, 35, 36, 37, 38, 39 y 40 tienen claves de Jira (épica `POS-157`, historias
 `POS-158`..`POS-161`; épica `POS-162`, historias `POS-163`..`POS-167`; épica
 `POS-168`, historias `POS-169`..`POS-171`; épica `POS-172`, historias
 `POS-173`..`POS-175`; épica `POS-177`, historias `POS-178`..`POS-180`; épica
-`POS-181`, historias `POS-182`..`POS-185`); la 40 no. El checklist completo — criterios de cierre,
+`POS-181`, historias `POS-182`..`POS-185`; épica `POS-186`, historias
+`POS-187`..`POS-193`). El checklist completo — criterios de cierre,
 etiquetas de verificación y decisiones abiertas — vive en `docs/PLAN.md`; esta
 sección solo resume el alcance, no lo duplica.
 
@@ -1665,48 +1734,56 @@ sección solo resume el alcance, no lo duplica.
   (`DynamicHostInterceptor` bloquea 0.75-1.2 ms, sin violación de StrictMode):
   no confirmado, sin corrección. B-8 (textos a `strings.xml`) y la
   actualización de dependencias por lint pasaron al Backlog.
-- **Parte 40 — primer release productivo** (pendiente; era la Parte 34, pasó
-  a 39 el 2026-10-02 y a 40 el 2026-10-12): firma de release, despliegue del backend
-  productivo, URL base productiva en la app, endurecimiento del build
-  (R8/shrinking), preparación y distribución, y pantalla principal/tema
-  propios. Detalle en §11.2 (abajo).
+- **Parte 40 — primer release** (implementada en la rama
+  `feature/POS-186-primer-release`, commit `d3a4cd2`, sin mergear; épica
+  `POS-186`, historias `POS-187`..`POS-193`; era la Parte 34, pasó a 39 el
+  2026-10-02 y a 40 el 2026-10-12): APK `1.0.0` / `10000` firmado, con R8 y
+  cleartext deshabilitado, más expiración de sesión, consentimiento de IA,
+  pantalla principal y tema propios. Distribución por sideload; el backend
+  productivo y la prueba en un segundo dispositivo se difirieron al Backlog.
+  Detalle en §11.2 (abajo).
 
-### 11.2 Detalle — Parte 40: primer release productivo (pendiente)
+### 11.2 Detalle — Parte 40: primer release (implementada)
 
 Origen: análisis "qué falta para el primer release productivo" del 2026-09-08,
-ampliado con los hallazgos A-7, M-9, B-9 y B-10 de `docs/review_code.md`
-(`docs/PLAN.md`). Grupos:
+ampliado con los hallazgos A-7, M-5, M-8, M-9, B-7, B-9 y B-10 de
+`docs/review_code.md` (`docs/PLAN.md`). Decisiones del 2026-10-25: canal de
+distribución sideload del APK firmado; backend productivo diferido; URL base
+sigue configurable por el usuario; la sesión expira por inactividad; las
+limitaciones de M-8 se declaran en "Acerca de". Grupos y resultado:
 
-1. **Firma de release**: `signingConfigs.release` leyendo un
-   `keystore.properties` gitignoreado; keystore generado con `keytool` y
-   respaldado fuera del repo; documentar rotación en `CLAUDE.md` §7.
-2. **Despliegue del backend productivo**: destino por decidir
-   (Render / Fly.io / VPS / AWS), `docker-compose.prod.yml` real
-   (`JWT_SECRET_KEY` fuerte, Postgres propio, sin publicar `5432`), TLS válido,
-   migraciones aplicadas; proceso de producción (workers, proxy TLS) y
-   respaldo automático de Postgres con restauración probada (M-9).
-3. **URL base productiva en la app**: configurable o horneada; login + sync
-   contra `https://<dominio>` sin `adb reverse`.
-4. **Endurecimiento del build de release (B-7)**: `isMinifyEnabled = true` +
-   `isShrinkResources = true` + reglas keep para Room, Hilt,
-   kotlinx-serialization, Retrofit, ML Kit. Hoy `isMinifyEnabled = false`
-   (`android/app/build.gradle.kts`).
-5. **Cleartext HTTP deshabilitado en release**; allowlist explícito solo si se
-   mantienen pruebas locales.
-6. **Preparación del release**: subir `versionCode`/`versionName`,
-   `outputFileName` para el variant release, `testReleaseUnitTest` en verde,
-   `assembleRelease` en el CI (B-9) y decidir si los derivados HTML/PDF del
-   manual se versionan (B-10; hoy están versionados desde el commit
-   `4ff12bb`).
-7. **Distribución**: canal (Play Console AAB vs. sideload de APK firmado),
-   flujo de permiso `CAMERA` en runtime con el build de release, y política
-   de privacidad / Data Safety / consentimiento al activar la IA (A-7).
-8. **Pantalla principal y tema (A-7)**: reemplazar el texto de prueba de la
-   Parte 1, tema propio de la Activity y `core-splashscreen`.
+1. **Firma de release** (`POS-187`): `signingConfigs.release` con
+   `android/keystore.properties` o variables `PDV_KEYSTORE_*`; procedimiento de
+   respaldo y rotación en `CLAUDE.md` §7 ([§5.3](#53-android)).
+2. **Despliegue del backend productivo**: diferido completo al Backlog (sin
+   historia de Jira).
+3. **URL base y cleartext** (`POS-188`): `usesCleartextTraffic="false"` en el
+   manifest principal, verificado con el APK de release el 2026-10-26; la URL
+   base productiva y la verificación contra HTTPS real quedaron diferidas.
+4. **Endurecimiento del build (B-7)** (`POS-189`): `isMinifyEnabled` e
+   `isShrinkResources`, una regla keep propia para los DTO `@Serializable`; el
+   APK de release baja a 25 103 991 bytes (-31 %). Verificado en el Xiaomi.
+5. **Preparación del release** (`POS-190`): versión `1.0.0` / `10000`, nombre
+   `pos-pdv-release-v<versionName>.apk`, `testReleaseUnitTest` en verde (516
+   tests), `assembleRelease` en el CI (B-9), HTML/PDF del manual fuera del
+   control de versiones (B-10) y "Acerca de" con fecha y limitaciones.
+6. **Distribución** (`POS-191`): permiso `CAMERA` y consentimiento de IA
+   (A-7) verificados con el APK de release; la prueba de instalación en un
+   dispositivo limpio distinto del de desarrollo pasó al Backlog.
+7. **Pantalla principal y tema** (`POS-192`): encabezado de turno, tema
+   "Recibo" con `core-splashscreen` 1.2.0, ícono adaptativo y monocromo,
+   logos MiPE y nombre visible "MiPE PDV".
+8. **Expiración de la sesión (M-5)** (`POS-193`): 12 horas en segundo plano
+   ([§7](#7-seguridad)).
 
-Decisiones abiertas: canal de distribución, destino de despliegue del backend,
-Play App Signing, política de URL base, expiración de la sesión en modo LOCAL
-(M-5) y venta por fracción/peso e IVA en el ticket (M-8).
+Hallazgos corregidos durante la verificación del release en el Xiaomi (cada uno
+con un test que lo reproducía): apagar la IA sin "Guardar" no persistía; en LOCAL
+la sucursal por defecto se mostraba pero no se guardaba (ahora `SucursalInicial`
+y `ConfiguracionViewModel`); la regla de R8 para los DTO; y el BOM UTF-8 que
+rompía la importación de `docs/inventario-inicial.csv`. Casillas todavía sin
+marcar en `docs/PLAN.md` al momento de este manual: B-9 (se cierra con el CI en
+verde del PR) y B-10 (con `git status` limpio tras el commit)
+<!-- VERIFICAR: estado de B-9 y B-10 tras el PR -->.
 
 ### 11.3 Seguimiento del motor de sync (Parte 32)
 
@@ -1764,6 +1841,19 @@ tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
 - **Lectura de disco en el hilo principal en `LoggingModule`** (hallazgo de la
   medición B-6, Parte 39): StrictMode en debug marca `DiskReadViolation` en
   `LoggingModule.provideLogDirectory`; evaluar si justifica moverlo.
+- **Backend productivo** (diferido de la Parte 40, 2026-10-25, bajo demanda del
+  cliente): despliegue con TLS y `docker-compose.prod.yml` real, `alembic
+  current` en producción, destino en `CLAUDE.md` §7, proceso con Gunicorn y
+  proxy TLS (M-9), respaldo de Postgres con restauración probada, y la
+  verificación del modo REMOTO contra `https://<dominio>`.
+- **Distribución por Play Console** (canal sideload elegido en la Parte 40):
+  cuenta, ficha, Data Safety, content rating y Play App Signing.
+- **APK de release en un dispositivo limpio** (Parte 40, grupo 6, diferido el
+  2026-10-26 por no haber un segundo dispositivo): instalar
+  `pos-pdv-release-v1.0.0.apk` en un teléfono que nunca tuvo la app y
+  confirmar instalación, login bootstrap y "Sucursal principal".
+- **Venta por fracción/peso e IVA en el ticket** (M-8): declarado como
+  limitación en "Acerca de"; se planifica en una Parte posterior.
 - **Textos de UI a `strings.xml`** (B-8): después del primer release.
 - **Actualización de dependencias marcadas por lint** (B-11,
   `GradleDependency`/`NewerVersionAvailable`): en una Parte de mantenimiento.
@@ -1783,11 +1873,11 @@ tiene fallos silenciosos; esos follow-ups son las **Partes 34, 35 y 36**
   sincroniza hasta el próximo login interactivo.
 - **Política CORS**: revisar `allow_origins=["*"]` el día que exista un cliente
   web; los `500` del handler global no llevan headers CORS.
-- **Persistencia de sesión en el dispositivo**: hoy `SessionManager` es en
-  memoria; se re-loguea en cada arranque. (`SessionStore`, de la Parte 32,
-  persiste la sesión para el worker de sync desatendido, pero
-  `SessionManager` en sí sigue sin sobrevivir un reinicio del proceso fuera
-  de ese camino.)
+- **Persistencia de sesión en el dispositivo**: `SessionStore` (Parte 32)
+  persiste la sesión y `PdvApplication` la restaura al arrancar el proceso
+  (`SessionManager.restaurarSesion`); desde la Parte 40 expira tras 12 horas
+  en segundo plano ([§7](#7-seguridad)). La sesión sigue sin renovarse sola: no
+  hay `refresh_token`.
 
 ### 11.6 Fortalezas a preservar (revisión 2026-08-30, ampliada con la Parte 32)
 
@@ -1821,6 +1911,10 @@ evidencia directa de dispositivo y base de datos, no solo de logs — ver
 | **`PDV_ENV`** | Variable de entorno del backend: `development` habilita la clave JWT de desarrollo y `/docs`; cualquier otro valor (o su ausencia) se trata como producción (Parte 37). |
 | **`syncRechazo`** | Columna de cliente (Room v10) con el código HTTP con que el backend rechazó una fila en el push (`0` = desconocido); la fila deja de ser pendiente y se registra en `sync_conflicts` con política `rechazo_backend` (Parte 36). |
 | **Ventana de solape** | Margen de 2 minutos que el cliente resta al cursor del pull (`SyncStateStore.pullDesde`) para no saltar filas confirmadas tarde en el backend. |
+| **Expiración por inactividad** | Cierre de la sesión tras `INACTIVIDAD_MAXIMA_MILLIS` (12 h) en segundo plano, medido con `session_ultimo_uso` (`SessionManager.cerrarSiExpirada`, Parte 40). |
+| **Consentimiento de IA** | Aceptación explícita (`ia_consentimiento`) de los datos que el asistente envía al proveedor; sin ella `IaConfig.puedeEnviar` es falso y no se llama al proveedor (Parte 40). |
+| **R8** | Minificador/ofuscador del build de release (`isMinifyEnabled` + `isShrinkResources`); sus reglas propias viven en `android/app/proguard-rules.pro` (Parte 40). |
+| **`EstadoConexion`** | Estado del servidor en la pantalla principal: `SOLO_LOCAL`, `COMPROBANDO`, `CONECTADO`, `SIN_CONEXION` (Parte 40). |
 | **Evento aditivo** | Política de sync para cantidades: se combinan deltas con signo (`base + deltaLocal + deltaRemoto`), nunca se sobrescribe el valor. |
 | **`last_write_wins`** | Política de sync para entidades sin ambigüedad de cantidad: gana el `updated_at` más reciente. |
 | **`sucursal_scoped`** | Entidad que lleva `sucursal_id` (transaccional). Opuesto: catálogos globales (`articulos`, `roles`, `usuarios`). |

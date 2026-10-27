@@ -45,6 +45,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -278,6 +280,19 @@ class ConfiguracionViewModelTest {
         assertEquals("s1", preferences.deviceConfig.first().sucursalIdSeleccionada)
     }
 
+    // Hallazgo de la verificacion del release (PLAN.md Parte 40): en LOCAL la
+    // sucursal por defecto se mostraba pero no se persistia, y los modulos
+    // que leen la sucursal guardada (venta, caja, chat) no encontraban ninguna.
+    @Test
+    fun `in LOCAL mode with no saved sucursal the first one is persisted as the initial choice`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val preferences = ConfiguracionPreferences(dataStore)
+
+        viewModelConCatalogo(dataStore, preferences, fakeSucursalRepository.observeSucursales())
+
+        assertEquals("s1", preferences.deviceConfig.first().sucursalIdSeleccionada)
+    }
+
     @Test
     fun `in LOCAL mode the saved sucursal id is left untouched`(@TempDir tempDir: File) = runTest(dispatcher) {
         val dataStore = dataStore(tempDir)
@@ -354,6 +369,103 @@ class ConfiguracionViewModelTest {
 
         assertEquals("token-existente", iaPreferences.getToken())
     }
+
+    @Test
+    fun `turning ia on without consent opens the consent dialog and keeps it off`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val viewModel = viewModel(tempDir)
+
+        viewModel.onIaActivoChange(true)
+
+        assertTrue(viewModel.uiState.value.dialogoConsentimientoIa)
+        assertFalse(viewModel.uiState.value.iaActivo)
+    }
+
+    @Test
+    fun `accepting consent persists it and turns ia on`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val iaPreferences = fakeIaPreferences(dataStore)
+        val viewModel = viewModelConIa(dataStore, iaPreferences)
+
+        viewModel.onIaActivoChange(true)
+        viewModel.onAceptarConsentimientoIa()
+
+        assertTrue(iaPreferences.config.first().puedeEnviar)
+        assertTrue(viewModel.uiState.value.iaActivo)
+        assertFalse(viewModel.uiState.value.dialogoConsentimientoIa)
+    }
+
+    @Test
+    fun `rejecting consent keeps ia off and stores nothing`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val iaPreferences = fakeIaPreferences(dataStore)
+        val viewModel = viewModelConIa(dataStore, iaPreferences)
+
+        viewModel.onIaActivoChange(true)
+        viewModel.onRechazarConsentimientoIa()
+
+        assertFalse(iaPreferences.config.first().consentimiento)
+        assertFalse(viewModel.uiState.value.iaActivo)
+        assertFalse(viewModel.uiState.value.dialogoConsentimientoIa)
+    }
+
+    @Test
+    fun `saving ia as off withdraws consent so the next activation asks again`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val iaPreferences = fakeIaPreferences(dataStore)
+        val viewModel = viewModelConIa(dataStore, iaPreferences)
+        viewModel.onIaActivoChange(true)
+        viewModel.onAceptarConsentimientoIa()
+
+        viewModel.onIaActivoChange(false)
+        viewModel.onGuardarIa()
+        viewModel.onIaActivoChange(true)
+
+        assertFalse(iaPreferences.config.first().consentimiento)
+        assertTrue(viewModel.uiState.value.dialogoConsentimientoIa)
+    }
+
+    // Hallazgo de la verificacion del release (PLAN.md Parte 40): apagar el
+    // switch sin pulsar Guardar dejaba la IA activa al reabrir Configuracion.
+    @Test
+    fun `turning ia off persists immediately and withdraws consent`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val iaPreferences = fakeIaPreferences(dataStore)
+        val viewModel = viewModelConIa(dataStore, iaPreferences)
+        viewModel.onIaActivoChange(true)
+        viewModel.onAceptarConsentimientoIa()
+
+        viewModel.onIaActivoChange(false)
+
+        assertFalse(iaPreferences.config.first().activo)
+        assertFalse(iaPreferences.config.first().consentimiento)
+        assertFalse(viewModelConIa(dataStore, iaPreferences).uiState.value.iaActivo)
+    }
+
+    @Test
+    fun `ia stored as active without consent shows the switch off`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val dataStore = dataStore(tempDir)
+        val iaPreferences = fakeIaPreferences(dataStore)
+        iaPreferences.setActivo(true)
+
+        val viewModel = viewModelConIa(dataStore, iaPreferences)
+
+        assertFalse(viewModel.uiState.value.iaActivo)
+    }
+
+    private fun viewModelConIa(dataStore: DataStore<Preferences>, iaPreferences: IaPreferences) = ConfiguracionViewModel(
+        mockk(relaxed = true),
+        ConfiguracionPreferences(dataStore),
+        fakeSucursalRepository,
+        iaPreferences,
+        mockk(relaxed = true),
+        PromptIaPreferences(dataStore),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+    )
 
     @Test
     fun `a fresh install shows the provider default model instead of a blank field`(@TempDir tempDir: File) = runTest(dispatcher) {

@@ -31,12 +31,17 @@ class DefaultSyncOrchestrator @Inject constructor(
     // Con la contrasena bootstrap pendiente el backend responde 403 a todo:
     // subir en ese estado marcaria cada fila como rechazada (PLAN.md Parte
     // 37, A-3), asi que el ciclo no arranca hasta el cambio.
-    override suspend fun sincronizar(): SyncResultado =
-        if (sessionManager.session.value?.debeCambiarPassword == true) {
-            SyncResultado.Fallo(MOTIVO_CAMBIAR_PASSWORD)
-        } else {
-            sincronizarConSesionHabilitada()
+    // Una sesion expirada por inactividad detiene el sync hasta el proximo
+    // login (PLAN.md Parte 40, grupo 8).
+    override suspend fun sincronizar(): SyncResultado {
+        sessionManager.cerrarSiExpirada(System.currentTimeMillis())
+        val session = sessionManager.session.value
+        return when {
+            session == null -> SyncResultado.Fallo(MOTIVO_SIN_SESION)
+            session.debeCambiarPassword -> SyncResultado.Fallo(MOTIVO_CAMBIAR_PASSWORD)
+            else -> sincronizarConSesionHabilitada()
         }
+    }
 
     private suspend fun sincronizarConSesionHabilitada(): SyncResultado = try {
         var total = PushResultado.VACIO
@@ -73,4 +78,5 @@ class DefaultSyncOrchestrator @Inject constructor(
 
 const val MOTIVO_RELOGIN = "sync requiere re-login"
 const val MOTIVO_SIN_TOKEN = "la sesion no tiene token del backend: inicia sesion con el backend alcanzable"
-const val MOTIVO_CAMBIAR_PASSWORD = "cambia la contrasena inicial antes de sincronizar"
+const val MOTIVO_SIN_SESION = "no hay sesion activa: inicia sesion para sincronizar"
+const val MOTIVO_CAMBIAR_PASSWORD ="cambia la contrasena inicial antes de sincronizar"

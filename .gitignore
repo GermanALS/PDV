@@ -7,12 +7,16 @@ docker-compose.prod.yml
 
 # Android
 android/.gradle/
+android/.kotlin/
 android/build/
 android/*/build/
 android/local.properties
 android/.idea/
 android/*.iml
 android/captures/
+android/keystore.properties
+*.jks
+*.keystore
 
 # Backend (Python)
 backend/.venv/
@@ -25,3 +29,10 @@ backend/.ruff_cache/
 # OS
 .DS_Store
 Thumbs.db
+
+# Manual tecnico: derivados de docs/manual-tecnico.md, se generan bajo demanda (Parte 40, B-10)
+docs/manual-tecnico.html
+docs/manual-tecnico.pdf
+
+# Logo MiPE: se versionan solo las fuentes SVG; los PNG se regeneran (Parte 40)
+docs/mipe-logo/*.png

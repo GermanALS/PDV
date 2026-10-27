@@ -15,6 +15,8 @@ data class ConfiguracionUiState(
     val sucursalNoEncontrada: Boolean = false,
     val modo: BackendMode = BackendMode.LOCAL,
     val iaActivo: Boolean = false,
+    val iaConsentimiento: Boolean = false,
+    val dialogoConsentimientoIa: Boolean = false,
     val iaProveedor: LlmProvider = LlmProvider.DEEP_SEEK,
     val iaModelo: String = "",
     val iaTokenInput: String = "",

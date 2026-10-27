@@ -33,12 +33,28 @@ class SessionManager @Inject constructor(
     val session: StateFlow<Session?> = _session.asStateFlow()
 
     // Se llama una vez al arrancar el proceso (PdvApplication). No pisa una
-    // sesion ya iniciada en esta ejecucion.
-    suspend fun restaurarSesion() {
-        if (_session.value == null) {
-            _session.value = sessionStore.cargar()
-        }
+    // sesion ya iniciada en esta ejecucion. Una sesion persistida que lleva
+    // mas de INACTIVIDAD_MAXIMA_MILLIS sin uso se descarta (M-5).
+    suspend fun restaurarSesion(ahoraMillis: Long) {
+        if (_session.value != null) return
+        val guardada = sessionStore.cargar() ?: return
+        if (expirada(ahoraMillis)) sessionStore.limpiar() else _session.value = guardada
     }
+
+    /** Starts the inactivity window: called when the app goes to background. */
+    fun registrarUso(ahoraMillis: Long) {
+        if (_session.value != null) scope.launch { sessionStore.guardarUltimoUso(ahoraMillis) }
+    }
+
+    /** Logs out when the app went unused longer than INACTIVIDAD_MAXIMA_MILLIS (M-5). */
+    suspend fun cerrarSiExpirada(ahoraMillis: Long) {
+        if (_session.value != null && expirada(ahoraMillis)) logout()
+    }
+
+    // Sin marca de uso (sesion recien iniciada, nunca en segundo plano) no
+    // hay ventana de inactividad abierta.
+    private suspend fun expirada(ahoraMillis: Long): Boolean =
+        sessionStore.ultimoUso()?.let { ahoraMillis - it > INACTIVIDAD_MAXIMA_MILLIS } ?: false
 
     fun iniciarSesion(session: Session) {
         _session.value = session
@@ -50,3 +66,7 @@ class SessionManager @Inject constructor(
         scope.launch { sessionStore.limpiar() }
     }
 }
+
+// Decision "Expiracion de la sesion en modo LOCAL" (PLAN.md Parte 40, grupo
+// 8): 12 horas en segundo plano. El tiempo en primer plano no cuenta.
+const val INACTIVIDAD_MAXIMA_MILLIS = 12 * 60 * 60 * 1000L

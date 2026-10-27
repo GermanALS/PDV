@@ -19,13 +19,18 @@ private val KEY_IA_PROVEEDOR = stringPreferencesKey("ia_proveedor")
 private val KEY_IA_MODELO = stringPreferencesKey("ia_modelo")
 private val KEY_IA_TOKEN_CIPHERTEXT = stringPreferencesKey("ia_token_ciphertext")
 private val KEY_IA_TOKEN_IV = stringPreferencesKey("ia_token_iv")
+private val KEY_IA_CONSENTIMIENTO = booleanPreferencesKey("ia_consentimiento")
 
 data class IaConfig(
     val activo: Boolean = false,
     val proveedor: LlmProvider = LlmProvider.DEEP_SEEK,
     val modelo: String = "",
     val tieneToken: Boolean = false,
-)
+    val consentimiento: Boolean = false,
+) {
+    /** The provider may only be called when IA is on and the user accepted the data disclosure (A-7). */
+    val puedeEnviar: Boolean get() = activo && consentimiento
+}
 
 // Preferencia de dispositivo, sin Room (mismo criterio que BackendMode en
 // ConfiguracionPreferences). El token se cifra con TokenCipher (AES-GCM
@@ -43,6 +48,7 @@ class IaPreferences @Inject constructor(
             proveedor = prefs[KEY_IA_PROVEEDOR]?.let { LlmProvider.valueOf(it) } ?: LlmProvider.DEEP_SEEK,
             modelo = prefs[KEY_IA_MODELO].orEmpty(),
             tieneToken = !prefs[KEY_IA_TOKEN_CIPHERTEXT].isNullOrBlank(),
+            consentimiento = prefs[KEY_IA_CONSENTIMIENTO] ?: false,
         )
     }
 
@@ -67,6 +73,10 @@ class IaPreferences @Inject constructor(
             }
             null
         }
+    }
+
+    suspend fun setConsentimiento(consentimiento: Boolean) {
+        dataStore.edit { it[KEY_IA_CONSENTIMIENTO] = consentimiento }
     }
 
     suspend fun setActivo(activo: Boolean) {

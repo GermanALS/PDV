@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,32 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+// Firma de release (PLAN.md Parte 40, grupo 1): android/keystore.properties
+// (gitignoreado) o, si no existe, variables de entorno PDV_KEYSTORE_* (CI).
+// Sin ninguno de los dos, debug compila igual y el empaquetado de release
+// falla con un mensaje claro (ver tasks al final del archivo).
+val releaseSigning: Map<String, String>? = run {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) {
+        val props = Properties().apply { file.inputStream().use { load(it) } }
+        mapOf(
+            "storeFile" to rootProject.file(props.getProperty("storeFile")).path,
+            "storePassword" to props.getProperty("storePassword"),
+            "keyAlias" to props.getProperty("keyAlias"),
+            "keyPassword" to props.getProperty("keyPassword"),
+        )
+    } else {
+        System.getenv("PDV_KEYSTORE_FILE")?.let { storeFile ->
+            mapOf(
+                "storeFile" to storeFile,
+                "storePassword" to System.getenv("PDV_KEYSTORE_PASSWORD"),
+                "keyAlias" to System.getenv("PDV_KEY_ALIAS"),
+                "keyPassword" to System.getenv("PDV_KEY_PASSWORD"),
+            )
+        }
+    }
 }
 
 android {
@@ -18,8 +46,8 @@ android {
         // Esquema de versionado en CLAUDE.md seccion 7: versionName SemVer
         // MAJOR.MINOR.PATCH; versionCode = MAJOR*10000 + MINOR*100 + PATCH.
         // Ambos se suben a mano en el commit que prepara cada release.
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 10000
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -33,9 +61,22 @@ android {
         arg("room.schemaLocation", "$projectDir/schemas")
     }
 
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = file(releaseSigning.getValue("storeFile"))
+                storePassword = releaseSigning.getValue("storePassword")
+                keyAlias = releaseSigning.getValue("keyAlias")
+                keyPassword = releaseSigning.getValue("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            if (releaseSigning != null) signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -80,10 +121,18 @@ androidComponents {
             }
         }
     }
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach { output ->
+            if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
+                output.outputFileName.set(output.versionName.map { "pos-pdv-release-v$it.apk" })
+            }
+        }
+    }
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
@@ -130,4 +179,16 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.room.testing)
+}
+
+if (releaseSigning == null) {
+    tasks.matching { it.name == "packageRelease" || it.name == "packageReleaseBundle" }.configureEach {
+        doFirst {
+            throw GradleException(
+                "Falta la firma de release: crea android/keystore.properties " +
+                    "(ver CLAUDE.md seccion 7) o define PDV_KEYSTORE_FILE, " +
+                    "PDV_KEYSTORE_PASSWORD, PDV_KEY_ALIAS y PDV_KEY_PASSWORD.",
+            )
+        }
+    }
 }

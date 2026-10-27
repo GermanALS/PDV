@@ -70,6 +70,13 @@ fun ConfiguracionScreen(
         )
     }
 
+    if (uiState.dialogoConsentimientoIa) {
+        ConsentimientoIaDialog(
+            onAceptar = viewModel::onAceptarConsentimientoIa,
+            onRechazar = viewModel::onRechazarConsentimientoIa,
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -303,6 +310,29 @@ private fun SincronizacionSection(
             Text(if (sincronizando) "Sincronizando…" else "Sincronizar ahora")
         }
     }
+}
+
+@Composable
+private fun ConsentimientoIaDialog(
+    onAceptar: () -> Unit,
+    onRechazar: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onRechazar,
+        title = { Text("Activar el asistente de IA") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Cada consulta al asistente envía al proveedor de IA elegido (DeepSeek, OpenAI u OpenRouter):")
+                Text("• Tu mensaje y el historial de la conversación")
+                Text("• Nombre de la sucursal y un resumen del inventario: SKU, nombre, existencias, precio, costo y ubicación")
+                Text("• Totales de caja del día: ventas, efectivo, tarjeta, retiros y monto esperado")
+                Text("El dictado por voz usa el micrófono y el reconocimiento de voz del teléfono; el texto resultante se envía igual que uno escrito.")
+                Text("Sin tu aceptación no se envía nada. Puedes retirarla apagando el asistente.")
+            }
+        },
+        confirmButton = { TextButton(onClick = onAceptar) { Text("Acepto") } },
+        dismissButton = { TextButton(onClick = onRechazar) { Text("No acepto") } },
+    )
 }
 
 @Composable

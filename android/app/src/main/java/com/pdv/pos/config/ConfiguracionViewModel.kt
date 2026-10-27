@@ -98,7 +98,7 @@ class ConfiguracionViewModel @Inject constructor(
                 // conserva y se avisa: nunca se reemplaza sin que el usuario
                 // elija.
                 val inicial = if (persistida == null) sucursales.firstOrNull() else null
-                if (config.backendMode != BackendMode.LOCAL && inicial != null) {
+                if (inicial != null) {
                     preferences.setSucursalSeleccionada(inicial.id)
                 }
                 _uiState.update {
@@ -125,7 +125,8 @@ class ConfiguracionViewModel @Inject constructor(
                 // del token siempre arranca vacio (PLAN.md Parte 14, sub-paso 2).
                 _uiState.update {
                     it.copy(
-                        iaActivo = config.activo,
+                        iaActivo = config.puedeEnviar,
+                        iaConsentimiento = config.consentimiento,
                         iaProveedor = config.proveedor,
                         iaModelo = config.modelo.ifBlank { config.proveedor.modeloPorDefecto },
                         iaTieneTokenGuardado = config.tieneToken,
@@ -249,8 +250,35 @@ class ConfiguracionViewModel @Inject constructor(
         _uiState.update { it.copy(dialogoCambioModo = null) }
     }
 
+    // A-7 (PLAN.md Parte 40, grupo 6): turning IA on asks for explicit
+    // consent first; without it the switch stays off. Turning it off is
+    // persisted right away and withdraws consent, symmetric with accepting.
     fun onIaActivoChange(activo: Boolean) {
-        _uiState.update { it.copy(iaActivo = activo) }
+        if (!activo) {
+            viewModelScope.launch {
+                iaPreferences.setActivo(false)
+                iaPreferences.setConsentimiento(false)
+            }
+            return
+        }
+        _uiState.update {
+            if (it.iaConsentimiento) it.copy(iaActivo = true) else it.copy(dialogoConsentimientoIa = true)
+        }
+    }
+
+    // Persists activo together with the consent: the config collector maps
+    // iaActivo from the stored values and would otherwise turn the switch
+    // back off.
+    fun onAceptarConsentimientoIa() {
+        _uiState.update { it.copy(dialogoConsentimientoIa = false) }
+        viewModelScope.launch {
+            iaPreferences.setConsentimiento(true)
+            iaPreferences.setActivo(true)
+        }
+    }
+
+    fun onRechazarConsentimientoIa() {
+        _uiState.update { it.copy(dialogoConsentimientoIa = false) }
     }
 
     fun onIaProveedorSelected(proveedor: LlmProvider) {
@@ -273,6 +301,8 @@ class ConfiguracionViewModel @Inject constructor(
         val estado = _uiState.value
         viewModelScope.launch {
             iaPreferences.setActivo(estado.iaActivo)
+            // Saving IA as off withdraws consent: the next activation asks again.
+            if (!estado.iaActivo) iaPreferences.setConsentimiento(false)
             iaPreferences.setProveedor(estado.iaProveedor)
             iaPreferences.setModelo(estado.iaModelo)
             if (estado.iaTokenInput.isNotBlank()) {

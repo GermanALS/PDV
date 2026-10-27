@@ -11,6 +11,7 @@ data class AcercaDeUiState(
     val version: String,
     val fecha: String,
     val novedades: List<String>,
+    val limitaciones: List<String>,
     val equipo: String,
     val contacto: String,
 )
@@ -25,6 +26,7 @@ class AcercaDeViewModel @Inject constructor(
             version = "${infoRelease.versionName} (versionCode ${infoRelease.versionCode})",
             fecha = infoRelease.fecha,
             novedades = infoRelease.novedades,
+            limitaciones = infoRelease.limitaciones,
             equipo = infoRelease.equipo,
             contacto = infoRelease.contacto,
         )

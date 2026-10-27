@@ -31,8 +31,10 @@ data class ResultadoParseoCsv(
 // columnas cuando el formato no es el esperado.
 object InventarioCsvImporter {
 
+    // Excel antepone un BOM UTF-8 al guardar como CSV, y el decoder no lo
+    // quita: sin removerlo el primer encabezado nunca coincide con "SKU".
     fun parsear(contenido: String): ResultadoParseoCsv {
-        val lineas = contenido.lines().filter { it.isNotBlank() }
+        val lineas = contenido.removePrefix(BOM_UTF8).lines().filter { it.isNotBlank() }
         val encabezado = lineas.firstOrNull()?.let(::parsearLinea)?.map { it.trim() }
         if (encabezado != InventarioCsvExporter.ENCABEZADOS) {
             return ResultadoParseoCsv(encabezadoValido = false, filas = emptyList())
@@ -97,6 +99,8 @@ object InventarioCsvImporter {
         )
     }
 }
+
+private val BOM_UTF8 = Char(0xFEFF).toString()
 
 // Split RFC 4180 basico, simetrico a InventarioCsvExporter.escapar(): soporta
 // campos entre comillas (con comillas dobles escapadas como "").

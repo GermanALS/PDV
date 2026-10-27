@@ -6,6 +6,7 @@ data class InfoRelease(
     val versionCode: Int,
     val fecha: String,
     val novedades: List<String>,
+    val limitaciones: List<String>,
     val equipo: String,
     val contacto: String,
 )

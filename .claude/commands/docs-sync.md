@@ -10,7 +10,8 @@ Mantiene el manual técnico alineado con el código. Se corre al terminar una
 Parte completa, **antes** de `/jira-sync`.
 
 - Fuente editable: `docs/manual-tecnico.md`
-- Derivados: `docs/manual-tecnico.html`, `docs/manual-tecnico.pdf`
+- Derivados: `docs/manual-tecnico.html`, `docs/manual-tecnico.pdf` (no se
+  versionan: están en `.gitignore` y se generan bajo demanda)
 - Alcance: `docs/ALCANCE-DOCS.md` (siempre completo, nunca parcial)
 
 ## Invariantes
@@ -64,8 +65,8 @@ instrucciones y regresa a esta fase.
    que haces tú en todo el comando):
    `<!-- docs-sync: commit=<git rev-parse --short HEAD> parte="<Parte>" fecha=<YYYY-MM-DD> -->`
 4. Reporte final en 3-4 líneas: secciones tocadas, archivos listos para el
-   commit de cierre (`docs/manual-tecnico.md`, `.html`, `.pdf`,
-   `docs/ALCANCE-DOCS.md`) y siguiente paso sugerido: `/jira-sync <Parte>`.
+   commit de cierre (`docs/manual-tecnico.md` y `docs/ALCANCE-DOCS.md`; el
+   HTML y el PDF quedan locales) y siguiente paso sugerido: `/jira-sync <Parte>`.
 
 Si el usuario rechaza los cambios, no los reviertas tú: indícale
 `git restore docs/manual-tecnico.md` y detente.

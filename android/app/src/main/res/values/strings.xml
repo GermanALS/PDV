@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PDV</string>
+    <string name="app_name">MiPE PDV</string>
 
     <!-- Acerca de (PLAN.md Parte 39). La version sale de BuildConfig; la
          fecha y las novedades se actualizan a mano en cada release productivo
          (PLAN.md Parte 40, grupo 5). -->
     <string name="acerca_equipo">German y Susana ALS</string>
     <string name="acerca_contacto">german.antoniols@gmail.com</string>
-    <string name="release_fecha">Sin publicar (versión de desarrollo)</string>
+    <string name="release_fecha">2026-10-25</string>
     <string-array name="release_novedades">
         <item>Venta de mostrador con ticket PDF</item>
         <item>Entrada de mercancía e inventario por sucursal</item>
@@ -15,5 +15,9 @@
         <item>Usuarios, roles y permisos por módulo</item>
         <item>Funcionamiento sin conexión con sincronización diferida</item>
         <item>Asistente de IA opcional</item>
+    </string-array>
+    <string-array name="release_limitaciones">
+        <item>La venta solo admite cantidades enteras: no se vende por peso ni por fracción</item>
+        <item>No se calculan impuestos: el ticket no desglosa el IVA</item>
     </string-array>
 </resources>

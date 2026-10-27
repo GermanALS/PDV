@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pdv.pos.auth.SessionManager
 import com.pdv.pos.config.ConfiguracionPreferences
-import com.pdv.pos.data.remote.ApiResult
 import com.pdv.pos.data.remote.HealthApiService
 import com.pdv.pos.domain.model.BackendMode
 import com.pdv.pos.domain.repository.RolRepository
+import com.pdv.pos.domain.repository.SucursalRepository
 import com.pdv.pos.logging.AppLogger
 import com.pdv.pos.logging.LogType
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -32,6 +34,7 @@ class HelloViewModel @Inject constructor(
     private val healthApiService: HealthApiService,
     private val sessionManager: SessionManager,
     private val rolRepository: RolRepository,
+    private val sucursalRepository: SucursalRepository,
     private val preferences: ConfiguracionPreferences,
     private val appLogger: AppLogger,
 ) : ViewModel() {
@@ -43,6 +46,7 @@ class HelloViewModel @Inject constructor(
 
     init {
         observarModoBackend()
+        observarSucursal()
         observarModulosPermitidos()
     }
 
@@ -54,20 +58,41 @@ class HelloViewModel @Inject constructor(
                 .map { it.backendMode }
                 .distinctUntilChanged()
                 .collectLatest { modo ->
-                    _uiState.update { it.copy(backendMode = modo, healthResult = null) }
-                    if (modo != BackendMode.LOCAL) {
-                        val result = consultarHealth()
-                        _uiState.update { it.copy(healthResult = result) }
+                    if (modo == BackendMode.LOCAL) {
+                        _uiState.update { it.copy(backendMode = modo, conexion = EstadoConexion.SOLO_LOCAL) }
+                    } else {
+                        _uiState.update { it.copy(backendMode = modo, conexion = EstadoConexion.COMPROBANDO) }
+                        val conexion = consultarConexion()
+                        _uiState.update { it.copy(conexion = conexion) }
                     }
                 }
         }
     }
 
-    private suspend fun consultarHealth(): ApiResult<String> = try {
-        val response = healthApiService.getHealth()
-        ApiResult.Success("${response.status} (v${response.version})")
+    private suspend fun consultarConexion(): EstadoConexion = try {
+        healthApiService.getHealth()
+        EstadoConexion.CONECTADO
     } catch (e: IOException) {
-        ApiResult.Error(e.message ?: "No se pudo conectar al backend")
+        EstadoConexion.SIN_CONEXION
+    }
+
+    private fun observarSucursal() {
+        viewModelScope.launch {
+            // In REMOTO the catalog comes from the network: without it the
+            // name is unknown and EstadoConexion already says so.
+            val sucursales = sucursalRepository.observeSucursales().catch { e ->
+                if (e !is IOException) throw e
+                emit(emptyList())
+            }
+            // Local and remote copies are related by remoteId (PLAN.md Parte 36, A-8).
+            combine(
+                preferences.deviceConfig.map { it.sucursalIdSeleccionada }.distinctUntilChanged(),
+                sucursales,
+            ) { sucursalId, lista ->
+                sucursalId?.let { id -> lista.find { it.id == id || it.remoteId == id }?.nombre }
+            }
+                .collect { nombre -> _uiState.update { it.copy(sucursalNombre = nombre) } }
+        }
     }
 
     // Activacion/desactivacion de modulos segun el rol de la sesion activa
@@ -78,14 +103,16 @@ class HelloViewModel @Inject constructor(
             sessionManager.session
                 .flatMapLatest { session ->
                     if (session == null) {
-                        flowOf(emptySet<String>())
+                        flowOf(null)
                     } else {
-                        rolRepository.observeRoles().map { roles ->
-                            roles.find { it.id == session.rolId }?.modulosPermitidos?.toSet() ?: emptySet()
-                        }
+                        rolRepository.observeRoles().map { roles -> roles.find { it.id == session.rolId } }
                     }
                 }
-                .collect { modulos -> _uiState.update { it.copy(modulosPermitidos = modulos) } }
+                .collect { rol ->
+                    _uiState.update {
+                        it.copy(rolNombre = rol?.nombre, modulosPermitidos = rol?.modulosPermitidos?.toSet() ?: emptySet())
+                    }
+                }
         }
     }
 

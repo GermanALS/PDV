@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Paleta "Recibo" (CLAUDE.md seccion 3) para la ventana, antes de que
+         Compose dibuje: sin esto el tema de plataforma pinta un fondo claro
+         en el arranque en frio (PLAN.md Parte 40, grupo 7). -->
+    <color name="recibo_background">#F7F5EF</color>
+
+    <style name="Theme.Pdv" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/recibo_background</item>
+    </style>
+
+    <style name="Theme.Pdv.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/recibo_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.Pdv</item>
+    </style>
+</resources>
