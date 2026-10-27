@@ -606,7 +606,7 @@ de mantenimiento antes del primer release.
 
 ---
 
-## Parte 40: Primer release productivo (APK firmado + backend desplegado)
+## Parte 40: Primer release productivo (APK firmado + backend desplegado) <!-- POS-186 -->
 
 *(Sale del análisis "qué falta para el primer release productivo" del
 2026-09-08. Absorbe el hallazgo B-7 —R8/shrinking, diferido en la Parte 29
@@ -621,32 +621,35 @@ M-9, B-9 y B-10 y con las decisiones de producto M-5 y M-8. Verificado el
 depende de `adb reverse` (Wi-Fi LAN), pero sigue sin un backend HTTPS
 productivo.)*
 
-Claves de Jira: **sin asignar todavía**. Las asigna `/jira-sync` cuando se
-sincronice esta Parte; no se pre-escriben en este archivo (evita el problema
-de claves fantasma que tuvo la Parte 30).
+Claves de Jira: épica POS-186; historias POS-187 (grupo 1), POS-188 (grupo 3),
+POS-189 (grupo 4), POS-190 (grupo 5), POS-191 (grupo 6), POS-192 (grupo 7) y
+POS-193 (grupo 8). El grupo 2, diferido completo al Backlog, no tiene historia.
 
 Objetivo: un APK (o AAB) de release firmado, ofuscado y verificado en
 dispositivo, apuntando a un backend FastAPI desplegado y accesible por HTTPS
-desde fuera de la LAN.
+desde fuera de la LAN. *(Ajustado el 2026-10-25: el primer release se
+centra en el modo local; el backend productivo queda diferido, ver
+Decisiones abiertas.)*
 
 ### Checklist
 
-**1. Firma de release**
-- [ ] `signingConfigs.release` en `android/app/build.gradle.kts` que lee de un
+**1. Firma de release (POS-187)**
+- [x] `signingConfigs.release` en `android/app/build.gradle.kts` que lee de un
   `keystore.properties` gitignoreado (o variables de entorno) y se aplica al
   `buildType release`. Criterio: `./gradlew assembleRelease` produce un APK y
   `apksigner verify --print-certs` lo reporta firmado con el certificado de
   release, distinto del de debug.
-- [ ] Keystore de release generado con `keytool`, respaldado fuera del repo;
+- [x] Keystore de release generado con `keytool`, respaldado fuera del repo;
   `keystore.properties` y el `.jks`/`.keystore` en `.gitignore`. Criterio:
   `git status` sobre un árbol limpio no muestra el keystore ni credenciales;
   `assembleDebug` compila sin el archivo y `assembleRelease` falla con un
   mensaje claro si falta.
-- [ ] `CLAUDE.md` §7 documenta dónde vive el keystore, cómo se pasan las
+- [x] `CLAUDE.md` §7 documenta dónde vive el keystore, cómo se pasan las
   contraseñas al build, y el procedimiento de rotación — sin incluir el
   keystore ni los secretos en el repo.
 
-**2. Despliegue del backend productivo**
+**2. Despliegue del backend productivo** *(Diferido completo (2026-10-25):
+sin backend productivo en este release; sus 4 ítems pasan al Backlog.)*
 - [ ] Backend desplegado en el destino elegido (ver Decisiones abiertas) con
   `docker-compose.prod.yml` real: `JWT_SECRET_KEY` fuerte, credenciales de
   Postgres propias, sin publicar `5432` al exterior. Criterio:
@@ -662,7 +665,7 @@ desde fuera de la LAN.
   restauración probada. Criterio: un respaldo restaurado en una base vacía
   levanta el backend con `alembic current` en el head y los datos íntegros.
 
-**3. URL base productiva en la app**
+**3. URL base productiva en la app (POS-188)**
 - [ ] El módulo Configuración permite fijar y persistir la URL base del
   backend remoto (`https`, host, puerto), o se hornea un valor productivo por
   defecto. Criterio: en el Xiaomi, modo REMOTO contra `https://<dominio>`
@@ -670,103 +673,242 @@ desde fuera de la LAN.
   Nota (2026-10-02): la Parte 31 ya agregó esquema http/https, host y
   puerto editables en Configuración y en el login; queda decidir el valor
   por defecto (ver Decisiones abiertas) y verificar contra HTTPS real.
-- [ ] Cleartext HTTP deshabilitado en release (network security config /
+  *(Diferido (2026-10-25): sin backend productivo en este release; ver
+  Decisiones abiertas y Backlog.)*
+- [x] Cleartext HTTP deshabilitado en release (network security config /
   `usesCleartextTraffic=false`), con allowlist explícito solo si se decide
   mantener pruebas locales. Criterio: una petición `http://` a un host
-  productivo falla; `https://` funciona.
+  productivo falla; `https://` funciona. *(Ajustado (2026-10-25): sin host
+  productivo, el criterio es que el APK de release no alcanza por `http://`
+  el backend de la LAN de desarrollo. Consecuencia: en release los modos
+  REMOTO y LOCAL_CON_SINCRONIZACION solo funcionarán contra un backend
+  HTTPS.)* *(2026-10-25: `usesCleartextTraffic="false"` en el manifest
+  principal; el debug sigue alcanzando la LAN por `http://` (200 OK en el
+  Xiaomi). La prueba con el APK de release queda para la sesión única de
+  verificación del release en el Xiaomi, después del grupo 4.)*
+  *(2026-10-26: verificado por el usuario con el APK de release: "Probar
+  conexión" contra `http://192.168.0.132:8000` responde "CLEARTEXT
+  communication ... not permitted by network security policy"; OkHttp lo
+  rechaza antes de conectar, así que no depende de que el backend esté
+  arriba.)*
 
-**4. Endurecimiento del build de release (hallazgo B-7 de `docs/review_code_2026-09-28_1816.md`)**
-- [ ] `isMinifyEnabled = true` e `isShrinkResources = true` en el `buildType
+**4. Endurecimiento del build de release (hallazgo B-7 de `docs/review_code_2026-09-28_1816.md`) (POS-189)**
+- [x] `isMinifyEnabled = true` e `isShrinkResources = true` en el `buildType
   release`. Criterio: `./gradlew assembleRelease` en verde; el APK de release
-  pesa menos que el equivalente sin shrink.
-- [ ] Reglas keep en `android/app/proguard-rules.pro` para Room, Hilt,
+  pesa menos que el equivalente sin shrink. *(2026-10-25: BUILD SUCCESSFUL
+  sin advertencias de R8; `app-release.apk` baja de 36 560 235 a 25 103 991
+  bytes (-31 %), firmado con la clave de release.)*
+- [x] Reglas keep en `android/app/proguard-rules.pro` para Room, Hilt,
   kotlinx-serialization, Retrofit y ML Kit barcode. Criterio: con el APK de
   release firmado instalado en el Xiaomi, los 6 módulos abren y una venta +
   un sync end-to-end completan sin `ClassNotFoundException` ni errores de
-  (de)serialización.
-- [ ] Verificación en el dispositivo físico Xiaomi M2102J20SG con el APK de
+  (de)serialización. *(Decidido (2026-10-25): las cinco librerías traen
+  reglas de consumidor que R8 ya aplica (visibles en
+  `app/build/outputs/mapping/release/configuration.txt`); `proguard-rules.pro`
+  queda vacío y solo recibe una regla si el APK de release falla en el
+  Xiaomi, con el stack trace como evidencia.)*
+  *(2026-10-26: el APK de release falló en el Xiaomi al pasar a
+  `LOCAL_CON_SINCRONIZACION`: `Unable to create converter for class
+  java.lang.Object` / `Serializer for class 'Any' is not found`, desofuscado
+  con `mapping.txt` a `HealthApiService.getHealth()`. La pantalla principal
+  del grupo 7 dejó de usar la respuesta, R8 quitó `HealthResponseDto` y la
+  firma genérica de la `Continuation` quedó en `Object`. Regla agregada:
+  `-keep,allowobfuscation` de las clases `@Serializable` de
+  `data/remote/dto`; ningún otro DTO de respuesta estaba eliminado. Sin
+  backend HTTPS el sync end-to-end no es probable en release: lo sustituyen
+  el chat de IA por HTTPS y el cambio de modo, verificados por el usuario
+  junto con los 6 módulos, la importación y una venta, sin errores en el
+  logcat.)*
+- [x] Verificación en el dispositivo físico Xiaomi M2102J20SG con el APK de
   release (firmado y ofuscado), no solo debug. `needs-device`.
+  *(2026-10-26: verificado por el usuario en el Xiaomi 24030PN60G con
+  `pos-pdv-release-v1.0.0.apk`. Hallazgos corregidos en la sesión, cada uno
+  con un test que lo reproducía: (1) apagar la IA sin pulsar "Guardar" no
+  persistía; ahora persiste al momento y retira el consentimiento. (2) En
+  LOCAL la sucursal por defecto se mostraba pero no se guardaba, y chat,
+  venta y caja la exigían; ahora `SucursalInicial` la preselecciona al
+  arrancar y `ConfiguracionViewModel` también la guarda en LOCAL. (3) La
+  regla de R8 del ítem anterior. (4) La importación de
+  `docs/inventario-inicial.csv` fallaba por el BOM UTF-8 del encabezado;
+  `InventarioCsvImporter` lo quita y se importan los 115 artículos.)*
 
-**5. Preparación del release**
-- [ ] `versionCode` / `versionName` subidos desde `1` / `"0.1"` al primer
+**5. Preparación del release (POS-190)**
+- [x] `versionCode` / `versionName` subidos desde `1` / `"0.1"` al primer
   valor de release según el esquema de `CLAUDE.md` §7 (ej. `1.0.0` ->
-  `versionCode 10000`), en el commit que prepara el release.
-- [ ] Regla de `outputFileName` para el variant `release` siguiendo la
+  `versionCode 10000`), en el commit que prepara el release. *(2026-10-25:
+  `1.0.0` / `10000`; `aapt2 dump badging` del APK lo confirma.)*
+- [x] Regla de `outputFileName` para el variant `release` siguiendo la
   convención `{app}-{proposito}-{tipo-build}-v{version}` (hoy solo existe
   para `debug`). Criterio: `assembleRelease` emite un archivo con ese nombre.
-- [ ] Suite unitaria en verde sobre el variant de release:
+  *(2026-10-25: `pos-pdv-release-v1.0.0.apk`, el sufijo sale de
+  `versionName`.)*
+- [x] Suite unitaria en verde sobre el variant de release:
   `./gradlew testReleaseUnitTest` (mostrar salida completa). `jvm-tests`.
+  *(2026-10-25: BUILD SUCCESSFUL; 96 suites, 492 tests, 0 fallos, 0
+  errores, 0 omitidos.)* *(2026-10-26, con los grupos 6-8 y los arreglos
+  de la sesión de release: BUILD SUCCESSFUL; 97 suites, 516 tests, 0
+  fallos, 0 errores, 0 omitidos.)*
 - [ ] B-9 (`docs/review_code.md`): `.github/workflows/android-ci.yml`
   compila la variante de release (`assembleRelease`) para que un fallo de
   reglas keep de R8 aparezca en CI y no en el teléfono. Criterio: el
-  workflow corre en verde en el PR de esta Parte.
+  workflow corre en verde en el PR de esta Parte. *(2026-10-25: paso
+  "Compilar la variante de release" agregado, firmado con un keystore
+  desechable generado con `keytool` en el job; se cierra al ver el PR en
+  verde.)*
 - [ ] B-10 (`docs/review_code.md`): decidido y aplicado si
   `docs/manual-tecnico.html`/`.pdf` (salida de `/docs-sync`) se versionan o
   se agregan a `.gitignore`. Criterio: `git status` limpio antes de
-  etiquetar el release.
-- [ ] Apartado "Acerca de" (Parte 39, grupo 4) actualizado: fecha y
+  etiquetar el release. *(Decidido (2026-10-25): dejan de versionarse y se
+  generan bajo demanda; se ajusta el hook de push que los vigila.)*
+  *(2026-10-25: en `.gitignore` y fuera del índice con `git rm --cached`;
+  `docs_guard.py` ya no corre `build_manual.py --check` antes del push y
+  sigue bloqueando la edición a mano de los derivados; `/docs-sync` y
+  `ALCANCE-DOCS.md` ajustados. Se cierra con `git status` limpio tras el
+  commit.)*
+- [x] Apartado "Acerca de" (Parte 39, grupo 4) actualizado: fecha y
   novedades del release en `strings.xml` (la versión sale de `BuildConfig`).
-  *(Agregado el 2026-10-24 por decisión de la Parte 39.)*
+  *(Agregado el 2026-10-24 por decisión de la Parte 39.)* Declara además la
+  limitación M-8: cantidades enteras y sin IVA desglosado. *(2026-10-25:
+  fecha `2026-10-25` y nueva sección "Limitaciones conocidas"
+  (`release_limitaciones`); se revisa en el Xiaomi en la sesión de
+  release.)* *(2026-10-26: verificado por el usuario con el APK de
+  release: "1.0.0 (versionCode 10000)", fecha, limitaciones y logo.)*
 
-**6. Distribución**
+**6. Distribución (POS-191)**
 - [ ] Artefacto generado según el canal elegido (ver Decisiones abiertas):
   APK firmado para sideload, o AAB (`./gradlew bundleRelease`) para Play
   Console. Criterio: el artefacto instala/valida en un dispositivo limpio
-  distinto del de desarrollo.
+  distinto del de desarrollo. *(Diferido (2026-10-26): no hay un segundo
+  dispositivo; pasa al Backlog. El APK firmado se generó e instaló en el
+  Xiaomi desde cero.)*
 - [ ] Si el canal es Play Console: cuenta de desarrollador, ficha (icono,
   capturas, descripción), política de privacidad publicada (URL), formulario
   Data Safety, cuestionario de content rating y justificación del permiso
   `CAMERA`. Criterio: la app pasa la revisión de un track interno de Play.
-- [ ] Flujo de permiso `CAMERA` en runtime (escaneo de código de barras)
+  *(No aplica (2026-10-25): el canal es sideload.)*
+- [x] Flujo de permiso `CAMERA` en runtime (escaneo de código de barras)
   probado en el dispositivo con el build de release: concesión y denegación.
-  `needs-device`.
-- [ ] A-7 (`docs/review_code.md`): la política de privacidad y el formulario
+  `needs-device`. *(2026-10-26: verificado por el usuario con el APK de
+  release.)*
+- [x] A-7 (`docs/review_code.md`): la política de privacidad y el formulario
   Data Safety declaran los datos que el asistente IA envía al proveedor
   (nombres, precios, costos y totales de caja, `ia/EstadoPuntoVenta.kt`) y
   el uso de `RECORD_AUDIO` (dictado); la app pide consentimiento explícito
   al activar la IA. Criterio: el consentimiento aparece en el Xiaomi al
   activar la IA y sin él no se envía nada al proveedor. `needs-device`.
+  *(2026-10-25: con sideload no hay ficha de Play ni Data Safety; la
+  declaración de datos vive en el diálogo de consentimiento de
+  Configuración. Encender la IA abre el diálogo; "Acepto" guarda
+  `ia_consentimiento` junto con `ia_activo`; guardar la IA apagada retira
+  el consentimiento; `ChatViewModel` exige activo + consentimiento antes de
+  llamar al proveedor, y un dispositivo con la IA activa de antes vuelve a
+  pedirlo. Tests JVM: 5 nuevos en `ConfiguracionViewModelTest` y 1 en
+  `ChatViewModelTest`, en verde. Falta la verificación en el Xiaomi.)*
+  *(2026-10-26: verificado por el usuario con el APK de release. Hallazgo
+  corregido: apagar el switch sin "Guardar" no persistía; ahora apagar
+  guarda `ia_activo=false` y retira el consentimiento al momento.)*
 
-**7. Pantalla principal y tema (hallazgo A-7)**
-- [ ] La pantalla principal deja de mostrar el texto de prueba de la
+**7. Pantalla principal y tema (hallazgo A-7) (POS-192)**
+- [x] La pantalla principal deja de mostrar el texto de prueba de la
   Parte 1 ("Backend: ok (v0.1.0)") y muestra contenido propio del punto de
   venta (sucursal, usuario en turno, estado de conexión). `jvm-tests` del
   ViewModel + verificación visual en el Xiaomi. `needs-device`. *(El texto
   "Hola desde una funcion local de Kotlin" se quitó de este ítem el
   2026-10-17: lo resuelve la Parte 39, grupo 4.)*
-- [ ] Tema propio de la Activity (paleta "Recibo" de `CLAUDE.md` §3) y
+  *(2026-10-25: verificado por el usuario en el Xiaomi con el build de
+  debug (`HelloViewModelTest`: 15 tests en verde, 5 nuevos); revisado de nuevo con el APK de release el 2026-10-26.)*
+- [x] Tema propio de la Activity (paleta "Recibo" de `CLAUDE.md` §3) y
   pantalla de arranque con `core-splashscreen` (librería nueva, señalar
   según `CLAUDE.md` §9), sin el destello claro del tema de plataforma en el
   arranque en frío con modo oscuro. `needs-device`.
+  *(2026-10-25: verificado por el usuario en el Xiaomi con el build de
+  debug en modo claro y oscuro, sin destello claro; revisado de nuevo con el APK de release el 2026-10-26.)*
+- [x] Ícono propio de la app (adaptativo + monocromo) y logo en la pantalla
+  de arranque, a partir de los diseños de `docs/mipe-logo/`; verificación
+  visual en el Xiaomi en modo claro y oscuro. `needs-device`. *(Agregado el
+  2026-10-25 a pedido del usuario. Decidido: el nombre visible pasa a
+  "MiPE PDV" (`app_name` y "Acerca de"; `applicationId`
+  `com.pdv.pos` sin cambio); logo horizontal en el login y logo con eslogan
+  en "Acerca de", en versión clara u oscura según el tema; de
+  `docs/mipe-logo/` se versionan solo los SVG.)*
+  *(2026-10-25: verificado por el usuario en el Xiaomi con el build de
+  debug (ícono, splash, login y "Acerca de"); revisado de nuevo con el APK de release el 2026-10-26.)*
+
+**8. Expiración de la sesión (M-5) (POS-193)** *(Agregado el 2026-10-25 por la
+decisión "Expiración de la sesión en modo LOCAL".)*
+- [x] La sesión persistida expira tras 12 horas sin uso: al abrir la app
+  después de ese plazo se muestra el login. `jvm-tests` de la lógica de
+  expiración + verificación en el Xiaomi. `needs-device`.
+  *(2026-10-25: "sin uso" = tiempo en segundo plano. `MainActivity.onStop`
+  guarda la hora (`session_ultimo_uso`) y `onStart` cierra la sesión si
+  pasaron más de 12 h (`SessionManager.cerrarSiExpirada`); la restauración
+  al arrancar el proceso descarta la sesión vencida. Decidido: una sesión
+  expirada detiene el sync de `LOCAL_CON_SINCRONIZACION` hasta el próximo
+  login (`MOTIVO_SIN_SESION`), y la verificación en el Xiaomi se hace
+  adelantando el reloj del teléfono 13 h. Tests JVM en verde:
+  `SessionManagerTest` 11 (6 nuevos), `SessionStoreTest` 8 (1 nuevo),
+  `DefaultSyncOrchestratorTest` 9 (1 nuevo). Falta la verificación en el
+  Xiaomi, en la sesión de release.)* *(2026-10-26: verificado por el
+  usuario con el APK de release: segundo plano, reloj adelantado 13 h, al
+  volver aparece el login; hora automática restaurada.)*
 
 ### Decisiones abiertas
 
-- [ ] **Canal de distribución**: Play Console (AAB; requiere cuenta, fichas,
+- [x] **Canal de distribución**: Play Console (AAB; requiere cuenta, fichas,
   Data Safety y revisiones, pero gestiona updates y firma) vs sideload de APK
   firmado (sin store, distribución manual). Afecta los grupos 1, 5 y 6.
-- [ ] **Destino de despliegue del backend** (`CLAUDE.md` §7 lo tiene como
+  *(Resuelta (2026-10-25): sideload del APK firmado. Play Console se planifica
+  después; los ítems de Play del grupo 6 no aplican a este release.)*
+- [x] **Destino de despliegue del backend** (`CLAUDE.md` §7 lo tiene como
   `[TODO]` desde el inicio): Render / Fly.io / VPS propio / AWS. A sopesar:
   costo, TLS y dominio incluidos, correr el `docker-compose` tal cual,
   backups de Postgres.
-- [ ] **Play App Signing** (solo si el canal es Play): ¿se delega la clave de
+  *(Resuelta (2026-10-25): diferido. El primer release se centra en el modo local;
+  el backend productivo se despliega en una fase futura, bajo demanda del
+  cliente. El grupo 2 y la verificación contra HTTPS real del grupo 3 pasan
+  al Backlog.)*
+- [x] **Play App Signing** (solo si el canal es Play): ¿se delega la clave de
   firma de la app a Google, o se mantiene la clave localmente?
-- [ ] **URL base**: ¿siempre configurable por el usuario en Configuración, o
+  *(Resuelta (2026-10-25): no aplica: el canal es sideload.)*
+- [x] **URL base**: ¿siempre configurable por el usuario en Configuración, o
   valor productivo por defecto con override oculto para soporte?
-- [ ] **Expiración de la sesión en modo LOCAL** (M-5 de `docs/review_code.md`,
+  *(Resuelta (2026-10-25): sigue configurable en Configuración y en el login
+  (Parte 31), sin valor productivo por defecto mientras no exista el
+  backend productivo.)*
+- [x] **Expiración de la sesión en modo LOCAL** (M-5 de `docs/review_code.md`,
   reproducido: la app abrió con la sesión de `admin` de 17 días antes): ¿la
   sesión persistida expira por inactividad, al cerrar turno/corte final, o
   se mantiene como hoy? Si entra al release, se agregan sus ítems a esta
   Parte.
-- [ ] **Venta por fracción/peso e IVA en el ticket** (M-8 de
+  *(Resuelta (2026-10-25): expira por inactividad (12 horas sin uso); entra al
+  release como grupo 8.)*
+- [x] **Venta por fracción/peso e IVA en el ticket** (M-8 de
   `docs/review_code.md`): hoy `cantidad` es entera en el carrito y
   `descuento`/`impuestos` están fijos en cero. ¿Lo necesita el primer
   release a comercios reales, o se declara la limitación en la ficha de la
   app y se planifica después?
+  *(Resuelta (2026-10-25): se declara la limitación (cantidades enteras, sin IVA
+  desglosado) en "Acerca de"; se planifica en una Parte posterior.)*
 
 ---
 
 ## Backlog (trabajo futuro, fuera del alcance actual)
 
+- **Backend productivo** (diferido desde la Parte 40 el 2026-10-25, bajo
+  demanda del cliente): grupo 2 completo de la Parte 40 (despliegue con TLS
+  y `docker-compose.prod.yml` real, `alembic current` en prod, `CLAUDE.md`
+  §7 con el destino, M-9 con Gunicorn + proxy TLS + respaldo de Postgres
+  probado) y la verificación de modo REMOTO contra `https://<dominio>` del
+  grupo 3. Recomendación registrada: VPS propio con el compose tal cual,
+  Caddy como proxy TLS y `pg_dump` programado.
+- **Distribución por Play Console** (Parte 40, canal sideload elegido el
+  2026-10-25): cuenta, ficha, Data Safety, content rating, Play App
+  Signing.
+- **APK de release en un dispositivo limpio distinto del de desarrollo**
+  (Parte 40, grupo 6, diferido el 2026-10-26: no hay un segundo
+  dispositivo): instalar `pos-pdv-release-v1.0.0.apk` por sideload en un
+  teléfono que nunca tuvo la app y confirmar instalación, login bootstrap
+  y "Sucursal principal" en la pantalla principal.
 - **Lectura de disco en el hilo principal en `LoggingModule`** (hallazgo
   de la medición B-6, Parte 39, 2026-10-25): StrictMode en debug marca
   `DiskReadViolation` en `LoggingModule.provideLogDirectory` al construir

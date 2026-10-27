@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.File
 import java.math.BigDecimal
 
 class InventarioCsvImporterTest {
@@ -21,6 +22,19 @@ class InventarioCsvImporterTest {
 
         assertEquals(false, resultado.encabezadoValido)
         assertTrue(resultado.filas.isEmpty())
+    }
+
+    // Hallazgo de la verificacion del release (PLAN.md Parte 40): el CSV de
+    // ejemplo trae BOM UTF-8 (lo agrega Excel al guardar), y se lee igual que
+    // en ImportacionCatalogoViewModel (bufferedReader().readText()).
+    @Test
+    fun `el csv de ejemplo con BOM UTF-8 tiene encabezado valido`() {
+        val contenido = File("../../docs/inventario-inicial.csv").inputStream().bufferedReader().use { it.readText() }
+
+        val resultado = InventarioCsvImporter.parsear(contenido)
+
+        assertTrue(resultado.encabezadoValido)
+        assertEquals(115, resultado.filas.count { it is FilaCsvImportada.Valida })
     }
 
     @Test

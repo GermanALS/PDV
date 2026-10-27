@@ -1,5 +1,6 @@
 package com.pdv.pos.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,9 +20,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pdv.pos.R
 
 @Composable
 fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
@@ -36,6 +40,12 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         ) {
+            // drawable-night holds the dark-mode variant of the logo.
+            Image(
+                painter = painterResource(R.drawable.logo_mipe_horizontal),
+                contentDescription = stringResource(R.string.app_name),
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
             Text(text = "Iniciar sesión", style = MaterialTheme.typography.titleLarge)
 
             OutlinedTextField(

@@ -79,10 +79,20 @@ class ChatViewModelTest {
         return preferences
     }
 
-    private fun iaPreferences(activo: Boolean = true, token: String? = "token-1"): IaPreferences {
+    private fun iaPreferences(
+        activo: Boolean = true,
+        token: String? = "token-1",
+        consentimiento: Boolean = true,
+    ): IaPreferences {
         val preferences = mockk<IaPreferences>()
         every { preferences.config } returns flowOf(
-            IaConfig(activo = activo, proveedor = LlmProvider.DEEP_SEEK, modelo = "deepseek-chat", tieneToken = token != null),
+            IaConfig(
+                activo = activo,
+                proveedor = LlmProvider.DEEP_SEEK,
+                modelo = "deepseek-chat",
+                tieneToken = token != null,
+                consentimiento = consentimiento,
+            ),
         )
         coEvery { preferences.getToken() } returns token
         return preferences
@@ -250,6 +260,18 @@ class ChatViewModelTest {
     fun `enviar un mensaje con la IA desactivada muestra un error sin llamar al proveedor`() = runTest(dispatcher) {
         val llmClient = mockk<LlmClient>()
         val viewModel = viewModel(iaPreferences = iaPreferences(activo = false), llmClient = llmClient)
+
+        viewModel.onTextoChange("hola")
+        viewModel.enviarMensaje()
+
+        assertTrue(viewModel.uiState.value.mensajes.any { it is ChatUiMessage.DeError })
+        coVerify(exactly = 0) { llmClient.chatEstructurado(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `enviar un mensaje con la IA activa pero sin consentimiento no llama al proveedor`() = runTest(dispatcher) {
+        val llmClient = mockk<LlmClient>()
+        val viewModel = viewModel(iaPreferences = iaPreferences(consentimiento = false), llmClient = llmClient)
 
         viewModel.onTextoChange("hola")
         viewModel.enviarMensaje()

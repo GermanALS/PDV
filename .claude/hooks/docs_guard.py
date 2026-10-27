@@ -5,9 +5,9 @@
 """Hook PreToolUse de Claude Code para el manual técnico.
 
 1. Bloquea Edit/Write/MultiEdit sobre los derivados (docs/manual-tecnico.html y .pdf).
-2. Bloquea `git push` hacia ramas protegidas si el manual está desactualizado:
-   - hay cambios fuera de docs/ posteriores a la última /docs-sync, o
-   - el HTML/PDF no corresponden al Markdown actual.
+2. Bloquea `git push` hacia ramas protegidas si hay cambios fuera de docs/
+   posteriores a la última /docs-sync. El HTML/PDF no se versionan (se generan
+   bajo demanda), así que su frescura no se verifica aquí.
 
 Exit 0 = permitir. Exit 2 = bloquear; stderr se entrega a Claude como motivo.
 """
@@ -88,13 +88,6 @@ def guard_push(command: str) -> None:
             f"Manual técnico desactualizado: {len(changed)} archivo(s) cambiaron desde la "
             f"última /docs-sync ({base}):\n  {listed}\nCorre /docs-sync <Parte> antes de hacer push."
         )
-
-    check = subprocess.run(
-        ["uv", "run", "--quiet", "--no-project", "--with", "pypdf>=5.0", "python", "scripts/docs/build_manual.py", "--check"],
-        capture_output=True, text=True,
-    )
-    if check.returncode != 0:
-        block((check.stdout + check.stderr).strip() or "build_manual.py --check falló.")
 
 
 def main() -> None:

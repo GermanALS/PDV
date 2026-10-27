@@ -36,3 +36,19 @@ jobs:
 
       - name: Verificar que el JSON de esquema de Room commiteado sigue vigente
         run: git diff --exit-code -- app/schemas
+
+      # B-9 (Parte 40): compila el release con R8 para que un fallo de reglas
+      # keep aparezca aqui. Se firma con un keystore desechable generado en el
+      # job; el APK resultante no sirve para distribuir.
+      - name: Compilar la variante de release
+        env:
+          PDV_KEYSTORE_FILE: ${{ runner.temp }}/ci-release.jks
+          PDV_KEYSTORE_PASSWORD: ci-throwaway
+          PDV_KEY_ALIAS: ci
+          PDV_KEY_PASSWORD: ci-throwaway
+        run: |
+          keytool -genkeypair -keystore "$PDV_KEYSTORE_FILE" -storetype PKCS12 \
+            -storepass "$PDV_KEYSTORE_PASSWORD" -keypass "$PDV_KEY_PASSWORD" \
+            -alias "$PDV_KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 1 \
+            -dname "CN=PDV CI"
+          ./gradlew assembleRelease --max-workers=1

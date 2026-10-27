@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="recibo_background">#1C1B18</color>
+
+    <style name="Theme.Pdv" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/recibo_background</item>
+    </style>
+</resources>

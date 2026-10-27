@@ -38,6 +38,18 @@ class SessionStoreTest {
     }
 
     @Test
+    fun `persists the last use time and limpiar removes it`(@TempDir tempDir: File) = runTest(dispatcher) {
+        val store = store(tempDir)
+        store.guardar(Session("admin", "usuario-1", "rol-1"))
+
+        store.guardarUltimoUso(1_800_000_000_000L)
+        assertEquals(1_800_000_000_000L, store.ultimoUso())
+
+        store.limpiar()
+        assertNull(store.ultimoUso())
+    }
+
+    @Test
     fun `round-trips a remote session and never persists the token in plaintext`(@TempDir tempDir: File) =
         runTest(dispatcher) {
             val ds = dataStore(tempDir)

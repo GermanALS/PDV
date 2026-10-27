@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.pdv.pos.config.TokenCipher
 import com.pdv.pos.config.TokenCifrado
@@ -22,6 +23,10 @@ interface SessionStore {
     suspend fun guardar(session: Session)
     suspend fun limpiar()
 
+    /** Last time the app went to background with this session (M-5, PLAN.md Parte 40 grupo 8). */
+    suspend fun ultimoUso(): Long?
+    suspend fun guardarUltimoUso(millis: Long)
+
     // Default de SessionManager cuando no se cablea persistencia (tests que
     // no la ejercen). No es un artefacto de test: es el comportamiento
     // legitimo "sin almacenamiento".
@@ -29,6 +34,8 @@ interface SessionStore {
         override suspend fun cargar(): Session? = null
         override suspend fun guardar(session: Session) = Unit
         override suspend fun limpiar() = Unit
+        override suspend fun ultimoUso(): Long? = null
+        override suspend fun guardarUltimoUso(millis: Long) = Unit
     }
 }
 
@@ -38,6 +45,7 @@ private val KEY_ROL_ID = stringPreferencesKey("session_rol_id")
 private val KEY_TOKEN_CIPHERTEXT = stringPreferencesKey("session_token_ciphertext")
 private val KEY_TOKEN_IV = stringPreferencesKey("session_token_iv")
 private val KEY_DEBE_CAMBIAR_PASSWORD = booleanPreferencesKey("session_debe_cambiar_password")
+private val KEY_ULTIMO_USO = longPreferencesKey("session_ultimo_uso")
 
 // username/usuarioId/rolId van en claro (no son secretos); el accessToken se
 // cifra con TokenCipher (AES-GCM respaldado por Android Keystore en
@@ -108,6 +116,13 @@ class DataStoreSessionStore @Inject constructor(
             prefs.remove(KEY_TOKEN_CIPHERTEXT)
             prefs.remove(KEY_TOKEN_IV)
             prefs.remove(KEY_DEBE_CAMBIAR_PASSWORD)
+            prefs.remove(KEY_ULTIMO_USO)
         }
+    }
+
+    override suspend fun ultimoUso(): Long? = dataStore.data.first()[KEY_ULTIMO_USO]
+
+    override suspend fun guardarUltimoUso(millis: Long) {
+        dataStore.edit { it[KEY_ULTIMO_USO] = millis }
     }
 }

@@ -181,7 +181,7 @@ class ChatViewModel @Inject constructor(
 
     private suspend fun obtenerRespuesta(texto: String, historial: List<ChatMessageDto>): RespuestaChat {
         val iaConfig = iaPreferences.config.first()
-        if (!iaConfig.activo) {
+        if (!iaConfig.puedeEnviar) {
             return mensajesDeError("La IA no está activada. Actívala en Configuración.")
         }
         val token = iaPreferences.getToken()

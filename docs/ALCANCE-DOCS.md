@@ -18,7 +18,8 @@ Reglas:
 
 - El HTML y el PDF nunca se editan a mano ni con las herramientas de edición de
   Claude (el hook `.claude/hooks/docs_guard.py` lo bloquea). Se regeneran con
-  `uv run scripts/docs/build_manual.py`.
+  `uv run scripts/docs/build_manual.py`. No se versionan (`.gitignore`, Parte
+  40): se generan bajo demanda.
 - Frescura verificable: `uv run scripts/docs/build_manual.py --check` compara el
   sha256 del Markdown con el embebido en el HTML y en los metadatos del PDF.
 - `manual-meta` (al inicio del Markdown) alimenta portada y chips: `titulo`,

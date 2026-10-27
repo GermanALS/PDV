@@ -10,6 +10,7 @@ class AcercaDeViewModelTest {
         versionCode = 10203,
         fecha = "2026-11-01",
         novedades = listOf("Venta", "Caja"),
+        limitaciones = listOf("Cantidades enteras"),
         equipo = "German y Susana ALS",
         contacto = "german.antoniols@gmail.com",
     )
@@ -22,11 +23,12 @@ class AcercaDeViewModelTest {
     }
 
     @Test
-    fun `uiState exposes the release date, notes and team data unchanged`() {
+    fun `uiState exposes the release date, notes, limitations and team data unchanged`() {
         val estado = AcercaDeViewModel(infoRelease).uiState.value
 
         assertEquals("2026-11-01", estado.fecha)
         assertEquals(listOf("Venta", "Caja"), estado.novedades)
+        assertEquals(listOf("Cantidades enteras"), estado.limitaciones)
         assertEquals("German y Susana ALS", estado.equipo)
         assertEquals("german.antoniols@gmail.com", estado.contacto)
     }

@@ -20,6 +20,7 @@ object AcercaDeModule {
         versionCode = BuildConfig.VERSION_CODE,
         fecha = context.getString(R.string.release_fecha),
         novedades = context.resources.getStringArray(R.array.release_novedades).toList(),
+        limitaciones = context.resources.getStringArray(R.array.release_limitaciones).toList(),
         equipo = context.getString(R.string.acerca_equipo),
         contacto = context.getString(R.string.acerca_contacto),
     )

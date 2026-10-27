@@ -9,6 +9,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -31,6 +35,7 @@ import com.pdv.pos.ui.theme.PdvTheme
 import com.pdv.pos.usuario.UsuarioScreen
 import com.pdv.pos.venta.VentaScreen
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private enum class Pantalla {
@@ -44,7 +49,21 @@ class MainActivity : ComponentActivity() {
     lateinit var sessionManager: SessionManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
+        // Expiracion por inactividad (PLAN.md Parte 40, grupo 8): la ventana
+        // de inactividad abre al pasar a segundo plano y se evalua al volver.
+        lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    lifecycleScope.launch { sessionManager.cerrarSiExpirada(System.currentTimeMillis()) }
+                }
+
+                override fun onStop(owner: LifecycleOwner) {
+                    sessionManager.registrarUso(System.currentTimeMillis())
+                }
+            },
+        )
         setContent {
             PdvTheme {
                 val session by sessionManager.session.collectAsState()

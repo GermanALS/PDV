@@ -300,6 +300,21 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
   variables entre servicios.
 - **Android**: por ahora, builds locales (`./gradlew assembleDebug`).
   [TODO: definir cuándo se sube a Play Console Internal Testing]
+- **Firma de release Android** (Parte 40): el keystore vive fuera del repo
+  en `%USERPROFILE%\.pdv\pdv-release.jks` (alias `pdv-release`), con un
+  respaldo del `.jks` y de sus contraseñas fuera del equipo. El build lo
+  toma de `android/keystore.properties` (gitignoreado, igual que `*.jks` y
+  `*.keystore`) con las claves `storeFile` (ruta con `/`), `storePassword`,
+  `keyAlias` y `keyPassword`; si ese archivo no existe, de las variables de
+  entorno `PDV_KEYSTORE_FILE`, `PDV_KEYSTORE_PASSWORD`, `PDV_KEY_ALIAS` y
+  `PDV_KEY_PASSWORD` (CI). Sin ninguno de los dos, `assembleDebug` compila
+  igual y `assembleRelease` falla en `packageRelease` con un mensaje claro.
+  Perder el keystore impide publicar actualizaciones sobre la app ya
+  instalada (hay que desinstalar, y eso borra los datos locales). Rotación:
+  solo ante compromiso de la clave. Con distribución por sideload no hay
+  rotación transparente: se genera un keystore nuevo con `keytool`, se
+  actualiza `keystore.properties`, y cada dispositivo debe respaldar sus
+  datos, desinstalar e instalar el APK nuevo.
 - **Versionado de la app Android** (`android/app/build.gradle.kts`):
   - `versionName` sigue SemVer `MAJOR.MINOR.PATCH` como cadena legible del
     alcance publicado (`MAJOR` = hito de producto, `MINOR` = features nuevas
@@ -309,16 +324,15 @@ los `schemas` de FastAPI como los DTOs/clientes Kotlin.
     `MAJOR * 10000 + MINOR * 100 + PATCH` (ej. `0.1.0` -> `100`,
     `1.2.3` -> `10203`). Nunca decrece; dos APKs distribuidos nunca
     comparten `versionCode`.
-  - Hasta el primer release a Play Console siguen en `versionCode = 1` /
-    `versionName = "0.1"`; el esquema aplica desde el primer build
-    distribuido.
+  - El primer release (Parte 40) es `1.0.0` / `10000`; `assembleRelease`
+    emite `pos-pdv-release-v<versionName>.apk`.
 - CI: un workflow de GitHub Actions por módulo (Parte 26, migrado a `uv` en
   la Parte 30). `.github/workflows/backend-ci.yml`: `uv lock --check`,
   `alembic upgrade head` + `alembic check` y `pytest` contra un Postgres de
   servicio. `.github/workflows/android-ci.yml`: `./gradlew test lint
   --max-workers=1` y verificación de que el JSON de esquema de Room
-  commiteado está al día. Compilar la variante de release en CI queda en la
-  Parte 40. Sin CD todavía.
+  commiteado está al día, y `assembleRelease` (R8) firmado con un keystore
+  desechable generado en el job (Parte 40). Sin CD todavía.
 
 ## 8. Convenciones de nombres
 

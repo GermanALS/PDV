@@ -144,4 +144,14 @@ class DefaultSyncOrchestratorTest {
         assertEquals(SyncResultado.Fallo(MOTIVO_CAMBIAR_PASSWORD), orchestrator().sincronizar())
         coVerify(exactly = 0) { entrada.empujarPendientes() }
     }
+
+    // Una sesion cerrada (logout o expiracion por inactividad, PLAN.md Parte
+    // 40 grupo 8) detiene el sync hasta el proximo login.
+    @Test
+    fun `without an active session nothing is pushed`() = runTest {
+        sessionManager.logout()
+
+        assertEquals(SyncResultado.Fallo(MOTIVO_SIN_SESION), orchestrator().sincronizar())
+        coVerify(exactly = 0) { entrada.empujarPendientes() }
+    }
 }
